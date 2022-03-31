@@ -136,27 +136,31 @@ class SuperT(nn.Module):
     def __init__(self, *, feature_dim, seq_len, dim, depth, heads, mlp_dim, dim_head = 64, dropout = 0., emb_dropout = 0.):
         super().__init__()
  
-        self.to_SP_embedding = nn.Linear(feature_dim, dim)
+        # self.to_SP_embedding = nn.Linear(feature_dim, dim)
         
 
         # self.pos_encoding = PositionalEncodingSuperPixel(dim)
-        self.pos_encoding = nn.Parameter(torch.randn(1, seq_len, dim))
+        # self.pos_encoding = nn.Parameter(torch.randn(1, seq_len, dim))
 
-        self.dropout = nn.Dropout(emb_dropout)
+        # self.dropout = nn.Dropout(emb_dropout)
 
-        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
+        self.conv_transformer = Transformer(feature_dim, 1, heads, dim_head, mlp_dim, dropout)
+        self.global_transformer = Transformer(feature_dim, 1, heads, dim_head, mlp_dim, dropout)
 
         self.mlp_head = nn.Linear(dim, 1)
 
-    def forward(self, img): # img = (batch, seq_len, feature_dim)
+    def forward(self, x, nb_indices): # img = (batch, seq_len, feature_dim)
         # pos_encoding = self.pos_encoding(img)  # (batch, seq_len, dim))
-        x = self.to_SP_embedding(img[:, :, 3:6]) # (batch, seq_len, dim)
+        #x = self.to_SP_embedding(img[:, :, 3:6]) # (batch, seq_len, dim)
 
  
-        x += self.pos_encoding
-        x = self.dropout(x)
-
-        x = self.transformer(x) # (batch, seq_len, dim)
+        #x += self.pos_encoding
+        #x = self.dropout(x)
+        x = torch.unsqueeze(x, 2)
+        x = x.expand(-1, -1, x.size(1), -1)
+        nb_indices = torch.unsqueeze(nb_indices, 3)
+        x = torch.gather(x, 1, nb_indices) # (batch, seq_len, 9, feature_dim)
+        x = self.conv_transformer(x) # (batch, seq_len, 9, feature_dim)
 
         x = self.mlp_head(x)
 

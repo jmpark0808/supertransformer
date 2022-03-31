@@ -76,7 +76,7 @@ if __name__ == '__main__':
     learning_rate = learning_rate * (lr_decay ** (start_iter // decay_step))
     opt = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, nesterov=True)
     # Dataloader Setup
-    dataloader = DataLoader(duts_dataset, batch_size, shuffle=True, num_workers=0)
+    dataloader = DataLoader(duts_dataset, batch_size, shuffle=True, num_workers=4)
     # Logger Setup
     os.makedirs(os.path.join('log', now.strftime('%m%d%H%M')), exist_ok=True)
     weight_save_dir = os.path.join('models', 'state_dict', now.strftime('%m%d%H%M'))
@@ -96,9 +96,10 @@ if __name__ == '__main__':
             segments = batch['segments']
             mask = batch['mask']
             img = batch['img']
+            nb_indices = batch['neighbor_array'].to(device)
             
       
-            pred = model(features)
+            pred = model(features, nb_indices)
 
             loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), seq_mask)
             loss.backward()
