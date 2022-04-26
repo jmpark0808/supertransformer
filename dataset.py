@@ -74,11 +74,7 @@ class ToTensor(object):
         vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
         vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
         bneighbors = np.unique(np.hstack([vs_right, vs_below]), axis=1)
-        dict = defaultdict(lambda: [0]*9)
-        for ref, nb in zip(bneighbors[0], bneighbors[1]):
-            if dict[ref][0]==0:
-                dict[ref].pop(0)
-                dict[ref].append(nb)
+ 
 
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean', 'extent', 'coords', 'eccentricity'))
         seq_len = self.seq_len
@@ -96,11 +92,10 @@ class ToTensor(object):
         for ind, coord in zip(regions['label'], regions['coords']):
             seq_mask[ind-1] = np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0])
 
-        neighbor_array = np.zeros([seq_len, 9])
-        for key, value in dict.items():
-            neighbor_array[key-1] = value
+        neighbor_array = np.zeros([seq_len, seq_len])
+        neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
 
-        features, neighbor_array, seq_mask, segments, mask, img = torch.tensor(features).float(), torch.tensor(neighbor_array).long(), torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
+        features, neighbor_array, seq_mask, segments, mask, img = torch.tensor(features).float(), torch.tensor(neighbor_array).float(), torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
         return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask, 'img': img, 'neighbor_array': neighbor_array}
 
 

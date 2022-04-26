@@ -145,6 +145,7 @@ class SuperT(nn.Module):
         # self.dropout = nn.Dropout(emb_dropout)
 
         self.conv_transformer = Transformer(feature_dim, 1, heads, dim_head, mlp_dim, dropout)
+        self.cls_token = nn.Parameter(torch.randn(1, 1, 1, feature_dim))
         self.global_transformer = Transformer(feature_dim, 1, heads, dim_head, mlp_dim, dropout)
 
         self.mlp_head = nn.Linear(dim, 1)
@@ -160,6 +161,7 @@ class SuperT(nn.Module):
         x = x.expand(-1, -1, x.size(1), -1)
         nb_indices = torch.unsqueeze(nb_indices, 3)
         x = torch.gather(x, 1, nb_indices) # (batch, seq_len, 9, feature_dim)
+        cls_tokens = repeat(self.cls_token, '() () l d -> b n l d', b = x.size(0))
         x = self.conv_transformer(x) # (batch, seq_len, 9, feature_dim)
 
         x = self.mlp_head(x)
