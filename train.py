@@ -11,7 +11,7 @@ from tqdm import tqdm
 import torch.nn.functional as F
 from network import SuperT, MLP
 from dataset import DUTSDataset
-
+from GAT import GAT
 
 
 if __name__ == '__main__':
@@ -47,7 +47,8 @@ if __name__ == '__main__':
     duts_dataset = DUTSDataset(args.dataset, seq_len)
     load = args.load
     start_iter = 0
-    model = SuperT(feature_dim=3, seq_len=seq_len, dim=64, depth=3, heads=1, mlp_dim=128, dropout=0.).cuda()
+    # model = SuperT(feature_dim=3, seq_len=seq_len, dim=64, depth=3, heads=1, mlp_dim=128, dropout=0.).cuda()
+    model = GAT(8, 8,  0., 0.2, 8).cuda()
     model = model.float() 
     pytorch_total_params = sum(p.numel() for p in model.parameters())
     print('Total number of parameters:', pytorch_total_params)
@@ -96,10 +97,10 @@ if __name__ == '__main__':
             segments = batch['segments']
             mask = batch['mask']
             img = batch['img']
-            nb_indices = batch['neighbor_array'].to(device)
+            adj = batch['neighbor_array'].to(device)
             
       
-            pred = model(features, nb_indices)
+            pred = model(features, adj)
 
             loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), seq_mask)
             loss.backward()
