@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from net.transformer import Transformer
+from net.transformer import GraphConvTransformer, Transformer
 
 class GraphAttentionLayer(nn.Module):
     """
@@ -121,23 +121,15 @@ class GATSepFCN(nn.Module):
 
 
 class DeepGAT(nn.Module):
-    def __init__(self, nfeat, nhid, dropout, alpha, nheads):
+    def __init__(self, nfeat, nhid, dropout, nheads, ntfm):
         """Dense version of GAT."""
         super(DeepGAT, self).__init__()
-        self.dropout = dropout
-
-        self.attentions = [GraphAttentionLayer(nfeat, nhid, dropout=dropout, alpha=alpha, concat=True) for _ in range(nheads)]
-        for i, attention in enumerate(self.attentions):
-            self.add_module('attention_{}'.format(i), attention)
-
-        # self.out_att = GraphAttentionLayer(nhid * nheads, nclass, dropout=dropout, alpha=alpha, concat=False)
-        self.transformer = Transformer(nhid * nheads, 3, nheads, nhid , nheads*nhid, dropout)
+        self.linear = nn.Linear(nfeat, nhid * nheads, 1, nheads, nhid, nheads*nhid, dropout)
+        self.transformers = nn.Sequential(*[GraphConvTransformer(nhid*nheads, 3, nheads, nhid, nheads*nhid, dropout) for _ in range(ntfm)])
+        
         self.out = nn.Linear(nhid * nheads, 1)
     def forward(self, x, adj):
-        x = F.dropout(x, self.dropout, training=self.training)
-        x = torch.cat([att(x, adj) for att in self.attentions], dim=2)
-        x = F.dropout(x, self.dropout, training=self.training)
-        # x = F.elu(self.out_att(x, adj))
-        x = self.transformer(x)
+        x = self.linear(x)
+        x = self.transformers(x, adj)
         x = self.out(x)
         return x
