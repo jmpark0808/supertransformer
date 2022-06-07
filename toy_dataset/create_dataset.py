@@ -106,8 +106,8 @@ def get_points(tupVerts):
 
 
 
-num_images = 5
-image_save_directory = '/mnt/nas/PhD/Datasets/ToyDataset/DUTS-TR'
+num_images = 5000
+image_save_directory = '/home/eddie/nas/PhD/Datasets/ToyDataset/DUTS-TR'
 for i in range(num_images):
     image = np.random.randint(0, 255, [256, 256, 3])
     random_center_x = np.random.randint(50, 200)
@@ -131,7 +131,7 @@ for i in range(num_images):
     im.save(os.path.join(image_save_directory, f"DUTS-TR-Mask/{i}.jpg"))
 
 
-num_images = 5
+num_images = 5000
 image_save_directory = '/mnt/nas/PhD/Datasets/ToyDataset/DUTS-TE'
 for i in range(num_images):
     image = np.random.randint(0, 255, [256, 256, 3])
