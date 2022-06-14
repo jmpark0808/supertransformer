@@ -6,7 +6,7 @@ from net.gcn import DeepGAT
 import torch.nn.functional as F
 import numpy as np
 
-class SuperTransformerLightTFM(pl.LightningModule):
+class SuperTransformerDeepTFM(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -34,7 +34,7 @@ class SuperTransformerLightTFM(pl.LightningModule):
         # self.example_input_array = torch.rand((1, seq_len, 8))
 
         # Generator that produces the HeatMap
-        self.supert = DeepGAT(8, 8,  0., 8, 24)
+        self.supert = DeepGAT(8, 8,  0., 8, 6)
 
         self.save_hyperparameters()
         

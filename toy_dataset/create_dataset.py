@@ -107,7 +107,7 @@ def get_points(tupVerts):
 
 
 num_images = 5000
-image_save_directory = '/home/eddie/nas/PhD/Datasets/ToyDataset/DUTS-TR'
+image_save_directory = '/mnt/hdd/Datasets/ToyDatasetV2/TR'
 for i in range(num_images):
     image = np.random.randint(0, 255, [256, 256, 3])
     random_center_x = np.random.randint(50, 200)
@@ -123,16 +123,20 @@ for i in range(num_images):
     mask = get_points(vertices)
     idx = np.where(mask)
     image[idx[0], idx[1], :] = random_colour
+    shape_noise = np.random.normal(0, 1, [len(idx[0]), 3])
+    image = image.astype(np.float64)
+    image[idx[0], idx[1], :] *= shape_noise
+    image = np.clip(image, 0, 255)
 
-    im = Image.fromarray((image * 255).astype(np.uint8))
-    im.save(os.path.join(image_save_directory, f"DUTS-TR-Image/{i}.jpg"))
+    im = Image.fromarray((image).astype(np.uint8))
+    im.save(os.path.join(image_save_directory, f"Image/{i}.jpg"))
 
     im = Image.fromarray((mask * 255).astype(np.uint8))
-    im.save(os.path.join(image_save_directory, f"DUTS-TR-Mask/{i}.jpg"))
+    im.save(os.path.join(image_save_directory, f"Mask/{i}.jpg"))
 
 
 num_images = 5000
-image_save_directory = '/mnt/nas/PhD/Datasets/ToyDataset/DUTS-TE'
+image_save_directory = '/mnt/hdd/Datasets/ToyDatasetV2/TE'
 for i in range(num_images):
     image = np.random.randint(0, 255, [256, 256, 3])
     random_center_x = np.random.randint(50, 200)
@@ -148,9 +152,14 @@ for i in range(num_images):
     mask = get_points(vertices)
     idx = np.where(mask)
     image[idx[0], idx[1], :] = random_colour
+    shape_noise = np.random.normal(0, 1, [len(idx[0]), 3])
+    image = image.astype(np.float64)
+    image[idx[0], idx[1], :] *= shape_noise
+    image = np.clip(image, 0, 255)
+    # 
 
-    im = Image.fromarray((image * 255).astype(np.uint8))
-    im.save(os.path.join(image_save_directory, f"DUTS-TE-Image/{i}.jpg"))
+    im = Image.fromarray((image).astype(np.uint8))
+    im.save(os.path.join(image_save_directory, f"Image/{i}.jpg"))
 
-    im = Image.fromarray((mask * 255).astype(np.uint8))
-    im.save(os.path.join(image_save_directory, f"DUTS-TE-Mask/{i}.jpg"))
+    im = Image.fromarray((mask*255).astype(np.uint8))
+    im.save(os.path.join(image_save_directory, f"Mask/{i}.jpg"))

@@ -21,6 +21,7 @@ from dataset.superpixel import SPDataModule
 from net.supert import SuperTransformerLightTFM
 from net.supertfcn import SuperTransformerFCN
 from net.supertseparablefcn import SuperTransformerSepFCN
+from net.supertdeep import SuperTransformerDeepTFM
 # Metric logging
 
 # Deterministic
@@ -28,7 +29,8 @@ from net.supertseparablefcn import SuperTransformerSepFCN
 MODEL_DIRECTORY = {
     "SPLT": SuperTransformerLightTFM,
     "SPF": SuperTransformerFCN,
-    "SPSF": SuperTransformerSepFCN
+    "SPSF": SuperTransformerSepFCN,
+    "SPDT": SuperTransformerDeepTFM
 
 }
 DATALOADER_DIRECTORY = {
@@ -57,7 +59,7 @@ if __name__ == "__main__":
     parser.add_argument('--val_freq', help='How often to run validation set within a training epoch, i.e. 0.25 will run 4 validation runs in 1 training epoch', default=0.1, type=float)
     parser.add_argument('--es_patience', help='Max # of consecutive validation runs w/o improvment', default=5, type=int)
     parser.add_argument('--logdir', help='logdir for models and losses. default = .', default='./', type=str)
-    parser.add_argument('--lr', help='learning_rate for pose. default = 0.001', default=0.001, type=float)
+    parser.add_argument('--lr', help='learning_rate for pose. default = 0.001', default=0.0001, type=float)
     parser.add_argument('--num_seg', help='Approximate number of segmentations', default=600, type=int)
     parser.add_argument('--display_freq', help='Frequency to display result image on Tensorboard, in batch units',
                         default=64, type=int)
