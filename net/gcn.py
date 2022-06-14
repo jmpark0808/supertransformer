@@ -124,12 +124,13 @@ class DeepGAT(nn.Module):
     def __init__(self, nfeat, nhid, dropout, nheads, ntfm):
         """Dense version of GAT."""
         super(DeepGAT, self).__init__()
-        self.linear = nn.Linear(nfeat, nhid * nheads, 1, nheads, nhid, nheads*nhid, dropout)
-        self.transformers = nn.Sequential(*[GraphConvTransformer(nhid*nheads, 3, nheads, nhid, nheads*nhid, dropout) for _ in range(ntfm)])
+        self.linear = nn.Linear(nfeat, nhid * nheads)
+        self.transformers = nn.ModuleList([GraphConvTransformer(nhid*nheads, 3, nheads, nhid, nheads*nhid, dropout) for _ in range(ntfm)])
         
         self.out = nn.Linear(nhid * nheads, 1)
     def forward(self, x, adj):
         x = self.linear(x)
-        x = self.transformers(x, adj)
+        for layer in self.transformers:
+            x = layer(x, adj)
         x = self.out(x)
         return x

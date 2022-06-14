@@ -87,9 +87,11 @@ class GraphAttention(nn.Module):
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
 
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # seq_len x seq_len 
-        dots = torch.matmul(dots, adj)
+        zero_vec = -9e15*torch.ones_like(dots)
+        adj = adj.unsqueeze(1).repeat(1, dots.size(1), 1, 1)
+        attention = torch.where(adj > 0, dots, zero_vec)
 
-        attn = self.attend(dots)
+        attn = self.attend(attention)
 
         out = torch.matmul(attn, v)
         out = rearrange(out, 'b h n d -> b n (h d)')
@@ -111,23 +113,36 @@ class Transformer(nn.Module):
         return x
 
 class GraphConvTransformer(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, norm=True, dropout = 0.):
         super().__init__()
         self.graph_conv_layers = nn.ModuleList([])
-        for _ in range(depth):
-            self.layers.append(nn.ModuleList([
-                PreNorm(dim, GraphAttention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
-                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
-            ]))
-        self.graph_global_layers = nn.ModuleList([])
-        for _ in range(1):
-            self.layers.append(nn.ModuleList([
-                PreNorm(dim, Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
-                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
-            ]))
+        if norm:
+            for _ in range(depth):
+                self.graph_conv_layers.append(nn.ModuleList([
+                    PreNorm(dim, GraphAttention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
+                    PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+                ]))
+            self.graph_global_layers = nn.ModuleList([])
+            for _ in range(1):
+                self.graph_global_layers.append(nn.ModuleList([
+                    PreNorm(dim, Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
+                    PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+                ]))
+        else:
+            for _ in range(depth):
+                self.graph_conv_layers.append(nn.ModuleList([
+                    GraphAttention(dim, heads = heads, dim_head = dim_head, dropout = dropout),
+                    FeedForward(dim, mlp_dim, dropout = dropout)
+                ]))
+            self.graph_global_layers = nn.ModuleList([])
+            for _ in range(1):
+                self.graph_global_layers.append(nn.ModuleList([
+                    Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout),
+                    FeedForward(dim, mlp_dim, dropout = dropout)
+                ]))
     def forward(self, x, adj):
         for attn, ff in self.graph_conv_layers:
-            x = attn(x, adj) + x
+            x = attn(x, adj=adj) + x
             x = ff(x) + x
         for attn, ff in self.graph_global_layers:
             x = attn(x) + x

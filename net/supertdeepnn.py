@@ -2,7 +2,7 @@ import pytorch_lightning as pl
 import torch
 from skimage.segmentation import slic
 from skimage.measure import regionprops_table
-from net.gcn import GAT
+from net.gcn import DeepGAT
 import torch.nn.functional as F
 import numpy as np
 
@@ -34,7 +34,7 @@ class SuperTransformerLightTFM(pl.LightningModule):
         # self.example_input_array = torch.rand((1, seq_len, 8))
 
         # Generator that produces the HeatMap
-        self.supert = GAT(8, 8,  0., 0.2, 8)
+        self.supert = DeepGAT(8, 8,  0., 8, 24)
 
         self.save_hyperparameters()
         
@@ -137,18 +137,15 @@ class SuperTransformerLightTFM(pl.LightningModule):
             samples.append(plt_image)
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1))
-        
+        tensorboard.add_images('Pred', samples)
         samples_mask = []
         for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
             plt_image = masked[labels-1].reshape([img_size, img_size])
             samples_mask.append(plt_image)
 
         samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
- 
-        if batch_idx == 0:
-            tensorboard.add_images('Pred', samples, self.global_step)
-            tensorboard.add_images('GT', samples_mask, self.global_step)
-            tensorboard.add_images('Image', img, self.global_step)
+        tensorboard.add_images('GT', samples_mask)
+        tensorboard.add_images('Image', img)
 
         mae = torch.mean(torch.abs(samples - samples_mask))
         self.preds.append(samples)
