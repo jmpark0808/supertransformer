@@ -6,7 +6,7 @@ from net.gcn import DeepGAT
 import torch.nn.functional as F
 import numpy as np
 
-class SuperTransformerLightTFM(pl.LightningModule):
+class SuperTransformerDeepTFMNN(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -34,7 +34,7 @@ class SuperTransformerLightTFM(pl.LightningModule):
         # self.example_input_array = torch.rand((1, seq_len, 8))
 
         # Generator that produces the HeatMap
-        self.supert = DeepGAT(8, 8,  0., 8, 24)
+        self.supert = DeepGAT(8, 8,  0., 8, 3, norm=False)
 
         self.save_hyperparameters()
         
@@ -43,7 +43,7 @@ class SuperTransformerLightTFM(pl.LightningModule):
         """
         Defining the loss funcition:
         """
-        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), label)
+        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
 
         return loss
 
@@ -148,43 +148,17 @@ class SuperTransformerLightTFM(pl.LightningModule):
         tensorboard.add_images('Image', img)
 
         mae = torch.mean(torch.abs(samples - samples_mask))
-        self.preds.append(samples)
-        self.masks.append(samples_mask)
-        prec, recall = torch.zeros(samples_mask.shape[0], 256), torch.zeros(samples_mask.shape[0], 256)
-        pred = samples.reshape(samples.shape[0], -1)
-        mask = samples_mask.reshape(samples_mask.shape[0], -1)
-        thlist = torch.linspace(0, 1 - 1e-10, 256)
-        for j in range(256):
-            y_temp = (pred >= thlist[j]).float()
-            tp = (y_temp * mask).sum(dim=-1)
-            # avoid prec becomes 0
-            prec[:, j], recall[:, j] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
-        # (batch, threshold)
-        self.precs.append(prec)
-        self.recalls.append(recall)
-
+      
         return mae
 
     def on_validation_start(self):
-        self.preds = []
-        self.masks = []
-        self.precs = []
-        self.recalls = []
+        self.maes = []
+
 
 
     def validation_epoch_end(self, validation_step_outputs):
-        prec = torch.cat(self.precs, dim=0).mean(dim=0)
-        recall = torch.cat(self.recalls, dim=0).mean(dim=0)
-        beta_square = 0.3
-        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
-        thlist = torch.linspace(0, 1 - 1e-10, 256)
-        self.log('Validation Max F Score', torch.max(f_score))
-        self.log('Validation Max F Threshold', thlist[torch.argmax(f_score)])
-
-        pred = torch.cat(self.preds, 0)
-        mask = torch.cat(self.masks, 0).round().float()
-        self.log('Validation MAE', torch.mean(torch.abs(pred-mask)))
-        self.scheduler.step(torch.mean(torch.abs(pred-mask)))
+        self.log('Validation MAE', torch.mean(self.maes))
+        self.scheduler.step(torch.mean(self.maes))
                     
     def on_test_start(self):
         self.preds = []

@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from net.transformer import GraphConvTransformer, Transformer
+from net.transformer import GraphConvTransformer, Transformer, PositionalEncodingSuperPixel
 
 class GraphAttentionLayer(nn.Module):
     """
@@ -121,16 +121,17 @@ class GATSepFCN(nn.Module):
 
 
 class DeepGAT(nn.Module):
-    def __init__(self, nfeat, nhid, dropout, nheads, ntfm):
+    def __init__(self, nfeat, nhid, block_depth, dropout, nheads, ntfm, norm='ln'):
         """Dense version of GAT."""
         super(DeepGAT, self).__init__()
         self.linear = nn.Linear(nfeat, nhid * nheads)
-        self.transformers = nn.ModuleList([GraphConvTransformer(nhid*nheads, 3, nheads, nhid, nheads*nhid, dropout) for _ in range(ntfm)])
-        
+        self.transformers = nn.ModuleList([GraphConvTransformer(nhid*nheads, block_depth, nheads, nhid, nheads*nhid, norm=norm, dropout=dropout) for _ in range(ntfm)])
+        self.pos_encoding = PositionalEncodingSuperPixel(nhid*nheads)
         self.out = nn.Linear(nhid * nheads, 1)
     def forward(self, x, adj):
         x = self.linear(x)
         for layer in self.transformers:
+            x = self.pos_encoding(x)
             x = layer(x, adj)
         x = self.out(x)
         return x

@@ -2,11 +2,11 @@ import pytorch_lightning as pl
 import torch
 from skimage.segmentation import slic
 from skimage.measure import regionprops_table
-from net.gcn import DeepGAT
+from net.gcn import GAT, DeepGAT
 import torch.nn.functional as F
 import numpy as np
 
-class SuperTransformerDeepTFM(pl.LightningModule):
+class SuperTransformerGAT(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -34,7 +34,7 @@ class SuperTransformerDeepTFM(pl.LightningModule):
         # self.example_input_array = torch.rand((1, seq_len, 8))
 
         # Generator that produces the HeatMap
-        self.supert = DeepGAT(8, 8,  0., 8, 6)
+        self.supert = GAT(4, 8,  0., 0.2, 8)
 
         self.save_hyperparameters()
         
@@ -43,7 +43,7 @@ class SuperTransformerDeepTFM(pl.LightningModule):
         """
         Defining the loss funcition:
         """
-        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), label)
+        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
 
         return loss
 
@@ -70,7 +70,7 @@ class SuperTransformerDeepTFM(pl.LightningModule):
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-    
+        x = x[:, :, 2:6]
         pred = self.supert(x, adj)
 
         return pred
@@ -137,54 +137,26 @@ class SuperTransformerDeepTFM(pl.LightningModule):
             samples.append(plt_image)
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1))
-        tensorboard.add_images('Pred', samples)
+        
         samples_mask = []
         for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
             plt_image = masked[labels-1].reshape([img_size, img_size])
             samples_mask.append(plt_image)
 
         samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
-        tensorboard.add_images('GT', samples_mask)
-        tensorboard.add_images('Image', img)
+        if batch_idx == 0:
+            tensorboard.add_images('Pred', samples)
+            tensorboard.add_images('GT', samples_mask)
+            tensorboard.add_images('Image', img)
 
         mae = torch.mean(torch.abs(samples - samples_mask))
-        self.preds.append(samples)
-        self.masks.append(samples_mask)
-        prec, recall = torch.zeros(samples_mask.shape[0], 256), torch.zeros(samples_mask.shape[0], 256)
-        pred = samples.reshape(samples.shape[0], -1)
-        mask = samples_mask.reshape(samples_mask.shape[0], -1)
-        thlist = torch.linspace(0, 1 - 1e-10, 256)
-        for j in range(256):
-            y_temp = (pred >= thlist[j]).float()
-            tp = (y_temp * mask).sum(dim=-1)
-            # avoid prec becomes 0
-            prec[:, j], recall[:, j] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
-        # (batch, threshold)
-        self.precs.append(prec)
-        self.recalls.append(recall)
-
+      
         return mae
-
-    def on_validation_start(self):
-        self.preds = []
-        self.masks = []
-        self.precs = []
-        self.recalls = []
 
 
     def validation_epoch_end(self, validation_step_outputs):
-        prec = torch.cat(self.precs, dim=0).mean(dim=0)
-        recall = torch.cat(self.recalls, dim=0).mean(dim=0)
-        beta_square = 0.3
-        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
-        thlist = torch.linspace(0, 1 - 1e-10, 256)
-        self.log('Validation Max F Score', torch.max(f_score))
-        self.log('Validation Max F Threshold', thlist[torch.argmax(f_score)])
-
-        pred = torch.cat(self.preds, 0)
-        mask = torch.cat(self.masks, 0).round().float()
-        self.log('Validation MAE', torch.mean(torch.abs(pred-mask)))
-        self.scheduler.step(torch.mean(torch.abs(pred-mask)))
+        self.log('Validation MAE', torch.mean(torch.stack(validation_step_outputs)))
+        self.scheduler.step(torch.mean(torch.stack(validation_step_outputs)))
                     
     def on_test_start(self):
         self.preds = []
@@ -226,15 +198,17 @@ class SuperTransformerDeepTFM(pl.LightningModule):
             samples.append(plt_image)
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1))
-        tensorboard.add_images('Pred', samples)
+        
         samples_mask = []
         for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
             plt_image = masked[labels-1].reshape([img_size, img_size])
             samples_mask.append(plt_image)
 
         samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
-        tensorboard.add_images('GT', samples_mask)
-        tensorboard.add_images('Image', img)
+        if batch_idx == 0:
+            tensorboard.add_images('Pred', samples)
+            tensorboard.add_images('GT', samples_mask)
+            tensorboard.add_images('Image', img)
 
         mae = torch.mean(torch.abs(samples - samples_mask))
         self.preds.append(samples)
