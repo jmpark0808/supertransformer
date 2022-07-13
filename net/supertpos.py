@@ -1,14 +1,13 @@
 import pytorch_lightning as pl
 import torch
-from skimage.segmentation import slic
 from skimage.measure import regionprops_table
 from net.gcn import GAT
 import torch.nn.functional as F
 import numpy as np
+from fast_slic.avx2 import SlicAvx2
+from net.transformer import SuperTPos
 
-from net.transformer import SuperT
-
-class SuperTransformerLightTFM(pl.LightningModule):
+class SuperTransformerPos(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -19,24 +18,19 @@ class SuperTransformerLightTFM(pl.LightningModule):
         self.es_patience = kwargs.get('es_patience')
 
         # must be defined for logging computational graph
-        # def get_seq_len():
-        #     img_np = np.random.rand(300, 300, 3)
-        #     segments = slic(img_np, n_segments=self.num_seg,
-        #             compactness=10.0,
-        #             max_num_iter=10,
-        #             convert2lab=True,
-        #             enforce_connectivity=False,
-        #             slic_zero=True,
-        #             min_size_factor=0.,)
+        def get_seq_len():
+            img_np = np.random.rand(300, 300, 3).astype(np.uint8)
+            slic = SlicAvx2(num_components=self.num_seg, compactness=10, min_size_factor=0)
+            segments = slic.iterate(img_np)
 
-        #     regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean', 'extent', 'coords', 'eccentricity'))
-        #     seq_len = len(regions['label'])
-        #     return seq_len
-        # seq_len = get_seq_len()
+            regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean', 'extent', 'coords', 'eccentricity'))
+            seq_len = len(regions['label'])
+            return seq_len
+        seq_len = get_seq_len()
         # self.example_input_array = torch.rand((1, seq_len, 8))
 
         # Generator that produces the HeatMap
-        self.supert = SuperT(4, 64, 6, 4, 64, dim_head=16)
+        self.supert = SuperTPos(4, seq_len, 64, 6, 4, 64, 300, 300, dim_head=16)
 
         self.save_hyperparameters()
         
@@ -72,7 +66,7 @@ class SuperTransformerLightTFM(pl.LightningModule):
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-        x = x[:, :, 2:6]
+
         pred = self.supert(x)
 
         return pred
@@ -236,12 +230,12 @@ class SuperTransformerLightTFM(pl.LightningModule):
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
         thlist = torch.linspace(0, 1 - 1e-10, 256)
-        self.log('Validation Max F Score', torch.max(f_score))
-        self.log('Validation Max F Threshold', thlist[torch.argmax(f_score)])
+        self.log('Test Max F Score', torch.max(f_score))
+        self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
 
         pred = torch.cat(self.preds, 0)
         mask = torch.cat(self.masks, 0).round().float()
-        self.log('Validation MAE', torch.mean(torch.abs(pred-mask)))
+        self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
 
 
 

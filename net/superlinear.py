@@ -2,13 +2,14 @@ import pytorch_lightning as pl
 import torch
 from skimage.segmentation import slic
 from skimage.measure import regionprops_table
-from net.gcn import GAT
+from net.gcn import GAT, DeepGAT
 import torch.nn.functional as F
+import torch.nn as nn
 import numpy as np
+from fast_slic.avx2 import SlicAvx2
 
-from net.transformer import SuperT
 
-class SuperTransformerLightTFM(pl.LightningModule):
+class SuperLinear(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -19,24 +20,21 @@ class SuperTransformerLightTFM(pl.LightningModule):
         self.es_patience = kwargs.get('es_patience')
 
         # must be defined for logging computational graph
-        # def get_seq_len():
-        #     img_np = np.random.rand(300, 300, 3)
-        #     segments = slic(img_np, n_segments=self.num_seg,
-        #             compactness=10.0,
-        #             max_num_iter=10,
-        #             convert2lab=True,
-        #             enforce_connectivity=False,
-        #             slic_zero=True,
-        #             min_size_factor=0.,)
+        def get_seq_len():
+            img_np = np.random.rand(300, 300, 3).astype(np.uint8)
+            slic = SlicAvx2(num_components=self.num_seg, compactness=10, min_size_factor=0)
+            segments = slic.iterate(img_np)
 
-        #     regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean', 'extent', 'coords', 'eccentricity'))
-        #     seq_len = len(regions['label'])
-        #     return seq_len
-        # seq_len = get_seq_len()
+            regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean', 'extent', 'coords', 'eccentricity'))
+            seq_len = len(regions['label'])
+            return seq_len
+        seq_len = get_seq_len()
         # self.example_input_array = torch.rand((1, seq_len, 8))
 
         # Generator that produces the HeatMap
-        self.supert = SuperT(4, 64, 6, 4, 64, dim_head=16)
+        self.linear1 = nn.Linear(seq_len*4, 800)
+        self.linear2 = nn.Linear(800, 800)
+        self.linear3 = nn.Linear(800, seq_len)
 
         self.save_hyperparameters()
         
@@ -73,9 +71,14 @@ class SuperTransformerLightTFM(pl.LightningModule):
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
         x = x[:, :, 2:6]
-        pred = self.supert(x)
+        x = x.reshape(x.size(0), -1)
+        x = self.linear1(x)
+        x = F.relu(x)
+        x = self.linear2(x)
+        x = F.relu(x)
+        x = self.linear3(x)
 
-        return pred
+        return x
 
     def training_step(self, batch, batch_idx):
         """
@@ -159,7 +162,6 @@ class SuperTransformerLightTFM(pl.LightningModule):
     def validation_epoch_end(self, validation_step_outputs):
         self.log('Validation MAE', torch.mean(torch.stack(validation_step_outputs)))
         self.scheduler.step(torch.mean(torch.stack(validation_step_outputs)))
-  
                     
     def on_test_start(self):
         self.preds = []
@@ -201,15 +203,17 @@ class SuperTransformerLightTFM(pl.LightningModule):
             samples.append(plt_image)
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1))
-        tensorboard.add_images('Pred', samples)
+        
         samples_mask = []
         for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
             plt_image = masked[labels-1].reshape([img_size, img_size])
             samples_mask.append(plt_image)
 
         samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
-        tensorboard.add_images('GT', samples_mask)
-        tensorboard.add_images('Image', img)
+        if batch_idx == 0:
+            tensorboard.add_images('Pred', samples)
+            tensorboard.add_images('GT', samples_mask)
+            tensorboard.add_images('Image', img)
 
         mae = torch.mean(torch.abs(samples - samples_mask))
         self.preds.append(samples)

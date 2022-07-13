@@ -15,26 +15,37 @@ from pytorch_lightning.profiler import SimpleProfiler
 from pytorch_lightning.loggers import TensorBoardLogger
 
 # Import dataset modules
-from dataset.superpixel import SPDataModule
+from dataset.superpixel import DUTSDataModule, SPDataModule
+from net.image_transformer import ImageTransformer
+from net.superlinear import SuperLinear
 
 # Import networks
 from net.supert import SuperTransformerLightTFM
 from net.supertfcn import SuperTransformerFCN
+from net.supertpos import SuperTransformerPos
 from net.supertseparablefcn import SuperTransformerSepFCN
-from net.supertdeep import SuperTransformerDeepTFM
+from net.supertdeep import SuperTransformerGAT
+from net.supertdeepnn import SuperTransformerDeepTFMNN
+from net.supertdeepbn import SuperTransformerDeepTFMBN
 # Metric logging
 
 # Deterministic
 
 MODEL_DIRECTORY = {
     "SPLT": SuperTransformerLightTFM,
+    "SPP": SuperTransformerPos,
     "SPF": SuperTransformerFCN,
     "SPSF": SuperTransformerSepFCN,
-    "SPDT": SuperTransformerDeepTFM
+    "SPGAT": SuperTransformerGAT,
+    "SPDTNN": SuperTransformerDeepTFMNN,
+    "SPDTBN": SuperTransformerDeepTFMBN,
+    "SPL": SuperLinear,
+    "IT": ImageTransformer
 
 }
 DATALOADER_DIRECTORY = {
     'SP': SPDataModule,
+    'DUTS': DUTSDataModule
 
 } 
 
@@ -76,6 +87,8 @@ if __name__ == "__main__":
     # Initialize model to train
     assert dict_args['model'] in MODEL_DIRECTORY
     model = MODEL_DIRECTORY[dict_args['model']](**dict_args)
+    if dict_args['load']:
+        model = model.load_from_checkpoint(dict_args['load'])
 
     # Initialize logging paths
     random_sec = random.randint(1, 20)
@@ -115,7 +128,7 @@ if __name__ == "__main__":
     trainer = pl.Trainer(
         callbacks=[early_stopping_callback, checkpoint_callback, lr_monitor],
         val_check_interval=dict_args['val_freq'],
-        deterministic=True,
+        deterministic=False,
         gpus=dict_args['gpus'],
         profiler=profiler,
         logger=logger,
@@ -128,11 +141,7 @@ if __name__ == "__main__":
     trainer.fit(model, data_module)
 
     # Evaluate model on best ckpt (defined in 'ModelCheckpoint' callback)
-    # if dict_args['eval'] and dict_args['dataset_test']:
-    #     trainer.test(model, ckpt_path='best', datamodule=data_module)
-    #     test_mpjpe_dict = model.test_results
-    #     mpjpe_csv_path = os.path.join(weight_save_dir, f'{now}_eval.csv')
-    #     # Store mpjpe test results as a csv
-    #     create_results_csv(test_mpjpe_dict, mpjpe_csv_path, dict_args['dataloader'])
-    # else:
-    #     print("Evaluation skipped")
+    if dict_args['eval'] and dict_args['dataset_test']:
+        trainer.test(model, ckpt_path='best', datamodule=data_module)
+    else:
+        print("Evaluation skipped")

@@ -2,13 +2,11 @@ import pytorch_lightning as pl
 import torch
 from skimage.segmentation import slic
 from skimage.measure import regionprops_table
-from net.gcn import GAT
+from net.gcn import DeepGAT
 import torch.nn.functional as F
 import numpy as np
 
-from net.transformer import SuperT
-
-class SuperTransformerLightTFM(pl.LightningModule):
+class SuperTransformerDeepTFMBN(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -36,7 +34,7 @@ class SuperTransformerLightTFM(pl.LightningModule):
         # self.example_input_array = torch.rand((1, seq_len, 8))
 
         # Generator that produces the HeatMap
-        self.supert = SuperT(4, 64, 6, 4, 64, dim_head=16)
+        self.supert = DeepGAT(8, 8, 3, 0., 8, 3, norm='bn')
 
         self.save_hyperparameters()
         
@@ -45,7 +43,7 @@ class SuperTransformerLightTFM(pl.LightningModule):
         """
         Defining the loss funcition:
         """
-        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
+        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), label)
 
         return loss
 
@@ -65,15 +63,15 @@ class SuperTransformerLightTFM(pl.LightningModule):
         return optimizer
       
 
-    def forward(self, x):
+    def forward(self, x, adj):
         """
         Forward pass through model
         :param x: Input features
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-        x = x[:, :, 2:6]
-        pred = self.supert(x)
+    
+        pred = self.supert(x, adj)
 
         return pred
 
@@ -97,7 +95,7 @@ class SuperTransformerLightTFM(pl.LightningModule):
 
         # forward pass
         
-        pred = self.forward(features)
+        pred = self.forward(features, adj)
 
         loss = self.loss(pred, seq_mask)
 
@@ -125,7 +123,7 @@ class SuperTransformerLightTFM(pl.LightningModule):
 
 
         # forward pass
-        pred = self.forward(features)
+        pred = self.forward(features, adj)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
@@ -159,7 +157,6 @@ class SuperTransformerLightTFM(pl.LightningModule):
     def validation_epoch_end(self, validation_step_outputs):
         self.log('Validation MAE', torch.mean(torch.stack(validation_step_outputs)))
         self.scheduler.step(torch.mean(torch.stack(validation_step_outputs)))
-  
                     
     def on_test_start(self):
         self.preds = []
@@ -187,7 +184,7 @@ class SuperTransformerLightTFM(pl.LightningModule):
 
 
         # forward pass
-        pred = self.forward(features)
+        pred = self.forward(features, adj)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
