@@ -4,6 +4,40 @@ import torch.nn.functional as F
 import numpy as np
 from net.transformer import GraphConvTransformer, Transformer, PositionalEncodingSuperPixel
 
+class MaxPoolingAggregator(nn.Module):
+    """
+    Max-pooling layer for graph convolutional neural networks
+    """
+    def __init__(self, in_features, hidden_dim, out_features, dropout=1., bias=False):
+        super(self).__init__()
+        self.mlp_layer = nn.Linear(in_features, hidden_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.act = nn.ReLU()
+        self.bias = bias
+
+        self.neigh_weights = nn.Parameter(torch.randn(hidden_dim, out_features))
+        self.self_weights = nn.Parameter(torch.randn(in_features, out_features))
+        if bias:
+            self.bias = nn.Parameter(torch.zeros(out_features))
+        
+    def forward(self, x, adj):
+        neighbours_only = adj-torch.eye(adj.size(1))
+        neigh_h = self.mlp_layer(x)
+        neigh_h = torch.einsum('bij,bjk->bijk', neighbours_only, neigh_h)
+        neigh_h = neigh_h.max(dim=2)
+
+        from_neighs = torch.matmul(neigh_h, self.neigh_weights)
+        from_self = torch.matmul(x, self.self_weights)
+
+        output = from_self + from_neighs
+
+        if self.bias:
+            output = output + self.bias
+
+        return self.act(output)
+
+
+
 class GraphAttentionLayer(nn.Module):
     """
     Simple GAT layer, similar to https://arxiv.org/abs/1710.10903
