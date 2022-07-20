@@ -17,6 +17,9 @@ from pytorch_lightning.loggers import TensorBoardLogger
 # Import dataset modules
 from dataset.superpixel import DUTSDataModule, SPDataModule
 from net.image_transformer import ImageTransformer
+from net.image_transformer_cnn import ImageTransformerCNN
+from net.image_transformer_cnn_tfm import ImageTransformerCNNTFM
+from net.image_transformer_nmp import ImageTransformerNMP
 from net.superlinear import SuperLinear
 
 # Import networks
@@ -40,7 +43,10 @@ MODEL_DIRECTORY = {
     "SPDTNN": SuperTransformerDeepTFMNN,
     "SPDTBN": SuperTransformerDeepTFMBN,
     "SPL": SuperLinear,
-    "IT": ImageTransformer
+    "IT": ImageTransformer,
+    "ITCNN": ImageTransformerCNN,
+    "ITCNNTFM": ImageTransformerCNNTFM,
+    "ITNMP": ImageTransformerNMP
 
 }
 DATALOADER_DIRECTORY = {
@@ -53,7 +59,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('--model', help='Model name to train', required=True, default=None)
     parser.add_argument('--eval', help='Whether to test model on the best iteration after training'
-                        , default=False, type=bool)
+                        , default=False, action=argparse.BooleanOptionalAction)
     parser.add_argument('--dataloader', help="Type of dataloader", required=True, default=None)
     parser.add_argument("--load",
                         help="Directory of pre-trained model,  \n"
@@ -78,6 +84,7 @@ if __name__ == "__main__":
     parser.add_argument('--seed', help='Seed for reproduceability', 
                         default=42, type=int)
     parser.add_argument('--clip_grad_norm', help='Clipping gradient norm, 0 means no clipping', type=float, default=0.)
+    parser.add_argument('--size', help='Image size for DUTS', type=int, default=224)
 
 
     args = parser.parse_args()

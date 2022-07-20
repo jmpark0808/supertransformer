@@ -143,16 +143,16 @@ class SPDataset(data.Dataset):
         return sample
 
 class DUTSDataset(data.Dataset):
-    def __init__(self, root_dir, train=True, data_augmentation=True):
+    def __init__(self, root_dir, size, train=True, data_augmentation=True):
         self.root_dir = root_dir
         self.image_list = sorted(os.listdir('{}/Image'.format(root_dir)))
         self.mask_list = sorted(os.listdir('{}/Mask'.format(root_dir)))
         self.transform = transforms.Compose(
             [RandomFlip(0.5),
-             RandomCrop(28, 32),
+             RandomCrop(size, int(size*1.2)),
              ToTensorRaw()])
         if not (train and data_augmentation):
-            self.transform = transforms.Compose([Resize(28), ToTensorRaw()])
+            self.transform = transforms.Compose([Resize(size), ToTensorRaw()])
         self.root_dir = root_dir
 
 
@@ -213,22 +213,23 @@ class DUTSDataModule(pl.LightningDataModule):
         self.test_dir = kwargs.get('dataset_test')
         self.batch_size = kwargs.get('batch_size')
         self.num_workers = kwargs.get('num_workers', 0)
+        self.image_size = kwargs.get('size')
 
         
     def train_dataloader(self):
-        data_train = DUTSDataset(self.train_dir, True, True)
+        data_train = DUTSDataset(self.train_dir, self.image_size, True, True)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=False)
 
     def val_dataloader(self):
-        data_val = DUTSDataset(self.val_dir, False, False)
+        data_val = DUTSDataset(self.val_dir, self.image_size, False, False)
         return DataLoader(
                 data_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
 
     def test_dataloader(self):
-        data_test = DUTSDataset(self.test_dir, False, False)
+        data_test = DUTSDataset(self.test_dir, self.image_size, False, False)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
