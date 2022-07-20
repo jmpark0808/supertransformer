@@ -7,8 +7,10 @@ import torch.nn.functional as F
 import numpy as np
 import torch.nn as nn
 from net.transformer import Transformer
+from net.blocks import Encoder
+import torchvision
 
-class ImageTransformer(pl.LightningModule):
+class ImageTransformerCNN(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -18,13 +20,13 @@ class ImageTransformer(pl.LightningModule):
         self.es_patience = kwargs.get('es_patience')
 
         # must be defined for logging computational graph
-        self.example_input_array = torch.rand((1, 3, 28, 28))
+        self.example_input_array = torch.rand((1, 3, 224, 224))
 
-        # Generator that produces the HeatMap
-        self.transformer = Transformer(64, 50, 1, 64, 64)
-        self.pos_enc = nn.Parameter(torch.randn(1, 28*28, 64))
-        self.linear_proj = nn.Linear(3, 64)
-        self.final_linear = nn.Linear(64, 1)
+        vgg = torchvision.models.vgg16(pretrained=True)
+        self.vgg = Encoder()
+        self.vgg.seq.load_state_dict(vgg.features.state_dict())
+        del vgg
+        self.final_linear = nn.Linear(512, 1)
         self.iteration = 0
         self.save_hyperparameters()
         
@@ -59,14 +61,12 @@ class ImageTransformer(pl.LightningModule):
         :param x: Input features
         :return: binary pixel-wise predictions
         """        
-        x = x.permute(0, 2, 3, 1) # batch, X, Y, 3
-        x_size = x.size()
-        x = self.linear_proj(x) # batch, X, Y, channels
-        x = x.reshape(x.size(0), -1, x.size(3)) # batch, XY, channels
-        x += self.pos_enc
-        x = self.transformer(x) # batch, XY, channels
-        x = self.final_linear(x) # batch, XY, 1
-        x = x.reshape(x_size[0], 1, x_size[1], x_size[2]) # batch, 1, X, Y
+
+
+        x = self.vgg(x) # batch, 256, 28, 28
+        x = x.permute(0, 2, 3, 1) # batch, 28, 28, 256
+        x = self.final_linear(x) # batch, 28, 28, 1
+        x = x.permute(0, 3, 1, 2) # batch, 28, 28, 1
 
         return x
 
@@ -82,7 +82,9 @@ class ImageTransformer(pl.LightningModule):
 
         img = img.cuda()
         mask = mask.cuda()
-    
+        for i in range(3):
+            mask = F.max_pool2d(mask, 2, 2)
+
         # forward pass
         
         pred = self.forward(img)
@@ -104,6 +106,8 @@ class ImageTransformer(pl.LightningModule):
 
         img = img.cuda()
         mask = mask.cuda()
+        for i in range(3):
+            mask = F.max_pool2d(mask, 2, 2)
 
 
         # forward pass
@@ -141,6 +145,8 @@ class ImageTransformer(pl.LightningModule):
 
         img = img.cuda()
         mask = mask.cuda()
+        for i in range(3):
+            mask = F.max_pool2d(mask, 2, 2)
 
 
         # forward pass
@@ -171,12 +177,12 @@ class ImageTransformer(pl.LightningModule):
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
         thlist = torch.linspace(0, 1 - 1e-10, 256)
-        self.log('Validation Max F Score', torch.max(f_score))
-        self.log('Validation Max F Threshold', thlist[torch.argmax(f_score)])
+        self.log('Test Max F Score', torch.max(f_score))
+        self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
 
         pred = torch.cat(self.preds, 0)
         mask = torch.cat(self.masks, 0).round().float()
-        self.log('Validation MAE', torch.mean(torch.abs(pred-mask)))
+        self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
 
 
 
