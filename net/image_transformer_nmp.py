@@ -2,13 +2,14 @@ import pytorch_lightning as pl
 import torch
 from skimage.segmentation import slic
 from skimage.measure import regionprops_table
+from net.blocks import EncoderNMP
 from net.gcn import GAT
 import torch.nn.functional as F
 import numpy as np
 import torch.nn as nn
 from net.transformer import Transformer
 
-class ImageTransformer(pl.LightningModule):
+class ImageTransformerNMP(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -21,10 +22,10 @@ class ImageTransformer(pl.LightningModule):
         self.example_input_array = torch.rand((1, 3, 28, 28))
 
         # Generator that produces the HeatMap
-        self.transformer = Transformer(64, 50, 1, 64, 64)
-        self.pos_enc = nn.Parameter(torch.randn(1, 28*28, 64))
-        self.linear_proj = nn.Linear(3, 64)
-        self.final_linear = nn.Linear(64, 1)
+        self.encoder = EncoderNMP()
+        self.transformer = Transformer(256, 6, 8, 32, 256)
+        self.pos_enc = nn.Parameter(torch.randn(1, 28*28, 256))
+        self.final_linear = nn.Linear(256, 1)
         self.iteration = 0
         self.save_hyperparameters()
         
@@ -59,11 +60,11 @@ class ImageTransformer(pl.LightningModule):
         :param x: Input features
         :return: binary pixel-wise predictions
         """        
+        x = self.encoder(x) # batch, C, X, Y
         x = x.permute(0, 2, 3, 1) # batch, X, Y, 3
         x_size = x.size()
-        x = self.linear_proj(x) # batch, X, Y, channels
         x = x.reshape(x.size(0), -1, x.size(3)) # batch, XY, channels
-        x += self.pos_enc
+        x = x+self.pos_enc
         x = self.transformer(x) # batch, XY, channels
         x = self.final_linear(x) # batch, XY, 1
         x = x.reshape(x_size[0], 1, x_size[1], x_size[2]) # batch, 1, X, Y
