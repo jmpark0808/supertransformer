@@ -1,0 +1,1 @@
+python train.py --model ITNMP --eval --dataloader DUTS --dataset_tr /mnt/hdd/Datasets/DUTS/DUTS-TR/ --dataset_val /mnt/hdd/Datasets/DUTS/DUTS-TE/ --dataset_test /mnt/hdd/Datasets/DUTS/DUTS-TE/ --batch_size 32 --epoch 100 --num_workers 8 --val_freq 0.5 --es_patience 7 --logdir /mnt/hdd/Experiments/supertransformer/ --size 28 

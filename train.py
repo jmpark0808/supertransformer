@@ -16,10 +16,12 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 # Import dataset modules
 from dataset.superpixel import DUTSDataModule, SPDataModule
+from net.image_linear import ImageLinear
 from net.image_transformer import ImageTransformer
 from net.image_transformer_cnn import ImageTransformerCNN
 from net.image_transformer_cnn_tfm import ImageTransformerCNNTFM
 from net.image_transformer_nmp import ImageTransformerNMP
+from net.image_transformer_unet import ImageTransformerUNET
 from net.superlinear import SuperLinear
 
 # Import networks
@@ -46,7 +48,9 @@ MODEL_DIRECTORY = {
     "IT": ImageTransformer,
     "ITCNN": ImageTransformerCNN,
     "ITCNNTFM": ImageTransformerCNNTFM,
-    "ITNMP": ImageTransformerNMP
+    "ITNMP": ImageTransformerNMP,
+    "ITI": ImageLinear,
+    "ITUNET": ImageTransformerUNET,
 
 }
 DATALOADER_DIRECTORY = {
@@ -142,7 +146,7 @@ if __name__ == "__main__":
         max_epochs=dict_args["epoch"],
         log_every_n_steps=10,
         gradient_clip_val=dict_args['clip_grad_norm']
-    )
+    ) 
 
     # Trainer: train model
     trainer.fit(model, data_module)

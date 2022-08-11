@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import numpy as np
 import torch.nn as nn
 from net.transformer import Transformer
-from net.blocks import Encoder
+from net.blocks import Encoder, EncoderDilated
 import torchvision
 
 class ImageTransformerCNN(pl.LightningModule):
@@ -18,14 +18,15 @@ class ImageTransformerCNN(pl.LightningModule):
         self.batch_size = kwargs.get("batch_size")
         self.lr = kwargs.get("lr")
         self.es_patience = kwargs.get('es_patience')
-
+        self.size = kwargs.get('size')
         # must be defined for logging computational graph
-        self.example_input_array = torch.rand((1, 3, 224, 224))
+        self.example_input_array = torch.rand((1, 3, self.size, self.size))
 
-        vgg = torchvision.models.vgg16(pretrained=True)
-        self.vgg = Encoder()
-        self.vgg.seq.load_state_dict(vgg.features.state_dict())
-        del vgg
+        # vgg = torchvision.models.vgg16(pretrained=True)
+        # self.vgg = Encoder()
+        # self.vgg.seq.load_state_dict(vgg.features.state_dict())
+        # del vgg
+        self.vgg = EncoderDilated(self.size, 3)
         self.final_linear = nn.Linear(512, 1)
         self.iteration = 0
         self.save_hyperparameters()
@@ -82,8 +83,8 @@ class ImageTransformerCNN(pl.LightningModule):
 
         img = img.cuda()
         mask = mask.cuda()
-        for i in range(3):
-            mask = F.max_pool2d(mask, 2, 2)
+        # for i in range(3):
+        #     mask = F.max_pool2d(mask, 2, 2)
 
         # forward pass
         
@@ -106,8 +107,8 @@ class ImageTransformerCNN(pl.LightningModule):
 
         img = img.cuda()
         mask = mask.cuda()
-        for i in range(3):
-            mask = F.max_pool2d(mask, 2, 2)
+        # for i in range(3):
+        #     mask = F.max_pool2d(mask, 2, 2)
 
 
         # forward pass
@@ -145,8 +146,8 @@ class ImageTransformerCNN(pl.LightningModule):
 
         img = img.cuda()
         mask = mask.cuda()
-        for i in range(3):
-            mask = F.max_pool2d(mask, 2, 2)
+        # for i in range(3):
+        #     mask = F.max_pool2d(mask, 2, 2)
 
 
         # forward pass
