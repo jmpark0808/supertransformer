@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import numpy as np
 from fast_slic.avx2 import SlicAvx2
 
-class SuperTransformerGAT(pl.LightningModule):
+class SuperConvSeg(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -18,15 +18,7 @@ class SuperTransformerGAT(pl.LightningModule):
         self.es_patience = kwargs.get('es_patience')
 
         # must be defined for logging computational graph
-        def get_seq_len():
-            img_np = np.random.rand(300, 300, 3).astype(np.uint8)
-            slic = SlicAvx2(num_components=self.num_seg, compactness=10, min_size_factor=0)
-            segments = slic.iterate(img_np)
 
-            regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean', 'extent', 'coords', 'eccentricity'))
-            seq_len = len(regions['label'])
-            return seq_len
-        seq_len = get_seq_len()
         # self.example_input_array = torch.rand((1, seq_len, 8))
 
         # Generator that produces the HeatMap

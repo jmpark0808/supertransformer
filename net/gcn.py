@@ -8,23 +8,23 @@ class MaxPoolingAggregator(nn.Module):
     """
     Max-pooling layer for graph convolutional neural networks
     """
-    def __init__(self, in_features, hidden_dim, out_features, dropout=1., bias=False):
-        super(self).__init__()
+    def __init__(self, in_features, hidden_dim, out_features, seq_len, dropout=1., bias=False):
+        super().__init__()
         self.mlp_layer = nn.Linear(in_features, hidden_dim)
         self.dropout = nn.Dropout(dropout)
         self.act = nn.ReLU()
         self.bias = bias
-
+        self.eye = torch.eye(seq_len, device='cuda')
         self.neigh_weights = nn.Parameter(torch.randn(hidden_dim, out_features))
         self.self_weights = nn.Parameter(torch.randn(in_features, out_features))
         if bias:
-            self.bias = nn.Parameter(torch.zeros(out_features))
+            self.bias_operation = nn.Parameter(torch.zeros(out_features))
         
     def forward(self, x, adj):
-        neighbours_only = adj-torch.eye(adj.size(1))
+        neighbours_only = adj-self.eye
         neigh_h = self.mlp_layer(x)
         neigh_h = torch.einsum('bij,bjk->bijk', neighbours_only, neigh_h)
-        neigh_h = neigh_h.max(dim=2)
+        neigh_h = neigh_h.max(dim=2)[0]
 
         from_neighs = torch.matmul(neigh_h, self.neigh_weights)
         from_self = torch.matmul(x, self.self_weights)
@@ -32,7 +32,51 @@ class MaxPoolingAggregator(nn.Module):
         output = from_self + from_neighs
 
         if self.bias:
-            output = output + self.bias
+            output = output + self.bias_operation
+
+        return self.act(output)
+
+class MaxPoolingCNN(nn.Module):
+    """
+    Max-pooling layer for graph convolutional neural networks
+    """
+    def __init__(self, resolution, in_features, hidden_dim, out_features, kernel, dilation, dropout=1., bias=False):
+        super().__init__()
+        self.mlp_layer = nn.Linear(in_features, hidden_dim)
+        self.dropout = nn.Dropout(dropout)
+        self.act = nn.ReLU()
+        self.bias = bias
+
+        self.resolution = resolution
+        self.dilation = dilation
+        self.kernel = kernel
+        self.padding = int(((resolution-1)*1-resolution+kernel+(kernel-1)*(dilation-1))/2)
+
+        self.neigh_weights = nn.Parameter(torch.randn(hidden_dim, out_features))
+        self.self_weights = nn.Parameter(torch.randn(in_features, out_features))
+        if bias:
+            self.bias_operation = nn.Parameter(torch.zeros(out_features))
+        
+    def forward(self, x):
+        x = x.permute(0, 2, 3, 1) # batch, X, Y, in_features
+        neigh_h = self.mlp_layer(x) # batch, X, Y, hidden_dim
+        size = neigh_h.size()
+        neigh_h = F.unfold(neigh_h, self.kernel, self.dilation, self.padding, 1) # batch, hidden_dim * kernel^2, XY
+        neigh_h = neigh_h.reshape(size[0], size[3], self.kernel*self.kernel, size[1], size[2])
+        neigh_h[:, :, int(self.kernel*self.kernel/2), :, :] = -1e10
+        neigh_h = neigh_h.max(dim=2)[0] # batch, hidden_dim, X, Y
+        neigh_h = neigh_h.permute(0, 2, 3, 1) # batch, X, Y, hidden_dim
+
+        from_neighs = torch.matmul(neigh_h, self.neigh_weights) # batch, X, Y, out_features
+        
+        from_self = torch.matmul(x, self.self_weights) # batch, X, Y, out_features
+
+        output = from_self + from_neighs
+
+        if self.bias:
+            output = output + self.bias_operation
+
+        output = output.permute(0, 3, 1, 2)
 
         return self.act(output)
 
@@ -88,22 +132,41 @@ class GraphAttentionLayer(nn.Module):
 
 
 class GAT(nn.Module):
-    def __init__(self, nfeat, nhid, dropout, alpha, nheads):
+    def __init__(self, nfeat, nhid, dropout, alpha, nheads, seq_len):
         """Dense version of GAT."""
         super(GAT, self).__init__()
         self.dropout = dropout
 
-        self.attentions = [GraphAttentionLayer(nfeat, nhid, dropout=dropout, alpha=alpha, concat=True) for _ in range(nheads)]
-        for i, attention in enumerate(self.attentions):
-            self.add_module('attention_{}'.format(i), attention)
+        self.attention1 = [GraphAttentionLayer(nfeat, nhid, dropout=dropout, alpha=alpha, concat=True) for _ in range(nheads)]
+        for i, attention in enumerate(self.attention1):
+            self.add_module('attention_1_{}'.format(i), attention)
+        self.maxpool1 = MaxPoolingAggregator(nhid*nheads, nhid*nheads, nhid*nheads, seq_len, dropout, bias=True)
 
+        self.attention2 = [GraphAttentionLayer(nhid*nheads, nhid, dropout=dropout, alpha=alpha, concat=True) for _ in range(nheads)]
+        for i, attention in enumerate(self.attention2):
+            self.add_module('attention_2_{}'.format(i), attention)
+        self.maxpool2 = MaxPoolingAggregator(nhid*nheads, nhid*nheads, nhid*nheads, seq_len, dropout, bias=True)
+
+        self.attention3 = [GraphAttentionLayer(nhid*nheads, nhid, dropout=dropout, alpha=alpha, concat=True) for _ in range(nheads)]
+        for i, attention in enumerate(self.attention3):
+            self.add_module('attention_3_{}'.format(i), attention)
+        self.maxpool3 = MaxPoolingAggregator(nhid*nheads, nhid*nheads, nhid*nheads, seq_len, dropout, bias=True)
         # self.out_att = GraphAttentionLayer(nhid * nheads, nclass, dropout=dropout, alpha=alpha, concat=False)
         self.transformer = Transformer(nhid * nheads, 3, nheads, nhid , nheads*nhid, dropout)
         self.out = nn.Linear(nhid * nheads, 1)
     def forward(self, x, adj):
         x = F.dropout(x, self.dropout, training=self.training)
-        x = torch.cat([att(x, adj) for att in self.attentions], dim=2)
+        x = torch.cat([att(x, adj) for att in self.attention1], dim=2)
         x = F.dropout(x, self.dropout, training=self.training)
+        x = self.maxpool1(x, adj)
+        
+        x = torch.cat([att(x, adj) for att in self.attention2], dim=2)
+        x = F.dropout(x, self.dropout, training=self.training)
+        x = self.maxpool2(x, adj)
+
+        x = torch.cat([att(x, adj) for att in self.attention3], dim=2)
+        x = F.dropout(x, self.dropout, training=self.training)
+        x = self.maxpool3(x, adj)
         # x = F.elu(self.out_att(x, adj))
         x = self.transformer(x)
         x = self.out(x)

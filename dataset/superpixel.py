@@ -73,7 +73,7 @@ class ToTensorSP(object):
         #     enforce_connectivity=False,
         #     slic_zero=True,
         #     min_size_factor=0.,)
-        slic = SlicAvx2(num_components=self.num_seg, compactness=10, min_size_factor=0)
+        slic = SlicAvx2(num_components=self.num_seg, compactness=0.1, min_size_factor=0)
         segments = slic.iterate(img_np)
 
         vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
