@@ -1,5 +1,5 @@
 import torch.nn as nn
-from net.blocks import ConvBlock, SuperConvBlock
+from net.blocks import ConvBlock, SLICPyTorch, SuperConvBlock
 from net.blocks import ToSLIC
 import torch
 import torchvision.transforms as T
@@ -11,8 +11,10 @@ class DSC(nn.Module):
         super().__init__()
         self.conv1 = nn.Sequential(*[ConvBlock(3, 64, 3), ConvBlock(64, 64, 3)])
         self.conv2 = ConvBlock(64, 32, 3)
-        self.sp = ToSLIC(channels=32, n_segments=num_seg, compactness=0.1, max_num_iter=10, 
-        enforce_connectivity=False, min_size_factor=0., max_size_factor=10)
+        # self.sp = ToSLIC(channels=32, n_segments=num_seg, compactness=0.1, max_num_iter=10, 
+        # enforce_connectivity=False, min_size_factor=0., max_size_factor=10)
+        self.sp = SLICPyTorch(num_seg, 5, 5)
+
 
         self.sconv1 = nn.ModuleList([SuperConvBlock(32, 8, 32, 1, 256, True), SuperConvBlock(32, 8, 32, 1, 256, True), SuperConvBlock(32, 8, 32, 1, 256, True)])
         self.sconv2 = nn.ModuleList([SuperConvBlock(32, 16, 64, 2, 256, False), SuperConvBlock(64, 16, 64, 2,  256, True), SuperConvBlock(64, 16, 64, 2, 256, True)])
@@ -25,13 +27,17 @@ class DSC(nn.Module):
 
     def forward(self, x):
         x = self.conv1(x)
-        print(sum(torch.norm(p) for p in self.conv1.parameters()), sum(torch.norm(p) for p in self.conv2.parameters()),
-        sum(torch.norm(p) for p in self.sconv1.parameters()), sum(torch.norm(p) for p in self.sconv2.parameters()), sum(torch.norm(p) for p in self.sconv3.parameters()),
-        sum(torch.norm(p) for p in self.conv3.parameters()), sum(torch.norm(p) for p in self.conv4.parameters()), sum(torch.norm(p) for p in self.conv5.parameters()))
+        # print(sum(torch.norm(p) for p in self.conv1.parameters()), sum(torch.norm(p) for p in self.conv2.parameters()),
+        # sum(torch.norm(p) for p in self.sconv1.parameters()), sum(torch.norm(p) for p in self.sconv2.parameters()), sum(torch.norm(p) for p in self.sconv3.parameters()),
+        # sum(torch.norm(p) for p in self.conv3.parameters()), sum(torch.norm(p) for p in self.conv4.parameters()), sum(torch.norm(p) for p in self.conv5.parameters()))
         x = self.conv2(x)
  
         
-        x_sp, x_neighbours, x_labels = self.sp(x)
+        # x_sp, x_neighbours, x_labels = self.sp(x)
+        x = x.permute(0, 2, 3, 1)
+        x_sp = self.sp(x)
+
+        assert(0)
         x_sp = x_sp.cuda()
         x_neighbours = x_neighbours.cuda()
  
