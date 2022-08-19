@@ -1,3 +1,4 @@
+from multiprocessing.forkserver import read_signed
 from tkinter import Label
 import torch
 import torch.nn as nn
@@ -8,6 +9,7 @@ from skimage.segmentation import slic
 from net.gcn import MaxPoolingCNN
 from skimage.measure import regionprops_table
 from fast_slic.avx2 import SlicAvx2
+import math
 
 def make_layers(cfg, in_channels):
     layers = []
@@ -199,7 +201,130 @@ class SuperConvBlock(nn.Module):
             conv3 = conv3 + identity
         return conv3
 
+
+class SuperPixels(object):
+    def __init__(self, h, w, f):
+        self.update(h, w, f)
+        self.pixels = []
+        self.c_mean = None
+        self.c_std = None
+        self.c_max = None
+        self.c_min = None
+
+        self.p_mean = None
+        self.p_std = None
+        self.p_max = None
+        self.p_min = None
+
+    def update(self, h, w, f):
+        self.h = h
+        self.w = w
+        self.f = f
         
+class SLICPyTorch(nn.Module):
+    def __init__(self, num_seg, m, num_iter):
+        super().__init__()
+        self.k = num_seg
+        self.m = m
+        self.num_iter = num_iter
+    
+    def make_superPixel(self, h, w, img):
+        return SuperPixels(h, w, img[h, w])
+
+    def initial_cluster_center(self, S, img, img_h, img_w, clusters):
+        h = S // 2
+        w = S // 2
+        while h < img_h:
+            while w < img_w:
+                clusters.append(self.make_superPixel(h, w, img))
+                w += S
+            w = S // 2
+            h += S
+        return clusters
+
+    def calc_gradient(self, h, w, img, img_w, img_h):
+        if w + 1 >= img_w:
+            w = img_w - 2 
+        if h + 1 >= img_h:
+            h = img_h - 2 
+        grad = torch.sum(img[h + 1, w+1] - img[h, w])
+        return grad
+
+    def reassign_cluster_center_acc_to_grad(self, clusters, img, img_w, img_h):
+        for c in clusters:
+            cluster_gradient = self.calc_gradient(c.h, c.w, img, img_w, img_h)
+            for dh in range(-1, 2):
+                for dw in range(-1, 2):
+                    H = c.h + dh
+                    W = c.w + dw
+                    new_gradient = self.calc_gradient(H, W, img, img_w, img_h)
+                    if new_gradient < cluster_gradient:
+                        c.update(H, W, img[H, W])
+                        cluster_gradient = new_gradient
+
+    def assign_pixels_to_cluster(self, clusters, S, img, img_h, img_w, tag, dis):
+        for c in clusters:
+            for h in range(c.h -2 * S, c.h + 2*S):
+                if h < 0 or h >= img_h:
+                    continue
+                for w in range(c.w -2*S, c.w+2*S):
+                    if w < 0 or w >= img_w:
+                        continue
+                    features = img[h, w]
+                    Dc = torch.sqrt(torch.sum(torch.pow(features - c.f, 2)))
+                    Ds = torch.sqrt(torch.pow(torch.tensor(h-c.h), 2)+torch.pow(torch.tensor(w-c.w), 2))
+                    D = torch.sqrt(torch.pow(Dc / self.m, 2) + torch.pow(Ds /S, 2))
+                    if D < dis[h, w]:
+                        if (h, w) not in tag:
+                            tag[(h, w)] = c
+                            c.pixels.append([h ,w])
+                        else:
+                            tag[(h, w)].pixels.remove([h, w])
+                            tag[(h, w)] = c
+                            c.pixels.append([h, w])
+                        dis[h, w] = D
+    
+    def update_cluster_mean(self, clusters, img):
+        for c in clusters:
+            coords_y = torch.tensor(c.pixels)[:, 0]
+            coords_x = torch.tensor(c.pixels)[:, 1]
+            H = torch.mean(coords_y.float()).int()
+            W = torch.mean(coords_x.float()).int()
+
+            c.c_mean = torch.mean(img[coords_y, coords_x], dim=0)
+            c.c_std = torch.std(img[coords_y, coords_x], dim=0)
+            c.c_max = torch.max(img[coords_y, coords_x], dim=0)
+            c.c_min = torch.min(img[coords_y, coords_x], dim=0)
+            c.update(H, W, img[H, W])
+
+    def forward(self, imgs):
+        b, img_h, img_w, f = imgs.size()
+        N = img_h*img_w
+        S = int(math.sqrt(N/self.k))
+        all_clusters = []
+        for img in imgs:
+            clusters = []
+            tag = {}
+            dis = torch.full((img_h, img_w), torch.inf)
+            clusters = self.initial_cluster_center(S, img, img_h, img_w, clusters)
+            self.reassign_cluster_center_acc_to_grad(clusters, img, img_w, img_h)
+            for i in range(self.num_iter):
+                self.assign_pixels_to_cluster(clusters, S, img, img_h, img_w, tag, dis)
+                self.update_cluster_mean(clusters, img)
+            all_clusters.append(clusters)
+        return all_clusters
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
