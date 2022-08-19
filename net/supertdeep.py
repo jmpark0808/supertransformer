@@ -3,6 +3,8 @@ import torch
 from skimage.segmentation import slic
 from skimage.measure import regionprops_table
 from net.gcn import GAT, DeepGAT
+from net.blocks import SuperConvBlock
+import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from fast_slic.avx2 import SlicAvx2
@@ -30,8 +32,12 @@ class SuperTransformerGAT(pl.LightningModule):
         # self.example_input_array = torch.rand((1, seq_len, 8))
 
         # Generator that produces the HeatMap
-        self.supert = GAT(4, 8,  0., 0.2, 8, seq_len)
-
+        self.sconv1 = nn.ModuleList([SuperConvBlock(3, 8, 32, 1, self.num_seg, False), SuperConvBlock(32, 8, 32, 1, self.num_seg, True), SuperConvBlock(32, 8, 32, 1, self.num_seg, True)])
+        self.sconv2 = nn.ModuleList([SuperConvBlock(32, 16, 64, 2, self.num_seg, False), SuperConvBlock(64, 16, 64, 2,  self.num_seg, True), SuperConvBlock(64, 16, 64, 2, self.num_seg, True)])
+        self.sconv3 = nn.ModuleList([SuperConvBlock(64, 32, 128, 4, self.num_seg, False), SuperConvBlock(128, 32, 128, 4,  self.num_seg, True), SuperConvBlock(128, 32, 128, 4, self.num_seg, True)])
+        self.linear = nn.Linear(128, 1)
+        # self.supert = GAT(4, 8,  0., 0.2, 8, seq_len)
+        self.iteration = 0
         self.save_hyperparameters()
         
 
@@ -66,8 +72,18 @@ class SuperTransformerGAT(pl.LightningModule):
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-        x = x[:, :, 2:6]
-        pred = self.supert(x, adj)
+        x = x[:, :, 2:5]
+        for l in self.sconv1:
+            x = l(x, adj)
+
+        for l in self.sconv2:
+            x = l(x, adj)
+
+        for l in self.sconv3:
+            x = l(x, adj)
+
+        
+        pred = self.linear(x)
 
         return pred
 
@@ -96,7 +112,7 @@ class SuperTransformerGAT(pl.LightningModule):
         loss = self.loss(pred, seq_mask)
 
         self.log('loss', loss.item())
-
+        self.iteration += 1
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -141,9 +157,9 @@ class SuperTransformerGAT(pl.LightningModule):
 
         samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
         if batch_idx == 0:
-            tensorboard.add_images('Pred', samples)
-            tensorboard.add_images('GT', samples_mask)
-            tensorboard.add_images('Image', img)
+            tensorboard.add_images('Pred', samples, self.iteration)
+            tensorboard.add_images('GT', samples_mask, self.iteration)
+            tensorboard.add_images('Image', img, self.iteration)
 
         mae = torch.mean(torch.abs(samples - samples_mask))
       

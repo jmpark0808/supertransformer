@@ -128,7 +128,7 @@ class SuperTransformerPos(pl.LightningModule):
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
         samples = []
-        for masked, labels in zip(pred_numpy, segmegnts.cpu().numpy()):
+        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
             plt_image = masked[labels-1].reshape([img_size, img_size])
             samples.append(plt_image)
 

@@ -83,8 +83,8 @@ class ToTensorSP(object):
 
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean', 'extent', 'coords', 'eccentricity'))
         seq_len = len(regions['label'])
-        features = np.zeros([seq_len, 8])
-        seq_mask = np.zeros([seq_len])
+        features = np.zeros([self.num_seg, 8])
+        seq_mask = np.zeros([self.num_seg])
         label = regions['label']
         features[label-1, 0] = regions['centroid-0']/300.
         features[label-1, 1] = regions['centroid-1']/300.
@@ -97,7 +97,7 @@ class ToTensorSP(object):
         for ind, coord in zip(regions['label'], regions['coords']):
             seq_mask[ind-1] = np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0])
 
-        neighbor_array = np.zeros([seq_len, seq_len])
+        neighbor_array = np.zeros([self.num_seg, self.num_seg])
         neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
 
         features, neighbor_array, seq_mask, segments, mask, img = torch.tensor(features).float(), torch.tensor(neighbor_array).float(), torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
