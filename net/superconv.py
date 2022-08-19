@@ -2,6 +2,7 @@ import pytorch_lightning as pl
 import torch
 from skimage.segmentation import slic
 from skimage.measure import regionprops_table
+from net.dsc import DSC
 from net.gcn import GAT, DeepGAT
 import torch.nn.functional as F
 import numpy as np
@@ -22,8 +23,9 @@ class SuperConvSeg(pl.LightningModule):
         # self.example_input_array = torch.rand((1, seq_len, 8))
 
         # Generator that produces the HeatMap
-        self.supert = GAT(4, 8,  0., 0.2, 8, seq_len)
+        self.superconv = DSC(self.num_seg)
 
+        self.iteration = 0
         self.save_hyperparameters()
         
 
@@ -31,7 +33,7 @@ class SuperConvSeg(pl.LightningModule):
         """
         Defining the loss funcition:
         """
-        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
+        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label), reduction='mean')
 
         return loss
 
@@ -39,8 +41,8 @@ class SuperConvSeg(pl.LightningModule):
         """
         Choose what optimizers and learning-rate schedulers to use in your optimization.
         """
-        
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=5e-4)
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
             mode='min',
@@ -51,15 +53,14 @@ class SuperConvSeg(pl.LightningModule):
         return optimizer
       
 
-    def forward(self, x, adj):
+    def forward(self, x):
         """
         Forward pass through model
         :param x: Input features
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-        x = x[:, :, 2:6]
-        pred = self.supert(x, adj)
+        pred = self.superconv(x)
 
         return pred
 
@@ -69,26 +70,18 @@ class SuperConvSeg(pl.LightningModule):
         logging resources:
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
-        features = batch['features']
-        seq_mask = batch['seq_mask']
-        segments = batch['segments']
         mask = batch['mask']
-        img = batch['img']
-        adj = batch['neighbor_array']
+        img = batch['image']
 
+        img = img.cuda()
+        mask = mask.cuda()
 
-        features = features.cuda()
-        seq_mask = seq_mask.cuda()
-        adj = adj.cuda()
+        pred = self.forward(img)
 
-        # forward pass
-        
-        pred = self.forward(features, adj)
-
-        loss = self.loss(pred, seq_mask)
+        loss = self.loss(pred, mask)
 
         self.log('loss', loss.item())
-
+        self.iteration += 1
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -97,47 +90,20 @@ class SuperConvSeg(pl.LightningModule):
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
         tensorboard = self.logger.experiment
-        features = batch['features']
-        seq_mask = batch['seq_mask']
-        segments = batch['segments']
         mask = batch['mask']
-        img = batch['img']
-        adj = batch['neighbor_array']
+        img = batch['image']
 
+        img = img.cuda()
+        mask = mask.cuda()
+  
+        pred = self.forward(img)
 
-        features = features.cuda()
-        seq_mask = seq_mask.cuda()
-        adj = adj.cuda()
-
-
-        # forward pass
-        pred = self.forward(features, adj)
-
-        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
-        seq_mask_numpy = seq_mask.detach().cpu().numpy()
-        batch_size = img.shape[0]
-        img_size = img.shape[2]
-        segments = segments.reshape([batch_size, -1]) # batch, img_size^2
-
-        samples = []
-        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
-            samples.append(plt_image)
-
-        samples = torch.tensor(np.expand_dims(np.array(samples), 1))
-        
-        samples_mask = []
-        for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
-            samples_mask.append(plt_image)
-
-        samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
         if batch_idx == 0:
-            tensorboard.add_images('Pred', samples)
-            tensorboard.add_images('GT', samples_mask)
-            tensorboard.add_images('Image', img)
+            tensorboard.add_images('Pred', torch.sigmoid(pred), self.iteration)
+            tensorboard.add_images('GT', mask, self.iteration)
+            tensorboard.add_images('Image', img, self.iteration)
 
-        mae = torch.mean(torch.abs(samples - samples_mask))
+        mae = torch.mean(torch.abs(torch.sigmoid(pred) - mask))
       
         return mae
 
@@ -158,52 +124,20 @@ class SuperConvSeg(pl.LightningModule):
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
         tensorboard = self.logger.experiment
-        features = batch['features']
-        seq_mask = batch['seq_mask']
-        segments = batch['segments']
         mask = batch['mask']
-        img = batch['img']
-        adj = batch['neighbor_array']
+        img = batch['image']
 
+        img = img.cuda()
+        mask = mask.cuda()
+  
+        pred = self.forward(img)
 
-        features = features.cuda()
-        seq_mask = seq_mask.cuda()
-        adj = adj.cuda()
-
-
-        # forward pass
-        pred = self.forward(features, adj)
-
-        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
-        seq_mask_numpy = seq_mask.detach().cpu().numpy()
-        batch_size = img.shape[0]
-        img_size = img.shape[2]
-        segments = segments.reshape([batch_size, -1]) # batch, img_size^2
-
-        samples = []
-        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
-            samples.append(plt_image)
-
-        samples = torch.tensor(np.expand_dims(np.array(samples), 1))
-        
-        samples_mask = []
-        for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
-            samples_mask.append(plt_image)
-
-        samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
-        if batch_idx == 0:
-            tensorboard.add_images('Pred', samples)
-            tensorboard.add_images('GT', samples_mask)
-            tensorboard.add_images('Image', img)
-
-        mae = torch.mean(torch.abs(samples - samples_mask))
-        self.preds.append(samples)
-        self.masks.append(samples_mask)
-        prec, recall = torch.zeros(samples_mask.shape[0], 256), torch.zeros(samples_mask.shape[0], 256)
-        pred = samples.reshape(samples.shape[0], -1)
-        mask = samples_mask.reshape(samples_mask.shape[0], -1)
+        mae = torch.mean(torch.abs(pred - mask))
+        self.preds.append(pred)
+        self.masks.append(mask)
+        prec, recall = torch.zeros(mask.shape[0], 256), torch.zeros(mask.shape[0], 256)
+        pred = pred.reshape(pred.size(0), -1)
+        mask = mask.reshape(mask.size(0), -1)
         thlist = torch.linspace(0, 1 - 1e-10, 256)
         for j in range(256):
             y_temp = (pred >= thlist[j]).float()
@@ -223,12 +157,12 @@ class SuperConvSeg(pl.LightningModule):
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
         thlist = torch.linspace(0, 1 - 1e-10, 256)
-        self.log('Validation Max F Score', torch.max(f_score))
-        self.log('Validation Max F Threshold', thlist[torch.argmax(f_score)])
+        self.log('Test Max F Score', torch.max(f_score))
+        self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
 
         pred = torch.cat(self.preds, 0)
         mask = torch.cat(self.masks, 0).round().float()
-        self.log('Validation MAE', torch.mean(torch.abs(pred-mask)))
+        self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
 
 
 

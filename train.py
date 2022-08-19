@@ -22,6 +22,7 @@ from net.image_transformer_cnn import ImageTransformerCNN
 from net.image_transformer_cnn_tfm import ImageTransformerCNNTFM
 from net.image_transformer_nmp import ImageTransformerNMP
 from net.image_transformer_unet import ImageTransformerUNET
+from net.superconv import SuperConvSeg
 from net.superlinear import SuperLinear
 
 # Import networks
@@ -51,6 +52,7 @@ MODEL_DIRECTORY = {
     "ITNMP": ImageTransformerNMP,
     "ITI": ImageLinear,
     "ITUNET": ImageTransformerUNET,
+    "SC": SuperConvSeg,
 
 }
 DATALOADER_DIRECTORY = {
