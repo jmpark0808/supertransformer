@@ -75,3 +75,49 @@ class GAT(nn.Module):
         x = self.transformer(x)
         x = self.out(x)
         return x
+
+
+class GATFCN(nn.Module):
+    def __init__(self, nfeat, nhid, dropout, alpha, nheads, seq_len):
+        """Dense version of GAT."""
+        super(GATFCN, self).__init__()
+        self.dropout = dropout
+
+        self.attentions = [GraphAttentionLayer(nfeat, nhid, dropout=dropout, alpha=alpha, concat=True) for _ in range(nheads)]
+        for i, attention in enumerate(self.attentions):
+            self.add_module('attention_{}'.format(i), attention)
+
+        self.out = nn.Linear(nhid * nheads * seq_len, seq_len)
+    def forward(self, x, adj):
+        x = F.dropout(x, self.dropout, training=self.training)
+        x = torch.cat([att(x, adj) for att in self.attentions], dim=2)
+        x = F.dropout(x, self.dropout, training=self.training)
+
+        x = x.reshape(x.size(0), -1)
+        x = self.out(x)
+        return x
+
+
+class GATSepFCN(nn.Module):
+    def __init__(self, nfeat, nhid, dropout, alpha, nheads, seq_len):
+        """Dense version of GAT."""
+        super(GATSepFCN, self).__init__()
+        self.dropout = dropout
+
+        self.attentions = [GraphAttentionLayer(nfeat, nhid, dropout=dropout, alpha=alpha, concat=True) for _ in range(nheads)]
+        for i, attention in enumerate(self.attentions):
+            self.add_module('attention_{}'.format(i), attention)
+
+        self.out1 = nn.Linear(seq_len, seq_len)
+        self.out2 = nn.Linear(nhid * nheads, 1)
+    def forward(self, x, adj):
+        x = F.dropout(x, self.dropout, training=self.training)
+        x = torch.cat([att(x, adj) for att in self.attentions], dim=2)
+        x = F.dropout(x, self.dropout, training=self.training)
+
+        x = x.permute(0, 2, 1) # batch, C, Nodes
+        x = self.out1(x)
+        x = x.permute(0, 2, 1) # batch, Nodes, C
+        x = self.out2(x)
+        return x
+

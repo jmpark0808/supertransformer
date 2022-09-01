@@ -1,6 +1,6 @@
 import torch.nn as nn
-from net.blocks import ConvBlock, SLICPyTorch, SuperConvBlock
-from net.blocks import ToSLIC
+from Blocks.blocks import ConvBlock, SLICPyTorch, SuperConvBlock
+from Blocks.blocks import ToSLIC
 import torch
 import torchvision.transforms as T
 import numpy as np

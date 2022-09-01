@@ -2,11 +2,11 @@ import pytorch_lightning as pl
 import torch
 from skimage.segmentation import slic
 from skimage.measure import regionprops_table
-from net.gcn import GAT
+from Blocks.GraphBlocks import GAT
 import torch.nn.functional as F
 import numpy as np
 import torch.nn as nn
-from net.transformer import Transformer
+from Blocks.TransformerBlocks import Transformer
 
 class ImageTransformer(pl.LightningModule):
     def __init__(self, **kwargs):

@@ -2,14 +2,15 @@ import pytorch_lightning as pl
 import torch
 from skimage.segmentation import slic
 from skimage.measure import regionprops_table
-from net.blocks import EncoderNMP
-from net.gcn import GAT
+from Blocks.GraphBlocks import GAT
 import torch.nn.functional as F
 import numpy as np
 import torch.nn as nn
-from net.transformer import Transformer
+from Blocks.TransformerBlocks import Transformer
+from Blocks.blocks import Encoder, EncoderDilated
+import torchvision
 
-class ImageTransformerNMP(pl.LightningModule):
+class ImageTransformerCNN(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -17,14 +18,15 @@ class ImageTransformerNMP(pl.LightningModule):
         self.batch_size = kwargs.get("batch_size")
         self.lr = kwargs.get("lr")
         self.es_patience = kwargs.get('es_patience')
-
+        self.size = kwargs.get('size')
         # must be defined for logging computational graph
-        self.example_input_array = torch.rand((1, 3, 28, 28))
+        self.example_input_array = torch.rand((1, 3, self.size, self.size))
 
-        # Generator that produces the HeatMap
-        self.encoder = EncoderNMP()
-        # self.transformer = Transformer(256, 6, 8, 32, 256)
-        # self.pos_enc = nn.Parameter(torch.randn(1, 28*28, 256))
+        # vgg = torchvision.models.vgg16(pretrained=True)
+        # self.vgg = Encoder()
+        # self.vgg.seq.load_state_dict(vgg.features.state_dict())
+        # del vgg
+        self.vgg = EncoderDilated(self.size, 3)
         self.final_linear = nn.Linear(512, 1)
         self.iteration = 0
         self.save_hyperparameters()
@@ -60,14 +62,12 @@ class ImageTransformerNMP(pl.LightningModule):
         :param x: Input features
         :return: binary pixel-wise predictions
         """        
-        x = self.encoder(x) # batch, C, X, Y
-        x = x.permute(0, 2, 3, 1) # batch, X, Y, 3
-        x_size = x.size()
-        # x = x.reshape(x.size(0), -1, x.size(3)) # batch, XY, channels
-        # x = x+self.pos_enc
-        # x = self.transformer(x) # batch, XY, channels
-        x = self.final_linear(x) # batch, XY, 1
-        x = x.reshape(x_size[0], 1, x_size[1], x_size[2]) # batch, 1, X, Y
+
+
+        x = self.vgg(x) # batch, 256, 28, 28
+        x = x.permute(0, 2, 3, 1) # batch, 28, 28, 256
+        x = self.final_linear(x) # batch, 28, 28, 1
+        x = x.permute(0, 3, 1, 2) # batch, 28, 28, 1
 
         return x
 
@@ -83,7 +83,9 @@ class ImageTransformerNMP(pl.LightningModule):
 
         img = img.cuda()
         mask = mask.cuda()
-    
+        # for i in range(3):
+        #     mask = F.max_pool2d(mask, 2, 2)
+
         # forward pass
         
         pred = self.forward(img)
@@ -105,6 +107,8 @@ class ImageTransformerNMP(pl.LightningModule):
 
         img = img.cuda()
         mask = mask.cuda()
+        # for i in range(3):
+        #     mask = F.max_pool2d(mask, 2, 2)
 
 
         # forward pass
@@ -142,6 +146,8 @@ class ImageTransformerNMP(pl.LightningModule):
 
         img = img.cuda()
         mask = mask.cuda()
+        # for i in range(3):
+        #     mask = F.max_pool2d(mask, 2, 2)
 
 
         # forward pass
@@ -172,12 +178,12 @@ class ImageTransformerNMP(pl.LightningModule):
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
         thlist = torch.linspace(0, 1 - 1e-10, 256)
-        self.log('Validation Max F Score', torch.max(f_score))
-        self.log('Validation Max F Threshold', thlist[torch.argmax(f_score)])
+        self.log('Test Max F Score', torch.max(f_score))
+        self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
 
         pred = torch.cat(self.preds, 0)
         mask = torch.cat(self.masks, 0).round().float()
-        self.log('Validation MAE', torch.mean(torch.abs(pred-mask)))
+        self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
 
 
 
