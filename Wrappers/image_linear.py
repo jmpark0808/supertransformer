@@ -2,14 +2,13 @@ import pytorch_lightning as pl
 import torch
 from skimage.segmentation import slic
 from skimage.measure import regionprops_table
-from net.gcn import GAT
+from Blocks.GraphBlocks import GAT
 import torch.nn.functional as F
 import numpy as np
 import torch.nn as nn
-from net.transformer import Transformer
-from net.unet import UNet
+from Blocks.TransformerBlocks import Transformer
 
-class ImageTransformerUNET(pl.LightningModule):
+class ImageLinear(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -19,10 +18,17 @@ class ImageTransformerUNET(pl.LightningModule):
         self.es_patience = kwargs.get('es_patience')
 
         # must be defined for logging computational graph
-        self.example_input_array = torch.rand((1, 3, 32, 32))
+        self.example_input_array = torch.rand((1, 3, 28, 28))
 
         # Generator that produces the HeatMap
-        self.unet = UNet(3, 1)
+        self.linear1 = nn.Linear(28*28*3, 512)
+        self.bn1 = nn.BatchNorm1d(512)
+        self.relu1 = nn.ReLU()
+        self.linear2 = nn.Linear(512, 512)
+        self.bn2 = nn.BatchNorm1d(512)
+        self.relu2 = nn.ReLU()
+        self.linear3 = nn.Linear(512, 28*28)
+
         self.iteration = 0
         self.save_hyperparameters()
         
@@ -57,7 +63,16 @@ class ImageTransformerUNET(pl.LightningModule):
         :param x: Input features
         :return: binary pixel-wise predictions
         """        
-        x = self.unet(x)
+        x_size = x.size()
+        x = x.reshape(x_size[0], -1)
+        x = self.linear1(x)
+        x = self.bn1(x)
+        x = self.relu1(x)
+        x = self.linear2(x)
+        x = self.bn2(x)
+        x = self.relu2(x)
+        x = self.linear3(x)
+        x = x.reshape(x_size[0], 1, x_size[2], x_size[3]) # batch, 1, X, Y
 
         return x
 
@@ -162,12 +177,12 @@ class ImageTransformerUNET(pl.LightningModule):
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
         thlist = torch.linspace(0, 1 - 1e-10, 256)
-        self.log('Validation Max F Score', torch.max(f_score))
-        self.log('Validation Max F Threshold', thlist[torch.argmax(f_score)])
+        self.log('Test Max F Score', torch.max(f_score))
+        self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
 
         pred = torch.cat(self.preds, 0)
         mask = torch.cat(self.masks, 0).round().float()
-        self.log('Validation MAE', torch.mean(torch.abs(pred-mask)))
+        self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
 
 
 

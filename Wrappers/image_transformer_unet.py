@@ -2,29 +2,27 @@ import pytorch_lightning as pl
 import torch
 from skimage.segmentation import slic
 from skimage.measure import regionprops_table
-from net.dsc import DSC
-from net.gcn import GAT, DeepGAT
+from Blocks.GraphBlocks import GAT
 import torch.nn.functional as F
 import numpy as np
-from fast_slic.avx2 import SlicAvx2
+import torch.nn as nn
+from Blocks.TransformerBlocks import Transformer
+from Wrappers.unet import UNet
 
-class SuperConvSeg(pl.LightningModule):
+class ImageTransformerUNET(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
         # parameters
         self.batch_size = kwargs.get("batch_size")
         self.lr = kwargs.get("lr")
-        self.num_seg = kwargs.get('num_seg')
         self.es_patience = kwargs.get('es_patience')
 
         # must be defined for logging computational graph
-
-        # self.example_input_array = torch.rand((1, seq_len, 8))
+        self.example_input_array = torch.rand((1, 3, 32, 32))
 
         # Generator that produces the HeatMap
-        self.superconv = DSC(self.num_seg)
-
+        self.unet = UNet(3, 1)
         self.iteration = 0
         self.save_hyperparameters()
         
@@ -33,7 +31,7 @@ class SuperConvSeg(pl.LightningModule):
         """
         Defining the loss funcition:
         """
-        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label), reduction='mean')
+        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
 
         return loss
 
@@ -41,8 +39,8 @@ class SuperConvSeg(pl.LightningModule):
         """
         Choose what optimizers and learning-rate schedulers to use in your optimization.
         """
-
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=5e-4)
+        
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
             mode='min',
@@ -57,12 +55,11 @@ class SuperConvSeg(pl.LightningModule):
         """
         Forward pass through model
         :param x: Input features
-        :param adj: adjacent matrix 
-        :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
+        :return: binary pixel-wise predictions
         """        
-        pred = self.superconv(x)
+        x = self.unet(x)
 
-        return pred
+        return x
 
     def training_step(self, batch, batch_idx):
         """
@@ -70,12 +67,15 @@ class SuperConvSeg(pl.LightningModule):
         logging resources:
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
+  
         mask = batch['mask']
         img = batch['image']
 
         img = img.cuda()
         mask = mask.cuda()
-
+    
+        # forward pass
+        
         pred = self.forward(img)
 
         loss = self.loss(pred, mask)
@@ -95,7 +95,9 @@ class SuperConvSeg(pl.LightningModule):
 
         img = img.cuda()
         mask = mask.cuda()
-  
+
+
+        # forward pass
         pred = self.forward(img)
 
         if batch_idx == 0:
@@ -111,6 +113,7 @@ class SuperConvSeg(pl.LightningModule):
     def validation_epoch_end(self, validation_step_outputs):
         self.log('Validation MAE', torch.mean(torch.stack(validation_step_outputs)))
         self.scheduler.step(torch.mean(torch.stack(validation_step_outputs)))
+  
                     
     def on_test_start(self):
         self.preds = []
@@ -129,7 +132,9 @@ class SuperConvSeg(pl.LightningModule):
 
         img = img.cuda()
         mask = mask.cuda()
-  
+
+
+        # forward pass
         pred = self.forward(img)
 
         mae = torch.mean(torch.abs(pred - mask))
@@ -157,12 +162,12 @@ class SuperConvSeg(pl.LightningModule):
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
         thlist = torch.linspace(0, 1 - 1e-10, 256)
-        self.log('Test Max F Score', torch.max(f_score))
-        self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
+        self.log('Validation Max F Score', torch.max(f_score))
+        self.log('Validation Max F Threshold', thlist[torch.argmax(f_score)])
 
         pred = torch.cat(self.preds, 0)
         mask = torch.cat(self.masks, 0).round().float()
-        self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
+        self.log('Validation MAE', torch.mean(torch.abs(pred-mask)))
 
 
 

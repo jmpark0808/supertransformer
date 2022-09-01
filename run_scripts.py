@@ -1,4 +1,4 @@
-from net.dsc import DSC
+from legacy.dsc import DSC
 import torch
 
 

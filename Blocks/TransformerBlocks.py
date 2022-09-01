@@ -107,7 +107,7 @@ class PosAttention(nn.Module):
         return self.to_out(out)
 
 class GraphAttention(nn.Module):
-    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.):
+    def __init__(self, dim, num_regions, heads = 8, dim_head = 64, dropout = 0.):
         super().__init__()
         inner_dim = dim_head *  heads
         project_out = not (heads == 1 and dim_head == dim)
@@ -122,14 +122,19 @@ class GraphAttention(nn.Module):
             nn.Linear(inner_dim, dim),
             nn.Dropout(dropout)
         ) if project_out else nn.Identity()
+        self.eye = torch.eye(num_regions, device='cuda')
 
-    def forward(self, x, adj):
+    def forward(self, x, adj, dilation):
         qkv = self.to_qkv(x).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
 
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # seq_len x seq_len 
         zero_vec = -9e15*torch.ones_like(dots)
-        adj = adj.unsqueeze(1).repeat(1, dots.size(1), 1, 1)
+
+        adj = torch.matrix_power(adj, dilation).bool().int()-torch.matrix_power(adj, dilation-1).bool().int()+self.eye
+        adj = adj.unsqueeze(1).bool() # B x 1 x R x R
+        adj = adj.repeat(1, dots.size(1), 1, 1)
+
         attention = torch.where(adj > 0, dots, zero_vec)
         
         attn = self.attend(attention)
@@ -169,13 +174,13 @@ class PosTransformer(nn.Module):
         return x
 
 class GraphConvTransformer(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, norm=True, dropout = 0.):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, num_regions, norm=True, dropout = 0.):
         super().__init__()
         self.graph_conv_layers = nn.ModuleList([])
         if norm=='ln':
             for _ in range(depth):
                 self.graph_conv_layers.append(nn.ModuleList([
-                    PreNorm(dim, GraphAttention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
+                    PreNorm(dim, GraphAttention(dim, num_regions, heads = heads, dim_head = dim_head, dropout = dropout)),
                     PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
                 ]))
             self.graph_global_layers = nn.ModuleList([])
@@ -187,7 +192,7 @@ class GraphConvTransformer(nn.Module):
         elif norm=='bn':
             for _ in range(depth):
                 self.graph_conv_layers.append(nn.ModuleList([
-                    PreBatchNorm(dim, GraphAttention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
+                    PreBatchNorm(dim, GraphAttention(dim, num_regions, heads = heads, dim_head = dim_head, dropout = dropout)),
                     PreBatchNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
                 ]))
             self.graph_global_layers = nn.ModuleList([])
@@ -199,7 +204,7 @@ class GraphConvTransformer(nn.Module):
         else:
             for _ in range(depth):
                 self.graph_conv_layers.append(nn.ModuleList([
-                    GraphAttention(dim, heads = heads, dim_head = dim_head, dropout = dropout),
+                    GraphAttention(dim, num_regions, heads = heads, dim_head = dim_head, dropout = dropout),
                     FeedForward(dim, mlp_dim, dropout = dropout)
                 ]))
             self.graph_global_layers = nn.ModuleList([])
@@ -210,7 +215,7 @@ class GraphConvTransformer(nn.Module):
                 ]))
     def forward(self, x, adj):
         for attn, ff in self.graph_conv_layers:
-            x = attn(x, adj=adj) + x
+            x = attn(x, adj=adj, dilation=1) + x
             x = ff(x) + x
         for attn, ff in self.graph_global_layers:
             x = attn(x) + x
@@ -219,72 +224,37 @@ class GraphConvTransformer(nn.Module):
 
 
 
+class GraphDilatedConvTransformer(nn.Module):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, num_regions, norm=True, dropout = 0.):
+        super().__init__()
+        self.graph_conv_layers = nn.ModuleList([])
+        self.dilations = [1, 1, 1, 2, 2, 2, 4, 4, 4]
+        assert len(self.dilations) == depth, "depth has to equal the length of dilations"
+        if norm=='ln':
+            for _ in range(depth):
+                self.graph_conv_layers.append(nn.ModuleList([
+                    PreNorm(dim, GraphAttention(dim, num_regions, heads = heads, dim_head = dim_head, dropout = dropout)),
+                    PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+                ]))
+        elif norm=='bn':
+            for _ in range(depth):
+                self.graph_conv_layers.append(nn.ModuleList([
+                    PreBatchNorm(dim, GraphAttention(dim, num_regions, heads = heads, dim_head = dim_head, dropout = dropout)),
+                    PreBatchNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+                ]))
+        
+        else:
+            for _ in range(depth):
+                self.graph_conv_layers.append(nn.ModuleList([
+                    GraphAttention(dim, num_regions, heads = heads, dim_head = dim_head, dropout = dropout),
+                    FeedForward(dim, mlp_dim, dropout = dropout)
+                ]))
+    def forward(self, x, adj):
+        for ind, (attn, ff) in enumerate(self.graph_conv_layers):
+            x = attn(x, adj=adj, dilation=self.dilations[ind]) + x
+            x = ff(x) + x
 
-class PositionalEncodingSuperPixel(nn.Module):
-    def __init__(self, channels):
-        """
-        :param channels: The last dimension of the tensor you want to apply pos emb to.
-        """
-        super(PositionalEncodingSuperPixel, self).__init__()
-        channels = int(np.ceil(channels / 4) * 2)
-        self.channels = channels
-        inv_freq = 1.0 / (10000 ** (torch.arange(0, channels, 2).float() / channels))
-        self.register_buffer("inv_freq", inv_freq)
-
-    def forward(self, tensor):
-        """
-        :param tensor: A 3d tensor of size (batch_size, seq_len, features)
-        :return: Positional Encoding Matrix of size (batch_size, seq_len, features)
-        """
-        if len(tensor.shape) != 3:
-            raise RuntimeError("The input tensor has to be 3d!")
-        batch_size, seq, feat = tensor.shape
-        pos_x = tensor[:, :, 0].type(self.inv_freq.type())
-        pos_y = tensor[:, :, 1].type(self.inv_freq.type())
-
-        sin_inp_x = torch.einsum("bi,j->bij", pos_x, self.inv_freq) # batch, seq, feat/4
-        sin_inp_y = torch.einsum("bi,j->bij", pos_y, self.inv_freq) # batch, seq, feat/4
-        emb_x = torch.cat((sin_inp_x.sin(), sin_inp_x.cos()), dim=-1) # batch, seq, feat/2
-        emb_y = torch.cat((sin_inp_y.sin(), sin_inp_y.cos()), dim=-1) # batch, seq, feat/2
-        emb = torch.zeros((batch_size, seq, self.channels * 2), device=tensor.device).type(
-            tensor.type()
-        )
-        emb[:, :, : self.channels] = emb_x
-        emb[:, :, self.channels : 2 * self.channels] = emb_y
-
-        return emb
-
-
-class PositionalEncodingDict(nn.Module):
-    def __init__(self, width, height, dim_head):
-        """
-        :param width: Width of dictionary
-        :param height: Height of dictionary
-        """
-        super(PositionalEncodingDict, self).__init__()
-        self.width = width
-        self.height = height
-        self.x_encodings = nn.Parameter(torch.randn(1, width, dim_head))
-        self.y_encodings = nn.Parameter(torch.randn(1, height, dim_head))
-
-    def forward(self, tensor):
-        """
-        :param tensor: A 3d tensor of size (batch_size, seq_len, features)
-        :return: Positional Encoding Matrix of size (batch_size, seq_len, features)
-        """
-        if len(tensor.shape) != 3:
-            raise RuntimeError("The input tensor has to be 3d!")
-        batch_size, seq, feat = tensor.shape
-        pos_x = (tensor[:, :, 0]*self.width).type(torch.long).unsqueeze(2).repeat(1, 1, self.x_encodings.size(2)) # batch, seq_len, 1
-        pos_y = (tensor[:, :, 1]*self.height).type(torch.long).unsqueeze(2).repeat(1, 1, self.x_encodings.size(2)) # batch, seq_len, 1
-
-        x_encodings = self.x_encodings.repeat(batch_size, 1, 1) # batch, width, features
-        y_encodings = self.y_encodings.repeat(batch_size, 1, 1) # batch, height, features
-
-        emb_x = torch.gather(x_encodings, 1, pos_x) # batch, seq_len, features
-        emb_y = torch.gather(y_encodings, 1, pos_y) # batch, seq_len, features
-
-        return emb_x, emb_y
+        return x
 
 class SuperT(nn.Module):
     def __init__(self, in_dim, feature_dim, depth, heads, mlp_dim, dim_head = 64, dropout = 0., emb_dropout = 0.):

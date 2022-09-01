@@ -13,51 +13,44 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks.lr_monitor import LearningRateMonitor
 from pytorch_lightning.profiler import SimpleProfiler
 from pytorch_lightning.loggers import TensorBoardLogger
+from Models.SP_TFM import SP_RTFM_TFM
+from Wrappers.SP_CNN_LIN import SP_CNN_LIN_Wrapper
+from Wrappers.SP_RTFM_TFM import SP_RTFM_TFM_Wrapper
+from Wrappers.SP_TFM_DIL import SP_TFM_DIL_Wrapper
 
 # Import dataset modules
-from dataset.superpixel import DUTSDataModule, SPDataModule
-from net.image_linear import ImageLinear
-from net.image_transformer import ImageTransformer
-from net.image_transformer_cnn import ImageTransformerCNN
-from net.image_transformer_cnn_tfm import ImageTransformerCNNTFM
-from net.image_transformer_nmp import ImageTransformerNMP
-from net.image_transformer_unet import ImageTransformerUNET
-from net.superconv import SuperConvSeg
-from net.superlinear import SuperLinear
+from dataset.superpixel import DUTSDataModule, SPCNNDataModule, SPDataModule
 
-# Import networks
-from net.supert import SuperTransformerLightTFM
-from net.supertfcn import SuperTransformerFCN
-from net.supertpos import SuperTransformerPos
-from net.supertseparablefcn import SuperTransformerSepFCN
-from net.supertdeep import SuperTransformerGAT
-from net.supertdeepnn import SuperTransformerDeepTFMNN
-from net.supertdeepbn import SuperTransformerDeepTFMBN
+
 # Metric logging
 
 # Deterministic
 
 MODEL_DIRECTORY = {
-    "SPLT": SuperTransformerLightTFM,
-    "SPP": SuperTransformerPos,
-    "SPF": SuperTransformerFCN,
-    "SPSF": SuperTransformerSepFCN,
-    "SPGAT": SuperTransformerGAT,
-    "SPDTNN": SuperTransformerDeepTFMNN,
-    "SPDTBN": SuperTransformerDeepTFMBN,
-    "SPL": SuperLinear,
-    "IT": ImageTransformer,
-    "ITCNN": ImageTransformerCNN,
-    "ITCNNTFM": ImageTransformerCNNTFM,
-    "ITNMP": ImageTransformerNMP,
-    "ITI": ImageLinear,
-    "ITUNET": ImageTransformerUNET,
-    "SC": SuperConvSeg,
+    # "SPLT": SuperTransformerLightTFM,
+    # "SPP": SuperTransformerPos,
+    # "SPF": SuperTransformerFCN,
+    # "SPSF": SuperTransformerSepFCN,
+    # "SPGAT": SuperTransformerGAT,
+    # "SPDTNN": SuperTransformerDeepTFMNN,
+    # "SPDTBN": SuperTransformerDeepTFMBN,
+    # "SPL": SuperLinear,
+    # "IT": ImageTransformer,
+    # "ITCNN": ImageTransformerCNN,
+    # "ITCNNTFM": ImageTransformerCNNTFM,
+    # "ITNMP": ImageTransformerNMP,
+    # "ITI": ImageLinear,
+    # "ITUNET": ImageTransformerUNET,
+    # "SC": SuperConvSeg,
+    "SP_TFM_DIL": SP_TFM_DIL_Wrapper,
+    "SP_RTFM_TFM": SP_RTFM_TFM_Wrapper,
+    "SP_CNN_LIN": SP_CNN_LIN_Wrapper,
 
 }
 DATALOADER_DIRECTORY = {
     'SP': SPDataModule,
-    'DUTS': DUTSDataModule
+    'DUTS': DUTSDataModule,
+    'SP_CNN': SPCNNDataModule
 
 } 
 

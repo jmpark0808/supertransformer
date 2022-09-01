@@ -2,11 +2,11 @@ import pytorch_lightning as pl
 import torch
 from skimage.segmentation import slic
 from skimage.measure import regionprops_table
-from net.gcn import DeepGAT
+from Blocks.GraphBlocks import GAT, GATFCN
 import torch.nn.functional as F
 import numpy as np
 
-class SuperTransformerDeepTFMNN(pl.LightningModule):
+class SuperTransformerFCN(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -17,24 +17,24 @@ class SuperTransformerDeepTFMNN(pl.LightningModule):
         self.es_patience = kwargs.get('es_patience')
 
         # must be defined for logging computational graph
-        # def get_seq_len():
-        #     img_np = np.random.rand(300, 300, 3)
-        #     segments = slic(img_np, n_segments=self.num_seg,
-        #             compactness=10.0,
-        #             max_num_iter=10,
-        #             convert2lab=True,
-        #             enforce_connectivity=False,
-        #             slic_zero=True,
-        #             min_size_factor=0.,)
+        def get_seq_len():
+            img_np = np.random.rand(300, 300, 3)
+            segments = slic(img_np, n_segments=self.num_seg,
+                    compactness=10.0,
+                    max_num_iter=10,
+                    convert2lab=True,
+                    enforce_connectivity=False,
+                    slic_zero=True,
+                    min_size_factor=0.,)
 
-        #     regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean', 'extent', 'coords', 'eccentricity'))
-        #     seq_len = len(regions['label'])
-        #     return seq_len
-        # seq_len = get_seq_len()
+            regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean', 'extent', 'coords', 'eccentricity'))
+            seq_len = len(regions['label'])
+            return seq_len
+        seq_len = get_seq_len()
         # self.example_input_array = torch.rand((1, seq_len, 8))
 
         # Generator that produces the HeatMap
-        self.supert = DeepGAT(8, 8,  0., 8, 3, norm=False)
+        self.supert = GATFCN(8, 8,  0., 0.2, 8, seq_len)
 
         self.save_hyperparameters()
         
@@ -43,7 +43,7 @@ class SuperTransformerDeepTFMNN(pl.LightningModule):
         """
         Defining the loss funcition:
         """
-        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
+        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), label)
 
         return loss
 
@@ -148,17 +148,43 @@ class SuperTransformerDeepTFMNN(pl.LightningModule):
         tensorboard.add_images('Image', img)
 
         mae = torch.mean(torch.abs(samples - samples_mask))
-      
+        self.preds.append(samples)
+        self.masks.append(samples_mask)
+        prec, recall = torch.zeros(samples_mask.shape[0], 256), torch.zeros(samples_mask.shape[0], 256)
+        pred = samples.reshape(samples.shape[0], -1)
+        mask = samples_mask.reshape(samples_mask.shape[0], -1)
+        thlist = torch.linspace(0, 1 - 1e-10, 256)
+        for j in range(256):
+            y_temp = (pred >= thlist[j]).float()
+            tp = (y_temp * mask).sum(dim=-1)
+            # avoid prec becomes 0
+            prec[:, j], recall[:, j] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
+        # (batch, threshold)
+        self.precs.append(prec)
+        self.recalls.append(recall)
+
         return mae
 
     def on_validation_start(self):
-        self.maes = []
-
+        self.preds = []
+        self.masks = []
+        self.precs = []
+        self.recalls = []
 
 
     def validation_epoch_end(self, validation_step_outputs):
-        self.log('Validation MAE', torch.mean(self.maes))
-        self.scheduler.step(torch.mean(self.maes))
+        prec = torch.cat(self.precs, dim=0).mean(dim=0)
+        recall = torch.cat(self.recalls, dim=0).mean(dim=0)
+        beta_square = 0.3
+        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
+        thlist = torch.linspace(0, 1 - 1e-10, 256)
+        self.log('Validation Max F Score', torch.max(f_score))
+        self.log('Validation Max F Threshold', thlist[torch.argmax(f_score)])
+
+        pred = torch.cat(self.preds, 0)
+        mask = torch.cat(self.masks, 0).round().float()
+        self.log('Validation MAE', torch.mean(torch.abs(pred-mask)))
+        self.scheduler.step(torch.mean(torch.abs(pred-mask)))
                     
     def on_test_start(self):
         self.preds = []

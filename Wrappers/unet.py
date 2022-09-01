@@ -1,4 +1,4 @@
-from net.unet_parts import *
+from Wrappers.unet_parts import *
 
 
 class UNet(nn.Module):

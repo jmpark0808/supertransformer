@@ -2,32 +2,28 @@ import pytorch_lightning as pl
 import torch
 from skimage.segmentation import slic
 from skimage.measure import regionprops_table
-from net.gcn import GAT
+from legacy.dsc import DSC
+from Blocks.GraphBlocks import GAT, DeepGAT
 import torch.nn.functional as F
 import numpy as np
-import torch.nn as nn
-from net.transformer import Transformer
+from fast_slic.avx2 import SlicAvx2
 
-class ImageLinear(pl.LightningModule):
+class SuperConvSeg(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
         # parameters
         self.batch_size = kwargs.get("batch_size")
         self.lr = kwargs.get("lr")
+        self.num_seg = kwargs.get('num_seg')
         self.es_patience = kwargs.get('es_patience')
 
         # must be defined for logging computational graph
-        self.example_input_array = torch.rand((1, 3, 28, 28))
+
+        # self.example_input_array = torch.rand((1, seq_len, 8))
 
         # Generator that produces the HeatMap
-        self.linear1 = nn.Linear(28*28*3, 512)
-        self.bn1 = nn.BatchNorm1d(512)
-        self.relu1 = nn.ReLU()
-        self.linear2 = nn.Linear(512, 512)
-        self.bn2 = nn.BatchNorm1d(512)
-        self.relu2 = nn.ReLU()
-        self.linear3 = nn.Linear(512, 28*28)
+        self.superconv = DSC(self.num_seg)
 
         self.iteration = 0
         self.save_hyperparameters()
@@ -37,7 +33,7 @@ class ImageLinear(pl.LightningModule):
         """
         Defining the loss funcition:
         """
-        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
+        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label), reduction='mean')
 
         return loss
 
@@ -45,8 +41,8 @@ class ImageLinear(pl.LightningModule):
         """
         Choose what optimizers and learning-rate schedulers to use in your optimization.
         """
-        
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=5e-4)
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,
             mode='min',
@@ -61,20 +57,12 @@ class ImageLinear(pl.LightningModule):
         """
         Forward pass through model
         :param x: Input features
-        :return: binary pixel-wise predictions
+        :param adj: adjacent matrix 
+        :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-        x_size = x.size()
-        x = x.reshape(x_size[0], -1)
-        x = self.linear1(x)
-        x = self.bn1(x)
-        x = self.relu1(x)
-        x = self.linear2(x)
-        x = self.bn2(x)
-        x = self.relu2(x)
-        x = self.linear3(x)
-        x = x.reshape(x_size[0], 1, x_size[2], x_size[3]) # batch, 1, X, Y
+        pred = self.superconv(x)
 
-        return x
+        return pred
 
     def training_step(self, batch, batch_idx):
         """
@@ -82,15 +70,12 @@ class ImageLinear(pl.LightningModule):
         logging resources:
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
-  
         mask = batch['mask']
         img = batch['image']
 
         img = img.cuda()
         mask = mask.cuda()
-    
-        # forward pass
-        
+
         pred = self.forward(img)
 
         loss = self.loss(pred, mask)
@@ -110,9 +95,7 @@ class ImageLinear(pl.LightningModule):
 
         img = img.cuda()
         mask = mask.cuda()
-
-
-        # forward pass
+  
         pred = self.forward(img)
 
         if batch_idx == 0:
@@ -128,7 +111,6 @@ class ImageLinear(pl.LightningModule):
     def validation_epoch_end(self, validation_step_outputs):
         self.log('Validation MAE', torch.mean(torch.stack(validation_step_outputs)))
         self.scheduler.step(torch.mean(torch.stack(validation_step_outputs)))
-  
                     
     def on_test_start(self):
         self.preds = []
@@ -147,9 +129,7 @@ class ImageLinear(pl.LightningModule):
 
         img = img.cuda()
         mask = mask.cuda()
-
-
-        # forward pass
+  
         pred = self.forward(img)
 
         mae = torch.mean(torch.abs(pred - mask))

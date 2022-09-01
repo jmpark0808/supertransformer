@@ -1,36 +1,25 @@
 import pytorch_lightning as pl
 import torch
-from skimage.segmentation import slic
-from skimage.measure import regionprops_table
-from net.gcn import GAT
 import torch.nn.functional as F
 import numpy as np
-import torch.nn as nn
-from net.transformer import Transformer
-from net.blocks import Encoder
-import torchvision
+from Models.SP_CNN import SP_CNN_LIN
 
-class ImageTransformerCNNTFM(pl.LightningModule):
+
+
+class SP_CNN_LIN_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
         # parameters
         self.batch_size = kwargs.get("batch_size")
         self.lr = kwargs.get("lr")
+        self.num_seg = kwargs.get('num_seg')
         self.es_patience = kwargs.get('es_patience')
 
-        # must be defined for logging computational graph
-        self.example_input_array = torch.rand((1, 3, 224, 224))
-
-        
-        vgg = torchvision.models.vgg16(pretrained=True)
-        self.vgg = Encoder()
-        self.vgg.seq.load_state_dict(vgg.features.state_dict())
-        del vgg
-        self.transformer = Transformer(512, 6, 8, 64, 512)
-        self.pos_enc = nn.Parameter(torch.randn(1, 28*28, 512))
-        self.final_linear = nn.Linear(512, 1)
+        # Generator that produces the HeatMap
+        self.model = SP_CNN_LIN()
         self.iteration = 0
+        self.test_iteration = 0
         self.save_hyperparameters()
         
 
@@ -62,20 +51,13 @@ class ImageTransformerCNNTFM(pl.LightningModule):
         """
         Forward pass through model
         :param x: Input features
-        :return: binary pixel-wise predictions
+        :param adj: adjacent matrix 
+        :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
+    
+        pred = self.model(x)
 
-
-        x = self.vgg(x) # batch, 256, 28, 28
-        x = x.permute(0, 2, 3, 1) # batch, 28, 28, 256
-        x = x.reshape(x.size(0), -1, x.size(3)) # batch, 28^2, 256
-        x += self.pos_enc
-        x = self.transformer(x) # batch, 28^2, 256
-        x = self.final_linear(x) # batch, 28^2, 1
-        x = x.reshape(x.size(0), 28, 28, 1)
-        x = x.permute(0, 3, 1, 2) # batch, 1, 28, 28
-
-        return x
+        return pred
 
     def training_step(self, batch, batch_idx):
         """
@@ -83,21 +65,23 @@ class ImageTransformerCNNTFM(pl.LightningModule):
         logging resources:
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
-  
+        features = batch['features']
+        seq_mask = batch['seq_mask']
+        segments = batch['segments']
         mask = batch['mask']
-        img = batch['image']
+        img = batch['img']
 
-        img = img.cuda()
-        mask = mask.cuda()
 
-        for i in range(3):
-            mask = F.max_pool2d(mask, 2, 2)
+        features = features.cuda()
+        seq_mask = seq_mask.cuda()
+
 
         # forward pass
         
-        pred = self.forward(img)
+        pred = self.forward(features)
+        pred = pred.reshape(pred.size(0), -1)
 
-        loss = self.loss(pred, mask)
+        loss = self.loss(pred, seq_mask)
 
         self.log('loss', loss.item())
         self.iteration += 1
@@ -109,25 +93,46 @@ class ImageTransformerCNNTFM(pl.LightningModule):
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
         tensorboard = self.logger.experiment
+        features = batch['features']
+        seq_mask = batch['seq_mask']
+        segments = batch['segments']
         mask = batch['mask']
-        img = batch['image']
+        img = batch['img']
 
-        img = img.cuda()
-        mask = mask.cuda()
 
-        for i in range(3):
-            mask = F.max_pool2d(mask, 2, 2)
+        features = features.cuda()
+        seq_mask = seq_mask.cuda()
 
 
         # forward pass
-        pred = self.forward(img)
+        pred = self.forward(features)
+        pred = pred.reshape(pred.size(0), -1)
 
+        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
+        seq_mask_numpy = seq_mask.detach().cpu().numpy()
+        batch_size = img.shape[0]
+        img_size = img.shape[2]
+        segments = segments.reshape([batch_size, -1]) # batch, img_size^2
+
+        samples = []
+        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+            plt_image = masked[labels-1].reshape([img_size, img_size])
+            samples.append(plt_image)
+
+        samples = torch.tensor(np.expand_dims(np.array(samples), 1))
+        
+        samples_mask = []
+        for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
+            plt_image = masked[labels-1].reshape([img_size, img_size])
+            samples_mask.append(plt_image)
+
+        samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
         if batch_idx == 0:
-            tensorboard.add_images('Pred', torch.sigmoid(pred), self.iteration)
-            tensorboard.add_images('GT', mask, self.iteration)
+            tensorboard.add_images('Pred', samples, self.iteration)
+            tensorboard.add_images('GT', samples_mask, self.iteration)
             tensorboard.add_images('Image', img, self.iteration)
 
-        mae = torch.mean(torch.abs(torch.sigmoid(pred) - mask))
+        mae = torch.mean(torch.abs(samples - samples_mask))
       
         return mae
 
@@ -135,7 +140,6 @@ class ImageTransformerCNNTFM(pl.LightningModule):
     def validation_epoch_end(self, validation_step_outputs):
         self.log('Validation MAE', torch.mean(torch.stack(validation_step_outputs)))
         self.scheduler.step(torch.mean(torch.stack(validation_step_outputs)))
-  
                     
     def on_test_start(self):
         self.preds = []
@@ -149,24 +153,49 @@ class ImageTransformerCNNTFM(pl.LightningModule):
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
         tensorboard = self.logger.experiment
+        features = batch['features']
+        seq_mask = batch['seq_mask']
+        segments = batch['segments']
         mask = batch['mask']
-        img = batch['image']
+        img = batch['img']
 
-        img = img.cuda()
-        mask = mask.cuda()
-        for i in range(3):
-            mask = F.max_pool2d(mask, 2, 2)
+
+        features = features.cuda()
+        seq_mask = seq_mask.cuda()
 
 
         # forward pass
-        pred = self.forward(img)
-
-        mae = torch.mean(torch.abs(pred - mask))
-        self.preds.append(pred)
-        self.masks.append(mask)
-        prec, recall = torch.zeros(mask.shape[0], 256), torch.zeros(mask.shape[0], 256)
+        pred = self.forward(features)
         pred = pred.reshape(pred.size(0), -1)
-        mask = mask.reshape(mask.size(0), -1)
+
+        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
+        seq_mask_numpy = seq_mask.detach().cpu().numpy()
+        batch_size = img.shape[0]
+        img_size = img.shape[2]
+        segments = segments.reshape([batch_size, -1]) # batch, img_size^2
+
+        samples = []
+        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+            plt_image = masked[labels-1].reshape([img_size, img_size])
+            samples.append(plt_image)
+
+        samples = torch.tensor(np.expand_dims(np.array(samples), 1))
+        tensorboard.add_images('Test Pred', samples, self.test_iteration)
+        samples_mask = []
+        for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
+            plt_image = masked[labels-1].reshape([img_size, img_size])
+            samples_mask.append(plt_image)
+
+        samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
+        tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
+        tensorboard.add_images('Test Image', img, self.test_iteration)
+
+        mae = torch.mean(torch.abs(samples - samples_mask))
+        self.preds.append(samples)
+        self.masks.append(samples_mask)
+        prec, recall = torch.zeros(samples_mask.shape[0], 256), torch.zeros(samples_mask.shape[0], 256)
+        pred = samples.reshape(samples.shape[0], -1)
+        mask = samples_mask.reshape(samples_mask.shape[0], -1)
         thlist = torch.linspace(0, 1 - 1e-10, 256)
         for j in range(256):
             y_temp = (pred >= thlist[j]).float()
@@ -176,7 +205,7 @@ class ImageTransformerCNNTFM(pl.LightningModule):
         # (batch, threshold)
         self.precs.append(prec)
         self.recalls.append(recall)
-
+        self.test_iteration += 1
         return mae
 
 

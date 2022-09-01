@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import torchvision
 import numpy as np
 from skimage.segmentation import slic
-from net.gcn import MaxPoolingCNN
+from Blocks.GraphBlocks import MaxPoolingCNN
 from skimage.measure import regionprops_table
 from fast_slic.avx2 import SlicAvx2
 import math
@@ -155,18 +155,25 @@ class ToSLIC(nn.Module):
         return torch.from_numpy(all_features).float(), torch.from_numpy(all_neighbours).float(), all_labels
 
 class SuperConvBlock(nn.Module):
-    def __init__(self, in_channel, mid_channel, out_channel, dilation, num_regions, residual):
+    def __init__(self, in_channel, mid_channel, out_channel, dilation, num_regions, residual, separable=True):
         super().__init__()
         self.dilation = dilation
         self.eye = torch.eye(num_regions, device='cuda')
 
         self.conv1x1_1 = nn.Linear(in_channel, mid_channel)
+        self.bn1 = nn.BatchNorm1d(mid_channel)
         self.tanh_1 = nn.ReLU()
-
-        self.W = nn.Parameter(torch.randn(mid_channel, mid_channel, num_regions))
+        self.separable = separable
+        if separable:
+            self.W_spatial = nn.Parameter(torch.randn(mid_channel, num_regions))
+            self.W_pointwise = nn.Parameter(torch.rand(mid_channel, mid_channel))
+        else:
+            self.W = nn.Parameter(torch.randn(mid_channel, mid_channel, num_regions))
+        self.bn2 = nn.BatchNorm1d(mid_channel)
         self.tanh_2 = nn.ReLU()
 
         self.conv1x1_2 = nn.Linear(mid_channel, out_channel)
+        self.bn3 = nn.BatchNorm1d(out_channel)
         self.tanh_3 = nn.ReLU()
 
         self.residual = residual
@@ -182,21 +189,45 @@ class SuperConvBlock(nn.Module):
     def forward(self, x, A):
         # x = B x R x C , A = B x R x R
         identity = x
-        conv1 = self.tanh_1(self.conv1x1_1(x)) # B x R x C
+        conv1 = self.conv1x1_1(x) # B x R x C
+        conv1 = conv1.permute(0, 2, 1) # B x C x R
+        conv1 = self.tanh_1(self.bn1(conv1))
+        conv1 = conv1.permute(0, 2, 1) # B x R x C
 
-        circulant = self.circulant(self.W, 2).unsqueeze(0).repeat(x.size(0), 1, 1, 1, 1) # B x C x C' x R x R
-        adj = torch.matrix_power(A, self.dilation).bool().int()-torch.matrix_power(A, self.dilation-1).bool().int()+self.eye
-        adj = adj.unsqueeze(1).unsqueeze(1).bool() # B x 1 x 1 x R x R
+        if self.separable:
+            circulant = self.circulant(self.W_spatial, 1).unsqueeze(0).repeat(x.size(0), 1, 1, 1) # B x C x R x R
+            adj = torch.matrix_power(A, self.dilation).bool().int()-torch.matrix_power(A, self.dilation-1).bool().int()+self.eye
+            adj = adj.unsqueeze(1).bool() # B x 1 x R x R
 
-        circulant = circulant*adj # B x C x C' x R x R
-        conv1 = conv1.unsqueeze(1).repeat(1, circulant.size(2), 1, 1).unsqueeze(-1).permute(0, 3, 1, 2, 4) # B x C x C' x R x 1
-        conv2 = torch.einsum('bijkl,bijlm->bijkm', circulant, conv1) # B x C x C' x R x 1
-        conv2 = torch.sum(conv2, dim=1) # B x C' x R x 1
-        conv2 = conv2.reshape(conv2.size(0),conv2.size(1), -1).permute(0, 2, 1) # B x R x C'
+            circulant = circulant*adj # B x C x R x R
+
+            conv2 = torch.einsum('bijk,bki->bij', circulant, conv1) # B x C x R
+            conv2 = torch.einsum('bij,ik->bkj', conv2, self.W_pointwise) # B x C' x R
+        else:
+            circulant = self.circulant(self.W, 2).unsqueeze(0).repeat(x.size(0), 1, 1, 1, 1) # B x C x C' x R x R
+
+            adj = torch.matrix_power(A, self.dilation).bool().int()-torch.matrix_power(A, self.dilation-1).bool().int()+self.eye
+            adj = adj.unsqueeze(1).unsqueeze(1).bool() # B x 1 x 1 x R x R
+
+            circulant = circulant * adj # B x C x C' x R x R
+
+
+
+            conv2 = torch.einsum('bijkl,bli->bijk', circulant, conv1) # B x C x C' x R
+            conv2 = torch.sum(conv2, dim=1) # B x C' x R 
+
+        
+        
+        conv2 = self.bn2(conv2)
+        conv2 = conv2.permute(0, 2, 1) # B x R x C'
         conv2 = self.tanh_2(conv2)
 
 
-        conv3 = self.tanh_3(self.conv1x1_2(conv2)) # B x R x C"
+        conv3 = self.conv1x1_2(conv2) # B x R x C"
+        conv3 = conv3.permute(0, 2, 1) # B x C" x R
+        conv3 = self.bn3(conv3)
+        conv3 = self.tanh_3(conv3)
+        conv3 = conv3.permute(0, 2, 1) # B x R x C"
         if self.residual:
             conv3 = conv3 + identity
         return conv3

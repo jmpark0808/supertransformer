@@ -1,13 +1,10 @@
 import pytorch_lightning as pl
 import torch
-from skimage.measure import regionprops_table
-from net.gcn import GAT
+from Models.SP_TFM import SP_TFM_TFM
 import torch.nn.functional as F
 import numpy as np
-from fast_slic.avx2 import SlicAvx2
-from net.transformer import SuperTPos
 
-class SuperTransformerPos(pl.LightningModule):
+class SP_TFM_TFM_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -17,21 +14,10 @@ class SuperTransformerPos(pl.LightningModule):
         self.num_seg = kwargs.get('num_seg')
         self.es_patience = kwargs.get('es_patience')
 
-        # must be defined for logging computational graph
-        def get_seq_len():
-            img_np = np.random.rand(300, 300, 3).astype(np.uint8)
-            slic = SlicAvx2(num_components=self.num_seg, compactness=10, min_size_factor=0)
-            segments = slic.iterate(img_np)
-
-            regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean', 'extent', 'coords', 'eccentricity'))
-            seq_len = len(regions['label'])
-            return seq_len
-        seq_len = get_seq_len()
-        # self.example_input_array = torch.rand((1, seq_len, 8))
-
         # Generator that produces the HeatMap
-        self.supert = SuperTPos(4, seq_len, 64, 6, 4, 64, 300, 300, dim_head=16)
-
+        self.supert = SP_TFM_TFM(11, 8, 3, 0., 8, 3, norm='bn')
+        self.iteration = 0
+        self.test_iteration = 0
         self.save_hyperparameters()
         
 
@@ -59,15 +45,15 @@ class SuperTransformerPos(pl.LightningModule):
         return optimizer
       
 
-    def forward(self, x):
+    def forward(self, x, adj):
         """
         Forward pass through model
         :param x: Input features
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-
-        pred = self.supert(x)
+    
+        pred = self.supert(x, adj)
 
         return pred
 
@@ -91,12 +77,12 @@ class SuperTransformerPos(pl.LightningModule):
 
         # forward pass
         
-        pred = self.forward(features)
+        pred = self.forward(features, adj)
 
         loss = self.loss(pred, seq_mask)
 
         self.log('loss', loss.item())
-
+        self.iteration += 1
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -119,7 +105,7 @@ class SuperTransformerPos(pl.LightningModule):
 
 
         # forward pass
-        pred = self.forward(features)
+        pred = self.forward(features, adj)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
@@ -141,9 +127,9 @@ class SuperTransformerPos(pl.LightningModule):
 
         samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
         if batch_idx == 0:
-            tensorboard.add_images('Pred', samples)
-            tensorboard.add_images('GT', samples_mask)
-            tensorboard.add_images('Image', img)
+            tensorboard.add_images('Pred', samples, self.iteration)
+            tensorboard.add_images('GT', samples_mask, self.iteration)
+            tensorboard.add_images('Image', img, self.iteration)
 
         mae = torch.mean(torch.abs(samples - samples_mask))
       
@@ -153,7 +139,6 @@ class SuperTransformerPos(pl.LightningModule):
     def validation_epoch_end(self, validation_step_outputs):
         self.log('Validation MAE', torch.mean(torch.stack(validation_step_outputs)))
         self.scheduler.step(torch.mean(torch.stack(validation_step_outputs)))
-  
                     
     def on_test_start(self):
         self.preds = []
@@ -181,7 +166,7 @@ class SuperTransformerPos(pl.LightningModule):
 
 
         # forward pass
-        pred = self.forward(features)
+        pred = self.forward(features, adj)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
@@ -195,15 +180,15 @@ class SuperTransformerPos(pl.LightningModule):
             samples.append(plt_image)
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1))
-        tensorboard.add_images('Pred', samples)
+        tensorboard.add_images('Test Pred', samples, self.test_iteration)
         samples_mask = []
         for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
             plt_image = masked[labels-1].reshape([img_size, img_size])
             samples_mask.append(plt_image)
 
         samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
-        tensorboard.add_images('GT', samples_mask)
-        tensorboard.add_images('Image', img)
+        tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
+        tensorboard.add_images('Test Image', img, self.test_iteration)
 
         mae = torch.mean(torch.abs(samples - samples_mask))
         self.preds.append(samples)
@@ -220,7 +205,7 @@ class SuperTransformerPos(pl.LightningModule):
         # (batch, threshold)
         self.precs.append(prec)
         self.recalls.append(recall)
-
+        self.test_iteration += 1
         return mae
 
 
