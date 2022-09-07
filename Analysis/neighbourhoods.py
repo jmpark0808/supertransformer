@@ -26,19 +26,27 @@ def shape(region):
     rho = np.linalg.norm(normalized_coords, axis=1)
     phi = np.arctan2(normalized_coords[:, 0], normalized_coords[:, 1])*180/np.pi+180
     radii = []
-    indices = []
-    for degree in range(0, 360, 15):
-        radii.append(rho[np.argmin(np.abs(phi - degree))])
-        indices.append(np.argmin(np.abs(phi - degree)))
 
-    # if 0.6 < np.sum(region)/region.size < 0.7:
-    #     print(indices)
-    #     plt.imshow(region.astype(np.int16))
-    #     for indice in indices:
-    #         plt.plot([centroid[1], coords[1][indice]], [centroid[0], coords[0][indice]])
-    #     plt.show()
-    #     assert(0)
-    return np.mean(np.nonzero(region),axis=1)
+    chunk = 10
+
+    for degree in range(0, 360, chunk):
+        try:
+            radii.append(np.max(rho[(degree<=phi) & (phi<degree+chunk)]))
+        except:
+            pass
+        # indices.append(np.argmin(np.abs(phi - degree)))
+
+    if 0.6 < np.sum(region)/region.size < 0.7:
+        plt.imshow(region.astype(np.int16))
+        for ind, radius in enumerate(radii):
+            degree = ((ind*chunk + chunk//2)-180)*np.pi/180.
+            x = radius * np.cos(degree)
+            y = radius * np.sin(degree)
+            plt.plot([centroid[0], centroid[0]+x], [centroid[1], centroid[1]+y])
+        plt.show()
+        assert(0)
+    print(np.sum(region))
+    return np.sum(region)
 
 
 data_dir = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Image/'
@@ -46,26 +54,21 @@ for file in os.listdir(data_dir):
     img = Image.open(os.path.join(data_dir, file))
     img = img.convert('RGB')
     img = img.resize((300, 300), resample=Image.BILINEAR)
-    img_np = np.array(img.convert('L')).astype(np.float32)/255.
 
-    lbp = local_binary_pattern(img_np, 24, 8)
-    (hist, _) = np.histogram(lbp.ravel(),
-			bins=np.arange(0, 24 + 3),
-			range=(0, 24 + 2))
-    hist = hist.astype("float")
-    hist /= (hist.sum() + 1e-7)
-    print(hist)
-    assert(0)
+    img_np = np.array(img).astype(np.float32)/255.
+
+
+
 
     img_size = img_np.shape[1]
 
     start = time.time()
-    segments = slic(img_np, n_segments=625,
+    segments = slic(img, n_segments=625,
         compactness=10.0,
         max_num_iter=10,
         convert2lab=True,
         enforce_connectivity=False,
-        slic_zero=True)
+        slic_zero=False)
     end = time.time()
     print('SLIC time', end-start)
     # segments = slic.iterate(img_np)
@@ -81,6 +84,7 @@ for file in os.listdir(data_dir):
     seq_len = max(regions['label'])
 
     print(regions.keys())
+    print(len(regions['area']))
 
     features = np.zeros([seq_len, 8])
     seq_mask = np.zeros([seq_len])

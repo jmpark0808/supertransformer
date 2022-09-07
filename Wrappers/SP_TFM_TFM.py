@@ -15,7 +15,7 @@ class SP_TFM_TFM_Wrapper(pl.LightningModule):
         self.es_patience = kwargs.get('es_patience')
 
         # Generator that produces the HeatMap
-        self.supert = SP_TFM_TFM(11, 8, 3, 0., 8, 3, norm='bn')
+        self.supert = SP_TFM_TFM(11, 8, 3, 0., 8, 3, self.num_seg, norm='bn')
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()
@@ -80,7 +80,42 @@ class SP_TFM_TFM_Wrapper(pl.LightningModule):
         pred = self.forward(features, adj)
 
         loss = self.loss(pred, seq_mask)
+        
+        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
+        seq_mask_numpy = seq_mask.detach().cpu().numpy()
+        batch_size = img.shape[0]
+        img_size = img.shape[2]
+        segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
+        samples = []
+        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+            plt_image = masked[labels-1].reshape([img_size, img_size])
+            samples.append(plt_image)
+
+        samples = torch.tensor(np.expand_dims(np.array(samples), 1))
+
+        samples_mask = []
+        for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
+            plt_image = masked[labels-1].reshape([img_size, img_size])
+            samples_mask.append(plt_image)
+
+        samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
+
+
+        pred = samples.reshape(samples.shape[0], -1)
+        mask = samples_mask.reshape(samples_mask.shape[0], -1)
+
+        y_temp = (pred >= 0.5).float()
+        tp = (y_temp * mask).sum(dim=-1)
+        # avoid prec becomes 0
+        prec, recall = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
+
+        prec = prec.mean(dim=0)
+        recall = recall.mean(dim=0)
+        beta_square = 0.3
+        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
+
+        self.log('Train Max F Score', torch.max(f_score))
         self.log('loss', loss.item())
         self.iteration += 1
         return loss
