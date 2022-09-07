@@ -9,11 +9,11 @@ class SP_TFM_TFM(nn.Module):
     Graph Convolutions using Transformers + Global aggregation using transformers
     Deterministic Positional Encoding 
     '''
-    def __init__(self, nfeat, nhid, block_depth, dropout, nheads, ntfm, norm='ln'):
+    def __init__(self, nfeat, nhid, block_depth, dropout, nheads, ntfm, num_regions, norm='ln'):
         """Dense version of GAT."""
         super(SP_TFM_TFM, self).__init__()
         self.linear = nn.Linear(nfeat, nhid * nheads)
-        self.transformers = nn.ModuleList([GraphConvTransformer(nhid*nheads, block_depth, nheads, nhid, nheads*nhid, norm=norm, dropout=dropout) for _ in range(ntfm)])
+        self.transformers = nn.ModuleList([GraphConvTransformer(nhid*nheads, block_depth, nheads, nhid, nheads*nhid, num_regions, norm=norm, dropout=dropout) for _ in range(ntfm)])
         self.pos_encoding = PositionalEncodingSuperPixel(nhid*nheads)
         self.out = nn.Linear(nhid * nheads, 1)
     def forward(self, x, adj):
@@ -27,7 +27,7 @@ class SP_TFM_TFM(nn.Module):
 class SP_RTFM_TFM(nn.Module):
     '''
     Graph Convolutions using Transformers + Global aggregation using transformers
-    Deterministic Positional Encoding 
+    No positional encoding
     '''
     def __init__(self, nfeat, nhid, block_depth, dropout, nheads, ntfm, num_regions, norm='ln'):
         """Dense version of GAT."""
