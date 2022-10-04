@@ -11,14 +11,14 @@ from tqdm import tqdm
 
 dataset_images = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Image'
 masks = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Mask'
-segment_numbers = [100, 200, 300, 400, 500, 600, 800, 1000, 1500, 3000, 10000, 45000, 90000]
-compactness = [0.1, 10]
+segment_numbers = [100, 200, 300, 400]#, 500, 600, 800, 1000, 1500, 3000, 10000, 45000, 90000]
+compactness = [10]
 plt.figure(figsize=(10,10))
 for compact in tqdm(compactness):
     all_ious = []
     for seg in segment_numbers:
         IoUs = []
-        for file in os.listdir(dataset_images)[:1000]:
+        for file in os.listdir(dataset_images)[:5000]:
             name = file.split('.jpg')[0]
             image = os.path.join(dataset_images, name+'.jpg')
             mask = os.path.join(masks, name+'.png')
@@ -77,7 +77,7 @@ for compact in tqdm(compactness):
     plt.plot(segment_numbers, all_ious, label=f'{compact}')
     plt.scatter(segment_numbers, all_ious)
     for i, j in zip(segment_numbers, all_ious):
-        plt.text(i, j+0.01, '{}'.format(i))
+        plt.text(i, j+0.005, '{}'.format(i))
 fs = 20
 plt.title(f'Segmentation boundary intersection accuracy', fontsize=fs)
 plt.xlabel('Segmentations', fontsize=fs)
