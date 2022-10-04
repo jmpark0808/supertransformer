@@ -1,12 +1,12 @@
 import pytorch_lightning as pl
 import torch
-from Models.SP_TFM import SP_TFM_TFM
+from Models.SP_TFM import SP_ETFM_TFM
 import torch.nn.functional as F
 import numpy as np
 
 from dataset.constants import NUM_CHUNK
 
-class SP_TFM_TFM_Wrapper(pl.LightningModule):
+class SP_ETFM_TFM_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -17,7 +17,7 @@ class SP_TFM_TFM_Wrapper(pl.LightningModule):
         self.es_patience = kwargs.get('es_patience')
 
         # Generator that produces the HeatMap
-        self.supert = SP_TFM_TFM(11, 32, 3, 0., 8, 3, self.num_seg, norm='bn')
+        self.supert = SP_ETFM_TFM(9, 16, 10, 0., 8, self.num_seg)
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()
@@ -54,10 +54,7 @@ class SP_TFM_TFM_Wrapper(pl.LightningModule):
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-        distance = 2
-        adj = torch.matrix_power(adj, distance).bool().int()
-
-
+        
         pred = self.supert(x, adj)
 
         return pred
@@ -145,6 +142,7 @@ class SP_TFM_TFM_Wrapper(pl.LightningModule):
 
 
         # forward pass
+ 
         pred = self.forward(features, adj)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1

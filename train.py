@@ -15,12 +15,13 @@ from pytorch_lightning.profiler import SimpleProfiler
 from pytorch_lightning.loggers import TensorBoardLogger
 from Models.SP_TFM import SP_RTFM_TFM
 from Wrappers.SP_CNN_LIN import SP_CNN_LIN_Wrapper
+from Wrappers.SP_ETFM_TFM import SP_ETFM_TFM_Wrapper
 from Wrappers.SP_RTFM_TFM import SP_RTFM_TFM_Wrapper
 from Wrappers.SP_TFM_DIL import SP_TFM_DIL_Wrapper
 from Wrappers.SP_TFM_TFM import SP_TFM_TFM_Wrapper
 
 # Import dataset modules
-from dataset.superpixel import DUTSDataModule, SPCNNDataModule, SPDataModule
+from dataset.superpixel import DUTSDataModule, SPCNNDataModule, SPDataModule, SPEDataModule
 
 
 # Metric logging
@@ -46,13 +47,15 @@ MODEL_DIRECTORY = {
     "SP_TFM_DIL": SP_TFM_DIL_Wrapper,
     "SP_RTFM_TFM": SP_RTFM_TFM_Wrapper,
     "SP_CNN_LIN": SP_CNN_LIN_Wrapper,
-    "SP_TFM_TFM": SP_TFM_TFM_Wrapper
+    "SP_TFM_TFM": SP_TFM_TFM_Wrapper,
+    "SP_ETFM_TFM": SP_ETFM_TFM_Wrapper,
 
 }
 DATALOADER_DIRECTORY = {
     'SP': SPDataModule,
     'DUTS': DUTSDataModule,
-    'SP_CNN': SPCNNDataModule
+    'SP_CNN': SPCNNDataModule,
+    'SPE': SPEDataModule
 
 } 
 
@@ -77,10 +80,8 @@ if __name__ == "__main__":
     parser.add_argument('--val_freq', help='How often to run validation set within a training epoch, i.e. 0.25 will run 4 validation runs in 1 training epoch', default=0.1, type=float)
     parser.add_argument('--es_patience', help='Max # of consecutive validation runs w/o improvment', default=5, type=int)
     parser.add_argument('--logdir', help='logdir for models and losses. default = .', default='./', type=str)
-    parser.add_argument('--lr', help='learning_rate for pose. default = 0.001', default=0.0001, type=float)
+    parser.add_argument('--lr', help='learning_rate for pose. default = 0.0001', default=0.0001, type=float)
     parser.add_argument('--num_seg', help='Approximate number of segmentations', default=600, type=int)
-    parser.add_argument('--display_freq', help='Frequency to display result image on Tensorboard, in batch units',
-                        default=64, type=int)
 
     parser.add_argument('--seed', help='Seed for reproduceability', 
                         default=42, type=int)
