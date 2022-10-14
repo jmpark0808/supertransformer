@@ -17,6 +17,7 @@ import os
 from numpy_superpixel import SLICProcessor
 import time
 from sklearn.metrics.pairwise import euclidean_distances
+from tqdm import tqdm
 CHUNK = 10
 NUM_CHUNK = 360//CHUNK
 
@@ -84,18 +85,34 @@ def polarize(region):
     
     for ind, degree in enumerate(range(0, 360, chunk)):
         try:
-            radii_max[ind] = normalized_coords[np.argmax(rho[(degree<=phi) & (phi<degree+chunk)])]
-            radii_min[ind] = normalized_coords[np.argmin(rho[(degree<=phi) & (phi<degree+chunk)])]
+            radii_max[ind] = normalized_coords[np.argmax(np.where((degree<=phi) & (phi<degree+chunk), rho, np.zeros_like(rho)))]
         except: 
             pass
         
-
+        try:
+            radii_min[ind] = normalized_coords[np.argmin(np.where((degree<=phi) & (phi<degree+chunk), rho, np.inf*np.ones_like(rho)))]
+        except: 
+            pass
+        
+        
     return np.concatenate((radii_max, radii_min), axis=0)
 
 
+def embed(region, intensities):
+    # note the ddof arg to get the sample var if you so desire!
+    cut_out = np.zeros([24, 24])
+    cut_out[np.nonzero(region)] = intensities[np.nonzero(region)]
+    return (cut_out.reshape(-1))
+    
+def image_stdev(region, intensities):
+    # note the ddof arg to get the sample var if you so desire!
+    return np.std(intensities[region])
+
 data_dir = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Image/'
 all_distances = []
-for file in os.listdir(data_dir)[:1000]:
+heights = []
+widths = []
+for file in tqdm(os.listdir(data_dir)):
     img = Image.open(os.path.join(data_dir, file))
     img = img.convert('RGB')
     img = img.resize((300, 300), resample=Image.BILINEAR)
@@ -115,7 +132,7 @@ for file in os.listdir(data_dir)[:1000]:
         enforce_connectivity=False,
         slic_zero=False)
     end = time.time()
-    print('SLIC time', end-start)
+    # print('SLIC time', end-start)
     # segments = slic.iterate(img_np)
 
     vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
@@ -125,16 +142,23 @@ for file in os.listdir(data_dir)[:1000]:
     bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
     # bneighbors = np.unique(np.hstack([vs_right, vs_below]), axis=1)
 
-    regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'bbox', 'area', 'intensity_mean', 'extent', 'coords', 'eccentricity'), extra_properties=[polarize])
+    regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'bbox', 'area', 'intensity_mean', 'extent', 'coords', 'eccentricity', 'image_filled'),
+     extra_properties=[image_stdev, embed])#, polarize])
     seq_len = max(regions['label'])
 
     print(regions.keys())
-    print(len(regions['area']))
+    # print(len(regions['area']))
     assert(0)
 
-    features = np.zeros([seq_len, 8])
+    features = np.zeros([seq_len, 11+NUM_CHUNK*4])
     seq_mask = np.zeros([seq_len])
     label = regions['label']
+    for i in regions['image_filled']:
+        h, w = i.shape
+        heights.append(h)
+        widths.append(w)
+    
+
 
     features[label-1, 0] = regions['centroid-0']
     features[label-1, 1] = regions['centroid-1']
@@ -144,15 +168,51 @@ for file in os.listdir(data_dir)[:1000]:
     features[label-1, 5] = regions['intensity_mean-2']/255.
     features[label-1, 6] = regions['extent']
     features[label-1, 7] = regions['eccentricity']
+    features[label-1, 8] = regions['image_stdev-0']/255.
+    features[label-1, 9] = regions['image_stdev-1']/255.
+    features[label-1, 10] = regions['image_stdev-2']/255.
+    # for i in range(NUM_CHUNK*2):
+    #     features[label-1, 11+i] = regions[f'polarize-{i}-0']
+    #     features[label-1, 11+NUM_CHUNK*2+i] = regions[f'polarize-{i}-1']
 
 
-    neighbor_array = np.zeros([seq_len, seq_len])
-    neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
-    neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+    # distances = euclidean_distances(features[:, :2], features[:, :2])
+    # ind = np.argsort(distances, axis=1)
+    # ranged_ind = np.array(range(self.num_seg))
+    # ranged_ind = np.tile(ranged_ind, (self.num_seg, 1)) 
+    # ind = np.take_along_axis(ranged_ind, ind, axis=1)
+    # ind = ind[:, :NUM_NEIGHBOURS]
+    # neighbor_array = distances <= 30
 
-    distances = euclidean_distances(features[:, :2], features[:, :2])
-    all_distances.append(np.mean(distances[np.nonzero(distances*neighbor_array)]))
-    print(np.mean(distances[np.nonzero(distances*neighbor_array)]))
+    # distances = euclidean_distances(features[:, :2], features[:, :2])
+    # all_distances.append(np.mean(distances[np.nonzero(distances*neighbor_array)]))
+    # print(np.mean(distances[np.nonzero(distances*neighbor_array)]))
+
+    # cen = features[:, :2] # 625, 2
+    # cen = np.repeat(cen[:, None, :], NUM_CHUNK*2, axis=1)
+    # pos_x = features[:, 11:11+NUM_CHUNK*2] # 625, 72
+    # pos_y = features[:, 11+NUM_CHUNK*2:] # 625, 72
+    # pos = np.concatenate((pos_x[:, :, None], pos_y[:, :, None]), axis=2)+cen
+    # relative_distances = pos[None, :, :, :]-cen[:, None, :, :] # 625, 625, 72, 2
+   
+
+    # neighbor_index = 125
+    # centroid = features[neighbor_index, :2]
+    # all_sp = relative_distances[neighbor_index, np.squeeze(np.argwhere(neighbor_array[neighbor_index, :] == 1)), :, :]
+    # all_sp = pos[np.squeeze(np.argwhere(neighbor_array[neighbor_index, :] == 1)), :, :]
+    
+    # for sp in all_sp:
+    #     minimums = sp[36:, :]
+    #     maximums = sp[:36, :]
+    #     plt.scatter(maximums[:, 1], maximums[:, 0])
+    #     plt.scatter(minimums[:, 1], minimums[:, 0], c='blue')
+    # # plt.scatter(0, 0, c='orange', s=30)
+    # plt.show()
+    # assert(0)
+        
+
+
+
     # Try dilation
     # neighbor_array = np.linalg.matrix_power(neighbor_array, 1).astype(bool).astype(int) - np.linalg.matrix_power(neighbor_array, 0).astype(bool).astype(int) 
     # + np.eye(seq_len).astype(bool).astype(int)
@@ -196,4 +256,5 @@ for file in os.listdir(data_dir)[:1000]:
     # assert(0)
 
     
-print(np.mean(all_distances))
+print(np.min(heights), np.max(heights))
+print(np.min(widths), np.max(widths))

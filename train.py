@@ -17,11 +17,12 @@ from Models.SP_TFM import SP_RTFM_TFM
 from Wrappers.SP_CNN_LIN import SP_CNN_LIN_Wrapper
 from Wrappers.SP_ETFM_TFM import SP_ETFM_TFM_Wrapper
 from Wrappers.SP_RTFM_TFM import SP_RTFM_TFM_Wrapper
+from Wrappers.SP_TFM import SP_TFM_Wrapper
 from Wrappers.SP_TFM_DIL import SP_TFM_DIL_Wrapper
 from Wrappers.SP_TFM_TFM import SP_TFM_TFM_Wrapper
 
 # Import dataset modules
-from dataset.superpixel import DUTSDataModule, SPCNNDataModule, SPDataModule, SPEDataModule
+from dataset.superpixel import DUTSDataModule, SPCNNDataModule, SPDataModule, SPEDataModule, SPEmbedDataModule, SPEmbedDataset
 
 
 # Metric logging
@@ -49,13 +50,15 @@ MODEL_DIRECTORY = {
     "SP_CNN_LIN": SP_CNN_LIN_Wrapper,
     "SP_TFM_TFM": SP_TFM_TFM_Wrapper,
     "SP_ETFM_TFM": SP_ETFM_TFM_Wrapper,
+    "SP_TFM": SP_TFM_Wrapper
 
 }
 DATALOADER_DIRECTORY = {
     'SP': SPDataModule,
     'DUTS': DUTSDataModule,
     'SP_CNN': SPCNNDataModule,
-    'SPE': SPEDataModule
+    'SPE': SPEDataModule,
+    'SPEmbed': SPEmbedDataModule
 
 } 
 
