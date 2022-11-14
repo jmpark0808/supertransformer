@@ -8,6 +8,7 @@ import time
 import numpy as np
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
+from Wrappers.PositionalEncoding import PositionalEncodingSuperPixel
 
 from dataset.constants import *
 
@@ -265,6 +266,118 @@ class GraphConvTransformer(nn.Module):
             x = attn(x) + x
             x = ff(x) + x
         return x
+
+class MultiHeadAttentionLayer(nn.Module):
+    def __init__(self, in_dim, out_dim, num_heads, dropout):
+        super().__init__()
+        inner_dim = out_dim *  num_heads
+        self.heads = num_heads
+        self.scale = out_dim ** -0.5
+        self.attend = nn.Softmax(dim = -1)
+        self.to_qkv = nn.Linear(in_dim, inner_dim * 3, bias = False)
+
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, in_dim),
+            nn.Dropout(dropout)
+        ) 
+
+    def forward(self, x, e):
+        qkv = self.to_qkv(x).chunk(3, dim = -1)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
+        e = rearrange(e, 'b n k (h d) -> b h n k d', h = self.heads)
+
+        dots = q.unsqueeze(3)*k.unsqueeze(2) * self.scale
+        # dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # seq_len x seq_len 
+
+        dots = dots*e
+        
+        attn = self.attend(dots.sum(-1))
+
+        out = torch.matmul(attn, v)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        return self.to_out(out), dots
+
+
+class GraphTransformerLayer(nn.Module):
+    def __init__(self, dim, heads, dim_head, dropout = 0.):
+        super().__init__()
+        inner_dim = heads*dim_head
+        self.inner_dim = inner_dim
+        self.attention = MultiHeadAttentionLayer(dim, dim_head, heads, dropout)
+        self.O_h = nn.Linear(inner_dim, inner_dim)
+        self.O_e = nn.Linear(inner_dim, inner_dim)
+
+        self.bn1_h = nn.BatchNorm1d(inner_dim)
+        self.bn1_e = nn.BatchNorm1d(inner_dim)
+
+        self.bn2_h = nn.BatchNorm1d(inner_dim)
+        self.bn2_e = nn.BatchNorm1d(inner_dim)
+
+        self.ffn_h_layer = nn.Sequential(nn.Linear(inner_dim, inner_dim*2), nn.ReLU(), nn.Dropout(dropout), nn.Linear(inner_dim*2, inner_dim))
+
+
+        self.ffn_e_layer = nn.Sequential(nn.Linear(inner_dim, inner_dim*2), nn.ReLU(), nn.Dropout(dropout),nn.Linear(inner_dim*2, inner_dim))
+
+
+
+     
+    def forward(self, x, e):
+        x_in = x
+        e_in = e
+
+        h_attn_out, e_attn_out = self.attention(x, e)
+        e_attn_out = rearrange(e_attn_out, 'b h n k d -> b n k (h d)')
+
+        h = self.O_h(h_attn_out)
+        e = self.O_e(e_attn_out)
+        h_size = h.size()
+        e_size = e.size()
+
+        h = x_in + h
+        e = e_in + e
+
+        h = h.view(-1, h_size[-1])
+        e = e.view(-1, e_size[-1])
+ 
+        h = self.bn1_h(h)
+        e = self.bn1_e(e)
+
+        h_in2 = h
+        e_in2 = e
+
+        h = self.ffn_h_layer(h)
+        e = self.ffn_e_layer(e)
+
+        h = h_in2 + h
+        e = e_in2 + e
+
+        h = self.bn2_h(h)
+        e = self.bn2_e(e)
+
+        h = h.view(h_size[0], h_size[1], -1)
+        e = e.view(e_size[0], e_size[1], e_size[2], -1)
+        return h, e
+
+
+class GraphTransformer(nn.Module):
+    def __init__(self, h_in, dim, heads, dim_head, depth, dropout = 0.):
+        super().__init__()
+        self.h_linear = nn.Sequential(nn.Linear(h_in, dim), nn.Dropout(dropout))
+        # self.lap_pos_enc = nn.Linear(POS_EMBEDDING, dim)
+        self.e_linear = nn.Linear(5, dim)
+        self.layers = nn.ModuleList([GraphTransformerLayer(dim, heads, dim_head, dropout) for _ in range(depth)])
+        self.out = nn.Linear(heads*dim_head, 1)
+        self.pos_encoding = PositionalEncodingSuperPixel(dim_head*heads)
+
+    def forward(self, h, e):
+        h = self.h_linear(h[:, :, 2:])
+        h = h + self.pos_encoding(h[:, :, :2])
+        e = self.e_linear(e)
+        for conv in self.layers:
+            h, e = conv(h, e)
+            
+        return self.out(h)
+
 
 class GraphConvETransformer(nn.Module):
     def __init__(self, dim, depth, heads, dim_head, mlp_dim, num_regions, block_ind, norm=True, dropout = 0.):

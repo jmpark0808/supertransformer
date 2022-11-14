@@ -13,13 +13,18 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks.lr_monitor import LearningRateMonitor
 from pytorch_lightning.profiler import SimpleProfiler
 from pytorch_lightning.loggers import TensorBoardLogger
-from Models.SP_TFM import SP_RTFM_TFM
 from Wrappers.SP_CNN_LIN import SP_CNN_LIN_Wrapper
 from Wrappers.SP_ETFM_TFM import SP_ETFM_TFM_Wrapper
+from Wrappers.SP_GCN import SP_GCN_Wrapper
+from Wrappers.SP_GTFM import SP_GTFM_Wrapper
 from Wrappers.SP_RTFM_TFM import SP_RTFM_TFM_Wrapper
 from Wrappers.SP_TFM import SP_TFM_Wrapper
+from Wrappers.SP_TFM_AP import SP_TFM_AP_Wrapper
 from Wrappers.SP_TFM_DIL import SP_TFM_DIL_Wrapper
+from Wrappers.SP_TFM_NP import SP_TFM_NP_Wrapper
+from Wrappers.SP_TFM_PE import SP_TFM_PE_Wrapper
 from Wrappers.SP_TFM_TFM import SP_TFM_TFM_Wrapper
+from Wrappers.SP_GAT import SP_GAT_Wrapper
 
 # Import dataset modules
 from dataset.superpixel import DUTSDataModule, SPCNNDataModule, SPDataModule, SPEDataModule, SPEmbedDataModule, SPEmbedDataset
@@ -50,7 +55,13 @@ MODEL_DIRECTORY = {
     "SP_CNN_LIN": SP_CNN_LIN_Wrapper,
     "SP_TFM_TFM": SP_TFM_TFM_Wrapper,
     "SP_ETFM_TFM": SP_ETFM_TFM_Wrapper,
-    "SP_TFM": SP_TFM_Wrapper
+    "SP_TFM": SP_TFM_Wrapper,
+    "SP_GCN": SP_GCN_Wrapper,
+    "SP_TFM_NP": SP_TFM_NP_Wrapper,
+    "SP_TFM_AP": SP_TFM_AP_Wrapper,
+    "SP_TFM_PE": SP_TFM_PE_Wrapper,
+    "SP_GTFM": SP_GTFM_Wrapper,
+    "SP_GAT": SP_GAT_Wrapper
 
 }
 DATALOADER_DIRECTORY = {
@@ -69,6 +80,9 @@ if __name__ == "__main__":
                         , default=False, action=argparse.BooleanOptionalAction)
     parser.add_argument('--dataloader', help="Type of dataloader", required=True, default=None)
     parser.add_argument("--load",
+                        help="Directory of pre-trained model,  \n"
+                             "None --> Do not use pre-trained model. Training will start from random initialized model")
+    parser.add_argument("--resume_from_checkpoint",
                         help="Directory of pre-trained model,  \n"
                              "None --> Do not use pre-trained model. Training will start from random initialized model")
     parser.add_argument('--dataset_tr', help='Directory of your train Dataset', required=True, default=None)
@@ -146,7 +160,8 @@ if __name__ == "__main__":
         logger=logger,
         max_epochs=dict_args["epoch"],
         log_every_n_steps=10,
-        gradient_clip_val=dict_args['clip_grad_norm']
+        gradient_clip_val=dict_args['clip_grad_norm'],
+        resume_from_checkpoint=dict_args['resume_from_checkpoint']
     ) 
 
     # Trainer: train model

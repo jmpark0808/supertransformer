@@ -7,18 +7,20 @@ from skimage.measure import regionprops_table
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
-
+import pickle
 
 dataset_images = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Image'
 masks = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Mask'
-segment_numbers = [100, 200, 300, 400]#, 500, 600, 800, 1000, 1500, 3000, 10000, 45000, 90000]
-compactness = [10]
+segment_numbers = [100, 200, 300, 400, 500, 600, 800, 1000, 1500, 3000, 10000, 45000, 90000]
+compactness = [0.1, 1, 10, 50]
+d= {}
+d['segment_numbers'] = segment_numbers
 plt.figure(figsize=(10,10))
 for compact in tqdm(compactness):
     all_ious = []
     for seg in segment_numbers:
         IoUs = []
-        for file in os.listdir(dataset_images)[:5000]:
+        for file in tqdm(os.listdir(dataset_images)[:1000]):
             name = file.split('.jpg')[0]
             image = os.path.join(dataset_images, name+'.jpg')
             mask = os.path.join(masks, name+'.png')
@@ -74,10 +76,14 @@ for compact in tqdm(compactness):
             IoUs.append(f_score)
 
         all_ious.append(np.mean(IoUs))
+    d[compact] = all_ious
     plt.plot(segment_numbers, all_ious, label=f'{compact}')
     plt.scatter(segment_numbers, all_ious)
     for i, j in zip(segment_numbers, all_ious):
-        plt.text(i, j+0.005, '{}'.format(i))
+        plt.text(i, j+0.002, '{}'.format(i))
+
+with open('segments_plot_data.pkl', 'wb') as f:
+    pickle.dump(d, f)
 fs = 20
 plt.title(f'Segmentation boundary intersection accuracy', fontsize=fs)
 plt.xlabel('Segmentations', fontsize=fs)
@@ -86,6 +92,7 @@ plt.xscale('log')
 plt.xticks(fontsize=fs, rotation=45)
 plt.yticks(fontsize=fs)
 plt.legend(loc="lower right", fontsize=fs, title='Compactness', title_fontsize=fs)
+plt.axvline(x=segment_numbers)
 plt.savefig(f'compactness.jpg')
     
 
