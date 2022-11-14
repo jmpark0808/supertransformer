@@ -4,7 +4,7 @@ from Models.SP_TFM import SP_TFM
 
 import torch.nn.functional as F
 import numpy as np
-
+from dataset.constants import *
 from dataset.constants import NUM_CHUNK
 
 class SP_TFM_Wrapper(pl.LightningModule):
@@ -18,7 +18,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         self.es_patience = kwargs.get('es_patience')
 
         # Generator that produces the HeatMap
-        self.supert = SP_TFM(11, 64, 3, 0., 8, 6, self.num_seg, norm='bn')
+        self.supert = SP_TFM(11, 16, 8, 6)
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()
@@ -48,7 +48,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         return optimizer
       
 
-    def forward(self, x, adj):
+    def forward(self, input):
         """
         Forward pass through model
         :param x: Input features
@@ -56,7 +56,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
 
-        pred = self.supert(x, adj)
+        pred = self.supert(input[0])
 
         return pred
 

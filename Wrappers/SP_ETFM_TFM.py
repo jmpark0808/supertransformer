@@ -17,7 +17,7 @@ class SP_ETFM_TFM_Wrapper(pl.LightningModule):
         self.es_patience = kwargs.get('es_patience')
 
         # Generator that produces the HeatMap
-        self.supert = SP_ETFM_TFM(9, 16, 10, 0., 8, self.num_seg)
+        self.supert = SP_ETFM_TFM(6+NUM_CHUNK*4, 16, 10, 0., 8, self.num_seg)
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()

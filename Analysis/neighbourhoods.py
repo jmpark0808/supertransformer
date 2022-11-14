@@ -18,8 +18,10 @@ from numpy_superpixel import SLICProcessor
 import time
 from sklearn.metrics.pairwise import euclidean_distances
 from tqdm import tqdm
-CHUNK = 10
-NUM_CHUNK = 360//CHUNK
+from scipy import sparse as sp
+from dataset.constants import *
+from scipy.spatial.distance import pdist, squareform
+
 
 def shape(region):
     # note the ddof arg to get the sample var if you so desire!
@@ -98,6 +100,13 @@ def polarize(region):
     return np.concatenate((radii_max, radii_min), axis=0)
 
 
+def hist(region, intensities):
+    # note the ddof arg to get the sample var if you so desire!
+    (hist, _) = np.histogram(intensities[region], bins=BINS, range=(0, 255), density=False)
+    return hist
+
+
+
 def embed(region, intensities):
     # note the ddof arg to get the sample var if you so desire!
     cut_out = np.zeros([24, 24])
@@ -115,51 +124,36 @@ widths = []
 for file in tqdm(os.listdir(data_dir)):
     img = Image.open(os.path.join(data_dir, file))
     img = img.convert('RGB')
-    img = img.resize((300, 300), resample=Image.BILINEAR)
+    img = img.resize((1000, 1000), resample=Image.BILINEAR)
 
     img_np = np.array(img).astype(np.float32)/255.
 
-
+    num_seg = 256
 
 
     img_size = img_np.shape[1]
 
     start = time.time()
-    segments = slic(img, n_segments=625,
+    segments = slic(img, n_segments=num_seg,
         compactness=10.0,
         max_num_iter=10,
         convert2lab=True,
         enforce_connectivity=False,
         slic_zero=False)
-    end = time.time()
-    # print('SLIC time', end-start)
-    # segments = slic.iterate(img_np)
-
     vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
     vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
     vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
     vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
     bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
-    # bneighbors = np.unique(np.hstack([vs_right, vs_below]), axis=1)
+    end = time.time()
 
-    regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'bbox', 'area', 'intensity_mean', 'extent', 'coords', 'eccentricity', 'image_filled'),
-     extra_properties=[image_stdev, embed])#, polarize])
-    seq_len = max(regions['label'])
-
-    print(regions.keys())
-    # print(len(regions['area']))
-    assert(0)
-
-    features = np.zeros([seq_len, 11+NUM_CHUNK*4])
-    seq_mask = np.zeros([seq_len])
+    regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean',
+                                                                                'extent', 'coords', 'eccentricity'), extra_properties=[image_stdev, hist])#, polarize])
+                
+    seq_len = len(regions['label'])
+    features = np.zeros([num_seg, 11])
+    seq_mask = np.zeros([num_seg])
     label = regions['label']
-    for i in regions['image_filled']:
-        h, w = i.shape
-        heights.append(h)
-        widths.append(w)
-    
-
-
     features[label-1, 0] = regions['centroid-0']
     features[label-1, 1] = regions['centroid-1']
     features[label-1, 2] = regions['area'] / (img_size**2)
@@ -171,6 +165,52 @@ for file in tqdm(os.listdir(data_dir)):
     features[label-1, 8] = regions['image_stdev-0']/255.
     features[label-1, 9] = regions['image_stdev-1']/255.
     features[label-1, 10] = regions['image_stdev-2']/255.
+
+
+    neighbor_array = np.zeros([num_seg, num_seg])
+    # eye = np.eye(self.num_seg)
+    neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+    neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+    # neighbor_array -= eye
+
+
+    # A = neighbor_array.astype(float)
+    # N = sp.diags(np.sum(A, axis=0)** -0.5, dtype=float)
+    # L = eye - N * A * N
+
+    # # Eigenvectors with numpy
+    # EigVal, EigVec = np.linalg.eig(L)
+    # idx = EigVal.argsort() # increasing order
+    # EigVal, EigVec = EigVal[idx], np.real(EigVec[:,idx])
+    # pos_enc = torch.from_numpy(EigVec[:,1:POS_EMBEDDING+1]).float() 
+
+    histogram_r = np.zeros([num_seg, BINS])
+    histogram_g = np.zeros([num_seg, BINS])
+    histogram_b = np.zeros([num_seg, BINS])
+    for i in range(BINS):
+        histogram_r[label-1, i] = regions[f'hist-{i}-0']
+        histogram_g[label-1, i] = regions[f'hist-{i}-1']
+        histogram_b[label-1, i] = regions[f'hist-{i}-2']
+
+    histogram_r = histogram_r/np.sum(histogram_r, axis=1, keepdims=True)
+    histogram_g = histogram_g/np.sum(histogram_g, axis=1, keepdims=True)
+    histogram_b = histogram_b/np.sum(histogram_b, axis=1, keepdims=True)
+    
+    histogram_r_sq = 1-pdist(histogram_r, lambda u, v: np.sqrt(u*v).sum())
+    histogram_g_sq = 1-pdist(histogram_g, lambda u, v: np.sqrt(u*v).sum())
+    histogram_b_sq = 1-pdist(histogram_b, lambda u, v: np.sqrt(u*v).sum())
+
+    # spatial_distances = euclidean_distances(features[:, :2], features[:, :2])/np.sqrt(300**2+300**2)
+    spatial_distances_x = (features[:, 0:1] - features[:, 0:1].T)/300.
+    spatial_distances_y = (features[:, 1:2] - features[:, 1:2].T)/300.
+    # ind = np.argsort(distances, axis=1)
+    # neighbor_array = ind <= NUM_NEIGHBOURS
+    # neighbor_array = np.zeros([self.num_seg, self.num_seg])
+    
+    edge_features = np.stack((spatial_distances_x, spatial_distances_y, squareform(histogram_r_sq), squareform(histogram_g_sq), squareform(histogram_b_sq)), axis=2)
+
+    # end = time.time()
+    print(end-start)
     # for i in range(NUM_CHUNK*2):
     #     features[label-1, 11+i] = regions[f'polarize-{i}-0']
     #     features[label-1, 11+NUM_CHUNK*2+i] = regions[f'polarize-{i}-1']

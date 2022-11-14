@@ -107,7 +107,7 @@ def get_points(tupVerts):
 
 
 num_images = 5000
-image_save_directory = '/mnt/hdd/Datasets/ToyDatasetV2/TR'
+image_save_directory = '/mnt/hdd/Datasets/ToyDatasetV3/TR'
 for i in range(num_images):
     image = np.random.randint(0, 255, [256, 256, 3])
     random_center_x = np.random.randint(50, 200)
@@ -121,7 +121,18 @@ for i in range(num_images):
                             spikiness=0.2,
                             num_vertices=random_vertices)
     mask = get_points(vertices)
-    idx = np.where(mask)
+
+    random_radius = np.random.randint(10, 30)
+    random_vertices = np.random.randint(3, 10)
+    vertices = generate_polygon(center=(random_center_x, random_center_y),
+                            avg_radius=random_radius,
+                            irregularity=0.35,
+                            spikiness=0.2,
+                            num_vertices=random_vertices)
+    new_mask = get_points(vertices)
+    hole_mask = np.logical_not(mask == new_mask)
+
+    idx = np.where(hole_mask)
     image[idx[0], idx[1], :] = random_colour
     shape_noise = np.random.normal(0, 1, [len(idx[0]), 3])
     image = image.astype(np.float64)
@@ -136,7 +147,7 @@ for i in range(num_images):
 
 
 num_images = 5000
-image_save_directory = '/mnt/hdd/Datasets/ToyDatasetV2/TE'
+image_save_directory = '/mnt/hdd/Datasets/ToyDatasetV3/TE'
 for i in range(num_images):
     image = np.random.randint(0, 255, [256, 256, 3])
     random_center_x = np.random.randint(50, 200)
@@ -149,8 +160,20 @@ for i in range(num_images):
                             irregularity=0.35,
                             spikiness=0.2,
                             num_vertices=random_vertices)
+    
     mask = get_points(vertices)
-    idx = np.where(mask)
+
+    random_radius = np.random.randint(10, 30)
+    random_vertices = np.random.randint(3, 10)
+    vertices = generate_polygon(center=(random_center_x, random_center_y),
+                            avg_radius=random_radius,
+                            irregularity=0.35,
+                            spikiness=0.2,
+                            num_vertices=random_vertices)
+    new_mask = get_points(vertices)
+    hole_mask = np.logical_not(mask == new_mask)
+
+    idx = np.where(hole_mask)
     image[idx[0], idx[1], :] = random_colour
     shape_noise = np.random.normal(0, 1, [len(idx[0]), 3])
     image = image.astype(np.float64)
