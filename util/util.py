@@ -64,7 +64,13 @@ def estimate_memory_inference(model, sample_input, batch_size=1, use_amp=False, 
     model_memory = b - a
     model_input = torch.stack([sample_input]*batch_size, dim=0)
     output = model(model_input.to(device))
-    total_memory = model_memory
+    c = torch.cuda.memory_allocated(device)
+    if use_amp:
+        amp_multiplier = .5
+    else:
+        amp_multiplier = 1
+    forward_pass_memory = (c - b)*amp_multiplier
+    total_memory = model_memory+forward_pass_memory
 
     return total_memory
 
