@@ -76,7 +76,7 @@ for ind, model in enumerate(models):
             flops.append(math.log10(flop))
 
             model_memory = util.estimate_memory_inference(forward, input)
-            inference_mems.append(math.log10(model_memory))
+            inference_mems.append(model_memory)
         # del input
         # del forward
         # torch.cuda.empty_cache()
@@ -84,26 +84,26 @@ for ind, model in enumerate(models):
     axs[0].plot(resolutions, flops, label=model)
     axs[0].scatter(resolutions, flops, c='red')
     axs[0].set_xticks([])
-    axs[0].set_ylabel('MACs')
+    axs[0].set_ylabel('MACs (log scale)', fontsize=20)
     # axs[0].legend()
 
     axs[1].plot(resolutions, training_mems, label=model)
     axs[1].scatter(resolutions, training_mems, c='red')
     axs[1].set_xticks([])
-    axs[1].set_ylabel('Training Mem')
-    axs[1].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    axs[1].set_ylabel('Training Mem bytes (log scale)', fontsize=20)
+    axs[1].legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=15)
 
     axs[2].plot(resolutions, inference_mems, label=model)
     axs[2].scatter(resolutions, inference_mems, c='red')
-    axs[2].set_ylabel('Inference Mem')
+    axs[2].set_ylabel('Inference Mem bytes', fontsize=20)
     axs[2].set_xticks(resolutions)
     # axs[2].legend()
-    axs[2].set_xlabel('Resolution')
-    fig.supylabel('Log scale')
+    axs[2].set_xlabel('Resolution', fontsize=20)
+    # fig.supylabel('Log scale')
     print(flops)
     print(training_mems)
     print(inference_mems)
-    assert(0)
+
 
 fig.tight_layout()
 fig.savefig('/home/eddie/waterloo/supertransformer/results/image_res_vs_computation.png')

@@ -80,7 +80,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
 
         # forward pass
         
-        pred = self.forward(features, adj)
+        pred = self.forward([features, adj])
 
         loss = self.loss(pred, seq_mask)
         
@@ -143,7 +143,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
 
 
         # forward pass
-        pred = self.forward(features, adj)
+        pred = self.forward([features, adj])
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
@@ -204,7 +204,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
 
 
         # forward pass
-        pred = self.forward(features, adj)
+        pred = self.forward([features, adj])
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
