@@ -20,7 +20,7 @@ def euc_distance(pt1, pt2):
     return np.sqrt(y_diff**2+x_diff**2)
 
 
-contour, hierarchy = cv2.findContours(rectangle, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+contour, hierarchy = cv2.findContours(rectangle, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 points = contour[0][:, 0, :]
 
 distances = []
@@ -57,7 +57,12 @@ def resample_2d(points, N):
     yi = np.interp(dSi, d, yc)
     return xi, yi
 
-xi, yi = resample_2d(points, 14)
+
+fig, ax = plt.subplots(2, 6)
+
+N = 70
+
+xi, yi = resample_2d(points, N)
 contour_array = np.stack((xi, yi), axis=1)
 # plt.scatter(points[1:, 0], points[1:, 1], c='blue')
 # plt.scatter(points[0, 0], points[0, 1], c='red')
@@ -67,7 +72,18 @@ contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
 contour_complex.real = contour_array[:, 0]
 contour_complex.imag = contour_array[:, 1]
 fourier_result = np.fft.fft(contour_complex)
+ax[0, 0].scatter(xi[2:], yi[2:], c='blue')
+ax[0, 0].scatter(xi[0], yi[0], c='red', label='Start')
+ax[0, 0].scatter(xi[1], yi[1], c='Green', label='Second')
+ax[0, 0].legend()
+ax[0, 0].set_title('Original')
+ax[0, 0].set_ylabel('Images')
 
+ax[1, 0].plot(fourier_result.real[1:], label='Real')
+ax[1, 0].plot(fourier_result.imag[1:], label='Imag')
+ax[1, 0].legend(loc='lower left')
+ax[1, 0].set_ylabel('Fourier Coefficients')
+print('Original', fourier_result.real[1:])
 # plt.scatter(xi[1:], yi[1:], c='blue')
 # plt.scatter(xi[0], yi[0], c='red')
 # plt.show()
@@ -80,27 +96,61 @@ contour_complex.real = contour_array[:, 0]
 contour_complex.imag = contour_array[:, 1]
 fourier_result = np.fft.fft(contour_complex)
 
+ax[0, 1].scatter(xi[2:]+50, yi[2:]+50, c='blue')
+ax[0, 1].scatter(xi[0]+50, yi[0]+50, c='red', label='Start')
+ax[0, 1].scatter(xi[1]+50, yi[1]+50, c='Green', label='Second')
+ax[0, 1].legend()
+ax[0, 1].set_title('Translated')
+
+ax[1, 1].plot(fourier_result.real[1:], label='Real')
+ax[1, 1].plot(fourier_result.imag[1:], label='Imag')
+ax[1, 1].legend(loc='lower left')
+print('Translated', fourier_result.real[1:])
+# SCALED
+contour_array = np.stack((xi, yi), axis=1)*10
+contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
+contour_complex.real = contour_array[:, 0]
+contour_complex.imag = contour_array[:, 1]
+fourier_result = np.fft.fft(contour_complex)
+ax[0, 2].scatter(xi[2:]*10, yi[2:]*10, c='blue')
+ax[0, 2].scatter(xi[0]*10, yi[0]*10, c='red', label='Start')
+ax[0, 2].scatter(xi[1]*10, yi[1]*10, c='Green', label='Second')
+ax[0, 2].legend()
+ax[0, 2].set_title('Scaled x 10')
+
+ax[1, 2].plot(fourier_result.real[1:], label='Real')
+ax[1, 2].plot(fourier_result.imag[1:], label='Imag')
+ax[1, 2].legend(loc='lower left')
+
+print('Scaled', fourier_result.real[1:])
 # ROTATION
 
 im = Image.fromarray(rectangle)
 rotated = im.rotate(30)
 rectangle_rotated = np.array(rotated)
 
-contour, hierarchy = cv2.findContours(rectangle_rotated, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
-points = contour[0][:, 0, :]
+contour, hierarchy = cv2.findContours(rectangle_rotated, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+points_rotated = contour[0][:, 0, :]
 
-xi, yi = resample_2d(points, 14)
+xi, yi = resample_2d(points_rotated, N)
 contour_array = np.stack((xi, yi), axis=1)
 contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
 contour_complex.real = contour_array[:, 0]
 contour_complex.imag = contour_array[:, 1]
 fourier_result = np.fft.fft(contour_complex)
+ax[0, 3].scatter(xi[2:], yi[2:], c='blue')
+ax[0, 3].scatter(xi[0], yi[0], c='red', label='Start')
+ax[0, 3].scatter(xi[1], yi[1], c='Green', label='Second')
+ax[0, 3].legend()
+ax[0, 3].set_title('Rotated')
 
-
+ax[1, 3].plot(fourier_result.real[1:], label='Real')
+ax[1, 3].plot(fourier_result.imag[1:], label='Imag')
+ax[1, 3].legend(loc='lower left')
+print('Rotated', fourier_result.real[1:])
 
 # START POINT
-print(xi)
-print(np.roll(xi, -1))
+xi, yi = resample_2d(points, N)
 
 contour_array = np.stack((np.roll(xi, -1), np.roll(yi, -1)), axis=1)
 contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
@@ -108,4 +158,43 @@ contour_complex.real = contour_array[:, 0]
 contour_complex.imag = contour_array[:, 1]
 fourier_result = np.fft.fft(contour_complex)
 
-print(fourier_result)
+xi = np.roll(xi, -1)
+yi = np.roll(yi, -1)
+ax[0, 4].scatter(xi[2:], yi[2:], c='blue')
+ax[0, 4].scatter(xi[0], yi[0], c='red', label='Start')
+ax[0, 4].scatter(xi[1], yi[1], c='Green', label='Second')
+ax[0, 4].legend()
+ax[0, 4].set_title('Start point moved')
+
+ax[1, 4].plot(fourier_result.real[1:], label='Real')
+ax[1, 4].plot(fourier_result.imag[1:], label='Imag')
+ax[1, 4].legend(loc='lower left')
+print('Start point', fourier_result.real[1:])
+
+
+
+
+# Normalize to centroid
+xi, yi = resample_2d(points, N)
+xc = np.mean(xi)
+yc = np.mean(yi)
+
+xi = xi-xc
+yi = yi-yc
+
+contour_array = np.stack((xi, yi), axis=1)
+contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
+contour_complex.real = contour_array[:, 0]
+contour_complex.imag = contour_array[:, 1]
+fourier_result = np.fft.fft(contour_complex)
+
+ax[0, 5].scatter(xi[2:], yi[2:], c='blue')
+ax[0, 5].scatter(xi[0], yi[0], c='red', label='Start')
+ax[0, 5].scatter(xi[1], yi[1], c='Green', label='Second')
+ax[0, 5].legend()
+ax[0, 5].set_title('Norm. Centroid')
+
+ax[1, 5].plot(fourier_result.real[1:], label='Real')
+ax[1, 5].plot(fourier_result.imag[1:], label='Imag')
+ax[1, 5].legend(loc='lower left')
+plt.show()
