@@ -1,5 +1,7 @@
 import torch
 from torch import nn
+import numpy as np
+
 
 def estimate_memory_training(model, sample_input, optimizer_type=torch.optim.Adam, batch_size=1, use_amp=False, device=0):
     """Predict the maximum memory usage of the model. 
@@ -118,3 +120,29 @@ def test_memory_inference(in_size=100, out_size=10, hidden_size=100, batch_size=
                 b = torch.cuda.memory_allocated(device)
             print("1 - After forward pass", torch.cuda.memory_allocated(device))
             print("2 - Memory consumed by forward pass", b - a)
+
+
+
+
+def resample_2d(points, N):
+
+    xc = points[:, 0].tolist() + [points[0, 0]]
+    yc = points[:, 1].tolist() + [points[0, 1]]
+
+    dx = np.diff(xc)
+    dy = np.diff(yc)
+
+    dS = np.sqrt(dx**2+dy**2)
+    dS = np.array([0]+dS.tolist())
+
+    d = np.cumsum(dS)
+
+    perim = d[-1]
+
+    ds = perim/N
+    dSi = ds*np.arange(0, N)
+    dSi[-1] = dSi[-1] - 0.005
+
+    xi = np.interp(dSi, d, xc)
+    yi = np.interp(dSi, d, yc)
+    return xi, yi

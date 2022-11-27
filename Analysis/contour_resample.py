@@ -5,6 +5,8 @@ from PIL import Image
 
 rectangle = np.zeros([100, 100])
 rectangle[30:70, 40:60] = 1
+rectangle[25:30, 55:60] = 1
+rectangle[35:40, 35:40] = 1
 rectangle = (rectangle*255).astype(np.uint8)
 
 
@@ -58,7 +60,7 @@ def resample_2d(points, N):
     return xi, yi
 
 
-fig, ax = plt.subplots(2, 6)
+fig, ax = plt.subplots(3, 6)
 
 N = 70
 
@@ -79,10 +81,15 @@ ax[0, 0].legend()
 ax[0, 0].set_title('Original')
 ax[0, 0].set_ylabel('Images')
 
-ax[1, 0].plot(fourier_result.real[1:], label='Real')
-ax[1, 0].plot(fourier_result.imag[1:], label='Imag')
-ax[1, 0].legend(loc='lower left')
-ax[1, 0].set_ylabel('Fourier Coefficients')
+ax[1, 0].stem(list(range(len(fourier_result[1:]))), abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
+# ax[1, 0].plot(fourier_result.real[1:], label='Real')
+# ax[1, 0].plot(fourier_result.imag[1:], label='Imag')
+# ax[1, 0].legend(loc='lower left')
+ax[1, 0].set_ylabel('Amplitude')
+
+phase = np.arctan2(fourier_result.imag, fourier_result.real)
+ax[2, 0].stem(list(range(len(phase[1:]))), phase[1:], 'b', markerfmt=" ", basefmt="-b")
+ax[2, 0].set_ylabel('Phase')
 print('Original', fourier_result.real[1:])
 # plt.scatter(xi[1:], yi[1:], c='blue')
 # plt.scatter(xi[0], yi[0], c='red')
@@ -102,26 +109,34 @@ ax[0, 1].scatter(xi[1]+50, yi[1]+50, c='Green', label='Second')
 ax[0, 1].legend()
 ax[0, 1].set_title('Translated')
 
-ax[1, 1].plot(fourier_result.real[1:], label='Real')
-ax[1, 1].plot(fourier_result.imag[1:], label='Imag')
-ax[1, 1].legend(loc='lower left')
+ax[1, 1].stem(list(range(len(fourier_result[1:]))), abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
+# ax[1, 1].plot(fourier_result.real[1:], label='Real')
+# ax[1, 1].plot(fourier_result.imag[1:], label='Imag')
+# ax[1, 1].legend(loc='lower left')
+
+phase = np.arctan2(fourier_result.imag, fourier_result.real)
+ax[2, 1].stem(list(range(len(phase[1:]))), phase[1:], 'b', markerfmt=" ", basefmt="-b")
+
 print('Translated', fourier_result.real[1:])
 # SCALED
-contour_array = np.stack((xi, yi), axis=1)*10
+contour_array = np.stack((xi*10-315, yi*10-225), axis=1)
 contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
 contour_complex.real = contour_array[:, 0]
 contour_complex.imag = contour_array[:, 1]
 fourier_result = np.fft.fft(contour_complex)
-ax[0, 2].scatter(xi[2:]*10, yi[2:]*10, c='blue')
-ax[0, 2].scatter(xi[0]*10, yi[0]*10, c='red', label='Start')
-ax[0, 2].scatter(xi[1]*10, yi[1]*10, c='Green', label='Second')
+ax[0, 2].scatter(xi[2:]*10-315, yi[2:]*10-225, c='blue')
+ax[0, 2].scatter(xi[0]*10-315, yi[0]*10-225, c='red', label='Start')
+ax[0, 2].scatter(xi[1]*10-315, yi[1]*10-225, c='Green', label='Second')
 ax[0, 2].legend()
 ax[0, 2].set_title('Scaled x 10')
 
-ax[1, 2].plot(fourier_result.real[1:], label='Real')
-ax[1, 2].plot(fourier_result.imag[1:], label='Imag')
-ax[1, 2].legend(loc='lower left')
+ax[1, 2].stem(list(range(len(fourier_result[1:]))), abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
+# ax[1, 2].plot(fourier_result.real[1:], label='Real')
+# ax[1, 2].plot(fourier_result.imag[1:], label='Imag')
+# ax[1, 2].legend(loc='lower left')
 
+phase = np.arctan2(fourier_result.imag, fourier_result.real)
+ax[2, 2].stem(list(range(len(phase[1:]))), phase[1:], 'b', markerfmt=" ", basefmt="-b")
 print('Scaled', fourier_result.real[1:])
 # ROTATION
 
@@ -144,9 +159,13 @@ ax[0, 3].scatter(xi[1], yi[1], c='Green', label='Second')
 ax[0, 3].legend()
 ax[0, 3].set_title('Rotated')
 
-ax[1, 3].plot(fourier_result.real[1:], label='Real')
-ax[1, 3].plot(fourier_result.imag[1:], label='Imag')
-ax[1, 3].legend(loc='lower left')
+ax[1, 3].stem(list(range(len(fourier_result[1:]))), abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
+# ax[1, 3].plot(fourier_result.real[1:], label='Real')
+# ax[1, 3].plot(fourier_result.imag[1:], label='Imag')
+# ax[1, 3].legend(loc='lower left')
+
+phase = np.arctan2(fourier_result.imag, fourier_result.real)
+ax[2, 3].stem(list(range(len(phase[1:]))), phase[1:], 'b', markerfmt=" ", basefmt="-b")
 print('Rotated', fourier_result.real[1:])
 
 # START POINT
@@ -166,9 +185,14 @@ ax[0, 4].scatter(xi[1], yi[1], c='Green', label='Second')
 ax[0, 4].legend()
 ax[0, 4].set_title('Start point moved')
 
-ax[1, 4].plot(fourier_result.real[1:], label='Real')
-ax[1, 4].plot(fourier_result.imag[1:], label='Imag')
-ax[1, 4].legend(loc='lower left')
+
+ax[1, 4].stem(list(range(len(fourier_result[1:]))), abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
+# ax[1, 4].plot(fourier_result.real[1:], label='Real')
+# ax[1, 4].plot(fourier_result.imag[1:], label='Imag')
+# ax[1, 4].legend(loc='lower left')
+
+phase = np.arctan2(fourier_result.imag, fourier_result.real)
+ax[2, 4].stem(list(range(len(phase[1:]))), phase[1:], 'b', markerfmt=" ", basefmt="-b")
 print('Start point', fourier_result.real[1:])
 
 
@@ -194,7 +218,11 @@ ax[0, 5].scatter(xi[1], yi[1], c='Green', label='Second')
 ax[0, 5].legend()
 ax[0, 5].set_title('Norm. Centroid')
 
-ax[1, 5].plot(fourier_result.real[1:], label='Real')
-ax[1, 5].plot(fourier_result.imag[1:], label='Imag')
-ax[1, 5].legend(loc='lower left')
+ax[1, 5].stem(list(range(len(fourier_result[1:]))), abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
+# ax[1, 5].plot(fourier_result.real[1:], label='Real')
+# ax[1, 5].plot(fourier_result.imag[1:], label='Imag')
+# ax[1, 5].legend(loc='lower left')
+
+phase = np.arctan2(fourier_result.imag, fourier_result.real)
+ax[2, 5].stem(list(range(len(phase[1:]))), phase[1:], 'b', markerfmt=" ", basefmt="-b")
 plt.show()
