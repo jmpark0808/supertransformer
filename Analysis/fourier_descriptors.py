@@ -1,7 +1,6 @@
 import os
 import cv2
 import numpy as np
-from pyefd import elliptic_fourier_descriptors
 from PIL import Image
 import  matplotlib.pyplot as plt
 
