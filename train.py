@@ -27,7 +27,7 @@ from Wrappers.SP_TFM_TFM import SP_TFM_TFM_Wrapper
 from Wrappers.SP_GAT import SP_GAT_Wrapper
 
 # Import dataset modules
-from dataset.superpixel import DUTSDataModule, SPCNNDataModule, SPDataModule, SPEDataModule, SPEmbedDataModule, SPEmbedDataset
+from dataset.superpixel import DUTSDataModule, SPCNNDataModule, SPDataModule, SPEDataModule, SPEmbedDataModule, SPEmbedDataset, SPFFTDataModule
 
 
 # Metric logging
@@ -69,7 +69,8 @@ DATALOADER_DIRECTORY = {
     'DUTS': DUTSDataModule,
     'SP_CNN': SPCNNDataModule,
     'SPE': SPEDataModule,
-    'SPEmbed': SPEmbedDataModule
+    'SPEmbed': SPEmbedDataModule,
+    "SPFFT": SPFFTDataModule
 
 } 
 

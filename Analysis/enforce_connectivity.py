@@ -1,4 +1,6 @@
 import os
+import sys
+sys.path.insert(0, '/home/eddie/waterloo/supertransformer')
 import matplotlib.pyplot as plt
 import cv2
 from skimage import io
@@ -8,6 +10,8 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 import pickle
+from Analysis.contour_resample import resample_2d
+
 
 dataset_images = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Image'
 masks = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Mask'
@@ -19,7 +23,7 @@ def fft(region):
     # note the ddof arg to get the sample var if you so desire!
     region = (region.astype(int)*255).astype(np.uint8)
     rows, cols = region.shape[-2:]
-    contour = fourier_descriptor(region, 30, rows, cols)
+    contour = fourier_descriptor(region, 10, rows, cols)
 
     return contour
 
@@ -36,6 +40,8 @@ def fourier_descriptor(binary_img, degree, rows, cols):
     contour, hierarchy = cv2.findContours(binary_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
 
     contour_array = contour[0][:, 0, :]
+    xi, yi = resample_2d(contour_array, 70)
+    contour_array = np.stack((xi, yi), axis=1)
     contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
     contour_complex.real = contour_array[:, 0]
     contour_complex.imag = contour_array[:, 1]
@@ -49,6 +55,7 @@ def reconstruct(descriptors, degree, rows, cols):
     """ reconstruct(descriptors, degree) attempts to reconstruct the image
     using the first [degree] descriptors of descriptors"""
     # truncate the long list of descriptors to certain length
+
     descriptor_in_use = truncate_descriptor(descriptors, degree)
     contour_reconstruct = np.fft.ifft(descriptor_in_use)
     contour_reconstruct = np.array(
@@ -74,10 +81,12 @@ def truncate_descriptor(descriptors, degree):
 
     descriptors = np.fft.fftshift(descriptors)
     center_index = len(descriptors) // 2
-    descriptors = descriptors[center_index - degree // 2:center_index + degree // 2]
+    # descriptors = descriptors[center_index - degree // 2:center_index + degree // 2]
+    descriptors[:center_index - degree // 2] = 0
+    descriptors[center_index + degree // 2:] = 0
     descriptors = np.fft.ifftshift(descriptors)
     return descriptors
-
+    
 
 for file in tqdm(os.listdir(dataset_images)):
     name = file.split('.jpg')[0]
@@ -111,7 +120,7 @@ for file in tqdm(os.listdir(dataset_images)):
 
     regions = regionprops_table(segments_ec, intensity_image=img, properties=('label', 'centroid', 'area', 'bbox'), extra_properties=[fft, contour])
     fig, ax = plt.subplots(1, 2)
-    
+    print(regions.keys())
     for contours, y, x in zip(regions['contour'], regions['bbox-0'], regions['bbox-1']):
         coord = np.squeeze(contours)
         coord = np.concatenate((coord, coord[0:1]), axis=0)
@@ -119,8 +128,13 @@ for file in tqdm(os.listdir(dataset_images)):
         cts.append(coord.shape[0])
 
 
-    for contours, y, x in zip(regions['fft'], regions['bbox-0'], regions['bbox-1']):
-        coord = np.squeeze(contours)
+    for ind, (y, x) in enumerate(zip(regions['bbox-0'], regions['bbox-1'])):
+        contours = []
+        for i in range(70):
+            xi = regions[f'fft-{i}-0-0'][ind]
+            yi = regions[f'fft-{i}-0-1'][ind]
+            contours.append([xi, yi])
+        coord = np.stack(contours, axis=0)
         coord = np.concatenate((coord, coord[0:1]), axis=0)
         ax[1].plot(coord[:, 0]+x, -(coord[:, 1]+y))
         

@@ -168,7 +168,7 @@ phase = np.arctan2(fourier_result.imag, fourier_result.real)
 ax[2, 3].stem(list(range(len(phase[1:]))), phase[1:], 'b', markerfmt=" ", basefmt="-b")
 print('Rotated', fourier_result.real[1:])
 
-# START POINT
+# Use less coefficients 
 xi, yi = resample_2d(points, N)
 
 contour_array = np.stack((np.roll(xi, -1), np.roll(yi, -1)), axis=1)
@@ -177,23 +177,32 @@ contour_complex.real = contour_array[:, 0]
 contour_complex.imag = contour_array[:, 1]
 fourier_result = np.fft.fft(contour_complex)
 
-xi = np.roll(xi, -1)
-yi = np.roll(yi, -1)
+truncated_fourier_result = np.copy(fourier_result)
+truncated_fourier_result[30:] = 0
+inverse_fourier_result = np.fft.ifft(truncated_fourier_result)
+contour_reconstruct = np.array(
+        [inverse_fourier_result.real, inverse_fourier_result.imag])
+contour_reconstruct = np.transpose(contour_reconstruct)
+
+# xi = np.roll(xi, -1)
+# yi = np.roll(yi, -1)
+xi = contour_reconstruct[:, 0]
+yi = contour_reconstruct[:, 0]
 ax[0, 4].scatter(xi[2:], yi[2:], c='blue')
 ax[0, 4].scatter(xi[0], yi[0], c='red', label='Start')
 ax[0, 4].scatter(xi[1], yi[1], c='Green', label='Second')
 ax[0, 4].legend()
-ax[0, 4].set_title('Start point moved')
+ax[0, 4].set_title('Use less coefficients')
 
 
-ax[1, 4].stem(list(range(len(fourier_result[1:]))), abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
+# ax[1, 4].stem(list(range(len(fourier_result[1:]))), abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
 # ax[1, 4].plot(fourier_result.real[1:], label='Real')
 # ax[1, 4].plot(fourier_result.imag[1:], label='Imag')
 # ax[1, 4].legend(loc='lower left')
 
-phase = np.arctan2(fourier_result.imag, fourier_result.real)
-ax[2, 4].stem(list(range(len(phase[1:]))), phase[1:], 'b', markerfmt=" ", basefmt="-b")
-print('Start point', fourier_result.real[1:])
+# phase = np.arctan2(fourier_result.imag, fourier_result.real)
+# ax[2, 4].stem(list(range(len(phase[1:]))), phase[1:], 'b', markerfmt=" ", basefmt="-b")
+# print('Start point', fourier_result.real[1:])
 
 
 
