@@ -88,3 +88,28 @@ def fourier_descriptors(region):
     phase = np.arctan2(fourier_result.imag, fourier_result.real)
 
     return np.concatenate((amp, phase))
+
+
+
+def contours_euc(region):
+    centroid = np.mean(np.nonzero(region),axis=1)
+    region = (region*255).astype(np.uint8)
+    contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    points = contour[0][:, 0, :]
+    xi, yi = resample_2d(points, RESAMPLE_POINTS)
+    contour_array = np.stack((xi, yi), axis=1)
+
+    return contour_array-centroid
+
+def contours_polar(region):
+    centroid = np.mean(np.nonzero(region),axis=1)
+    region = (region*255).astype(np.uint8)
+    contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    points = contour[0][:, 0, :]
+    xi, yi = resample_2d(points, RESAMPLE_POINTS)
+    contour_array = np.stack((xi, yi), axis=1)-centroid
+
+    rho = np.linalg.norm(contour_array, axis=1)
+    phi = np.arctan2(contour_array[:, 0], contour_array[:, 1])*180/np.pi+180
+
+    return np.stack((rho, phi), axis=1)
