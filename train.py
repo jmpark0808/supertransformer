@@ -24,6 +24,8 @@ from Wrappers.SP_TFM_DIL import SP_TFM_DIL_Wrapper
 from Wrappers.SP_TFM_NP import SP_TFM_NP_Wrapper
 from Wrappers.SP_TFM_PE import SP_TFM_PE_Wrapper
 from Wrappers.SP_TFM_TFM import SP_TFM_TFM_Wrapper
+from Wrappers.SP_TFM_FFT import SP_TFM_FFT_Wrapper
+from Wrappers.SP_TFM_Contour import SP_TFM_Contour_Wrapper
 from Wrappers.SP_GAT import SP_GAT_Wrapper
 
 # Import dataset modules
@@ -61,7 +63,9 @@ MODEL_DIRECTORY = {
     "SP_TFM_AP": SP_TFM_AP_Wrapper,
     "SP_TFM_PE": SP_TFM_PE_Wrapper,
     "SP_GTFM": SP_GTFM_Wrapper,
-    "SP_GAT": SP_GAT_Wrapper
+    "SP_GAT": SP_GAT_Wrapper,
+    "SP_TFM_FFT": SP_TFM_FFT_Wrapper,
+    'SP_TFM_Contour': SP_TFM_Contour_Wrapper,
 
 }
 DATALOADER_DIRECTORY = {
