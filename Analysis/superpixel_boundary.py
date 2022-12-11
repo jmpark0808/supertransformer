@@ -47,7 +47,7 @@ for compact in tqdm(compactness):
             compactness=compact,
             max_num_iter=10,
             convert2lab=True,
-            enforce_connectivity=False,
+            enforce_connectivity=True,
             slic_zero=False)
             # segments = slic(image=img, n_segments=seg, compactness=compact, min_size_factor=0.5, max_num_iter=3, enforce_connectivity=False)
             # segments = slic.iterate(img)
