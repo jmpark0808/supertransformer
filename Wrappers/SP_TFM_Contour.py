@@ -16,9 +16,10 @@ class SP_TFM_Contour_Wrapper(pl.LightningModule):
         self.lr = kwargs.get("lr")
         self.num_seg = kwargs.get('num_seg')
         self.es_patience = kwargs.get('es_patience')
+        self.dropout = kwargs.get('dropout')
 
         # Generator that produces the HeatMap
-        self.supert = SP_TFM_Contour(8, 32, 8, 6, 0.5)
+        self.supert = SP_TFM_Contour(8, 32, 8, 6, self.dropout)
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()
