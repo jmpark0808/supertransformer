@@ -118,9 +118,11 @@ for file in tqdm(os.listdir(dataset_images)):
     enforce_connectivity=True,
     slic_zero=False)
 
-    regions = regionprops_table(segments_ec, intensity_image=img, properties=('label', 'centroid', 'area', 'bbox'), extra_properties=[fft, contour])
+    regions = regionprops_table(segments_ec, intensity_image=img, properties=('label', 'centroid', 'area', 'bbox', 'image'), extra_properties=[fft, contour])
     fig, ax = plt.subplots(1, 2)
     print(regions.keys())
+    np.save('/home/eddie/waterloo/supertransformer/Analysis/sample_sp',regions['image'][500])
+    assert(0)
     for contours, y, x in zip(regions['contour'], regions['bbox-0'], regions['bbox-1']):
         coord = np.squeeze(contours)
         coord = np.concatenate((coord, coord[0:1]), axis=0)
