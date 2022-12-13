@@ -79,7 +79,7 @@ class ToTensorSP(object):
             max_num_iter=10,
             convert2lab=True,
             enforce_connectivity=True,
-            slic_zero=False, min_size_factor=0.)
+            slic_zero=False)
         # slic = SlicAvx2(num_components=self.num_seg, compactness=10)
         # segments = slic.iterate(img_np)
 
