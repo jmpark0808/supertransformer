@@ -14,8 +14,7 @@ class SP_TFM(nn.Module):
     def __init__(self, nfeat, nhid, nheads, ntfm, dropout):
         """Dense version of GAT."""
         super(SP_TFM, self).__init__()
-        shape_dim = 64
-        self.linear = nn.Linear(nfeat-2, nhid * nheads-shape_dim)
+        self.linear = nn.Linear(nfeat-2, nhid * nheads)
         # self.pos = nn.Linear(2, nhid*nheads)
         self.encoder = nn.TransformerEncoderLayer(d_model=nhid*nheads, nhead=nheads, dropout=dropout, dim_feedforward=nhid*nheads, batch_first=True)
         self.transformer_enc = nn.TransformerEncoder(self.encoder, num_layers=ntfm)
@@ -24,34 +23,15 @@ class SP_TFM(nn.Module):
         # self.decoder = nn.TransformerDecoderLayer(d_model=nhid*nheads, nhead=nheads, dim_feedforward=nhid*nheads, batch_first=True)
         # self.transformer_dec = nn.TransformerDecoder(self.decoder, num_layers=ntfm)
 
-        # Shape embeddings
-        
-        self.shape_linear = nn.Linear(2, shape_dim)
-        self.shape_token = nn.Parameter(torch.randn(1, 1, shape_dim))
-        self.shape_encoder = nn.TransformerEncoderLayer(d_model = shape_dim, nhead=1, dropout=dropout, dim_feedforward=shape_dim, batch_first=True)
-        self.shape_tfm = nn.TransformerEncoder(self.shape_encoder, num_layers=1)
-
         self.pos_encoding = PositionalEncodingSuperPixel(nhid*nheads)
         self.out = nn.Linear(nhid * nheads, 1)
     def forward(self, x):
         centroids = x[:, :, :2]
-        shape = x[:, :, 2:2+(RESAMPLE_POINTS*2)]
-        shape = shape.reshape(-1, RESAMPLE_POINTS, 2)
-        x = x[:, :, 2+(RESAMPLE_POINTS*2):]
+        x = x[:, :, 2:]
         x = self.linear(x)
 
-        b, n, _ = shape.size()
-        shape = self.shape_linear(shape)
-        shape_tokens = repeat(self.shape_token, '1 1 d -> b 1 d', b=b)
-        shape = torch.cat((shape_tokens, shape), dim=1)
-        shape = self.shape_tfm(shape)
-        shape = shape[:, 0:1, :]
-        shape = shape.reshape(x.size(0), -1, shape.size(-1))
-
-        pos_encoding = self.pos_encoding(centroids)
-
-        x = torch.cat((x, shape), dim=2)
-        x = self.transformer_enc(x+pos_encoding)
+        x += self.pos_encoding(centroids)
+        x = self.transformer_enc(x)
         # x = self.transformer_dec(x, x)
         x = self.out(x)
         return x

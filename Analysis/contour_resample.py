@@ -3,27 +3,28 @@ import matplotlib.pyplot as plt
 import cv2
 from PIL import Image
 
-rectangle = np.zeros([100, 100])
-rectangle[30:70, 40:60] = 1
-rectangle[25:30, 55:60] = 1
-rectangle[35:40, 35:40] = 1
+# rectangle = np.zeros([100, 100])
+# rectangle[30:70, 40:60] = 1
+# rectangle[25:30, 55:60] = 1
+# rectangle[35:40, 35:40] = 1
+# rectangle = (rectangle*255).astype(np.uint8)
+
+rectangle = np.load('/home/eddie/waterloo/supertransformer/Analysis/sample_sp.npy')
 rectangle = (rectangle*255).astype(np.uint8)
-
-
-
-
-
+# fig, ax = plt.subplots(1, 2)
+# ax[0].imshow(rectangle, cmap='gray', origin='lower')
+# ax[1].imshow(rectangle, cmap='gray', origin='lower')
 # plt.imshow(rectangle, cmap='gray')
 # plt.show()
-
+# assert(0)
 def euc_distance(pt1, pt2):
     y_diff = np.abs(pt2[1]-pt1[1])
     x_diff = np.abs(pt2[0]-pt1[0])
     return np.sqrt(y_diff**2+x_diff**2)
 
-
 contour, hierarchy = cv2.findContours(rectangle, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 points = contour[0][:, 0, :]
+# ax[0].scatter(points[:,0], points[:, 1])
 
 distances = []
 for i in range(len(points)):
@@ -60,11 +61,14 @@ def resample_2d(points, N):
     return xi, yi
 
 
-fig, ax = plt.subplots(3, 6)
+
 
 N = 70
 
 xi, yi = resample_2d(points, N)
+# ax[1].scatter(xi, yi)
+# plt.show()
+fig, ax = plt.subplots(3, 6)
 contour_array = np.stack((xi, yi), axis=1)
 # plt.scatter(points[1:, 0], points[1:, 1], c='blue')
 # plt.scatter(points[0, 0], points[0, 1], c='red')
@@ -119,14 +123,14 @@ ax[2, 1].stem(list(range(len(phase[1:]))), phase[1:], 'b', markerfmt=" ", basefm
 
 print('Translated', fourier_result.real[1:])
 # SCALED
-contour_array = np.stack((xi*10-315, yi*10-225), axis=1)
+contour_array = np.stack((xi*10, yi*10), axis=1)
 contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
 contour_complex.real = contour_array[:, 0]
 contour_complex.imag = contour_array[:, 1]
 fourier_result = np.fft.fft(contour_complex)
-ax[0, 2].scatter(xi[2:]*10-315, yi[2:]*10-225, c='blue')
-ax[0, 2].scatter(xi[0]*10-315, yi[0]*10-225, c='red', label='Start')
-ax[0, 2].scatter(xi[1]*10-315, yi[1]*10-225, c='Green', label='Second')
+ax[0, 2].scatter(xi[2:]*10, yi[2:]*10, c='blue')
+ax[0, 2].scatter(xi[0]*10, yi[0]*10, c='red', label='Start')
+ax[0, 2].scatter(xi[1]*10, yi[1]*10, c='Green', label='Second')
 ax[0, 2].legend()
 ax[0, 2].set_title('Scaled x 10')
 
