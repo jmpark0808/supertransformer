@@ -230,7 +230,7 @@ class ToTensorSPFFT(object):
         features[label-1, 5] = regions['image_stdev-0']/255.
         features[label-1, 6] = regions['image_stdev-1']/255.
         features[label-1, 7] = regions['image_stdev-2']/255.
-        for i in range((self.coeff//2)*2-1)*2):
+        for i in range(((self.coeff//2)*2-1)*2):
             features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
 
