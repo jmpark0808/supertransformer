@@ -168,7 +168,7 @@ class ToTensorSPFFT(object):
     def __init__(self, num_seg, coeff):
         self.tensor = transforms.ToTensor()
         self.num_seg = num_seg
-
+        self.coeff = coeff
         
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
@@ -219,7 +219,7 @@ class ToTensorSPFFT(object):
                                                                                     'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
 
         seq_len = len(regions['label'])
-        features = np.zeros([self.num_seg, 8+(RESAMPLE_FFT_POINTS-1)*2])
+        features = np.zeros([self.num_seg, 8+((self.coeff//2)*2-1)*2])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
         features[label-1, 0] = regions['centroid-0']
@@ -230,7 +230,7 @@ class ToTensorSPFFT(object):
         features[label-1, 5] = regions['image_stdev-0']/255.
         features[label-1, 6] = regions['image_stdev-1']/255.
         features[label-1, 7] = regions['image_stdev-2']/255.
-        for i in range((RESAMPLE_FFT_POINTS-1)*2):
+        for i in range((self.coeff//2)*2-1)*2):
             features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
 
