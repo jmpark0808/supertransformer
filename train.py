@@ -110,6 +110,7 @@ if __name__ == "__main__":
                         default=42, type=int)
     parser.add_argument('--clip_grad_norm', help='Clipping gradient norm, 0 means no clipping', type=float, default=0.)
     parser.add_argument('--size', help='Image size for DUTS', type=int, default=224)
+    parser.add_argument('--coeff', help='Number of coefficients for fft', type=int, default=7)
 
 
     args = parser.parse_args()

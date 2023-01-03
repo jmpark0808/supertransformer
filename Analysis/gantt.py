@@ -15,5 +15,5 @@ df = pd.DataFrame([
 ])
 
 fig = px.timeline(df, x_start="Start", x_end="Finish", y="Task", title='Gantt chart of future plans', color='Resource')
-fig.update_yaxes(autorange="reversed") # otherwise tasks are listed from the bottom up
+fig.update_yaxes(autorange="reversed", tickfont_size=20) # otherwise tasks are listed from the bottom up
 fig.show()

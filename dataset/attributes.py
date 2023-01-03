@@ -70,25 +70,6 @@ def lbp(region, intensities):
     return hist
 
 
-def fourier_descriptors(region):
-    region = (region*255).astype(np.uint8)
-    contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    points = contour[0][:, 0, :]
-    xi, yi = resample_2d(points, RESAMPLE_POINTS)
-    contour_array = np.stack((xi, yi), axis=1)
-
-
-    contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
-    contour_complex.real = contour_array[:, 0]
-    contour_complex.imag = contour_array[:, 1]
-    fourier_result = np.fft.fft(contour_complex)
-    fourier_result = fourier_result[1:RESAMPLE_FFT_POINTS]
-
-    amp = abs(fourier_result)
-    phase = np.arctan2(fourier_result.imag, fourier_result.real)
-
-    return np.concatenate((amp, phase))
-
 
 
 def contours_euc(region):

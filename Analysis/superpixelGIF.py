@@ -110,6 +110,8 @@ for file in tqdm(os.listdir(dataset_images)):
         slic_zero=False)
 
         plt.imshow(mark_boundaries(img, segments))
+        plt.axis('off')
+        plt.title(f'Iteration: {i}')
         plt.savefig(f'/home/eddie/waterloo/supertransformer/results/superpixelgif/{i}.jpg')
 
         # fig, ax = plt.subplots(1, 2)
