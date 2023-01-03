@@ -165,9 +165,35 @@ class ToTensorSP(object):
 
 
 class ToTensorSPFFT(object):
-    def __init__(self, num_seg):
+    def __init__(self, num_seg, coeff):
         self.tensor = transforms.ToTensor()
         self.num_seg = num_seg
+
+        
+        def fourier_descriptors(region):
+            region = (region*255).astype(np.uint8)
+            contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            points = contour[0][:, 0, :]
+            xi, yi = resample_2d(points, RESAMPLE_POINTS)
+            contour_array = np.stack((xi, yi), axis=1)
+
+
+            contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
+            contour_complex.real = contour_array[:, 0]
+            contour_complex.imag = contour_array[:, 1]
+            fourier_result = np.fft.fft(contour_complex)
+
+            fourier_result_front = fourier_result[1:coeff//2]
+            fourier_result_back = fourier_result[-coeff//2:]
+            fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
+
+            amp = abs(fourier_result)
+            phase = np.arctan2(fourier_result.imag, fourier_result.real)
+
+            return np.concatenate((amp, phase))
+
+        self.fourier_descriptors = fourier_descriptors
+
 
     def __call__(self, sample):
         img, mask = sample['image'], sample['mask']
@@ -190,7 +216,7 @@ class ToTensorSPFFT(object):
     
 
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean',
-                                                                                    'coords'), extra_properties=[image_stdev, fourier_descriptors])#, polarize])
+                                                                                    'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
 
         seq_len = len(regions['label'])
         features = np.zeros([self.num_seg, 8+(RESAMPLE_FFT_POINTS-1)*2])
@@ -476,14 +502,14 @@ class ToTensorRaw(object):
         return {'image': img, 'mask': mask}
 
 class SPDataset(data.Dataset):
-    def __init__(self, root_dir, num_seg, size, data_augmentation=True, dataloader=None):
+    def __init__(self, root_dir, num_seg, size, data_augmentation=True, dataloader=None, coeff=None):
         self.root_dir = root_dir
         self.image_list = sorted(os.listdir('{}/Image'.format(root_dir)))
         self.mask_list = sorted(os.listdir('{}/Mask'.format(root_dir)))
         if dataloader == 'SP':
             totensor = ToTensorSP(num_seg)
         elif dataloader == 'SPFFT':
-            totensor = ToTensorSPFFT(num_seg)
+            totensor = ToTensorSPFFT(num_seg, coeff)
         elif dataloader == 'SPED':
             totensor = ToTensorSPET(num_seg)
         elif dataloader == 'SPEmbed':
@@ -563,22 +589,23 @@ class SPDataModule(pl.LightningDataModule):
         self.num_seg = kwargs.get('num_seg', 600)
         self.res = kwargs.get('size')
         self.dataloader = kwargs.get('dataloader')
+        self.coeff = kwargs.get('coeff')
 
         
     def train_dataloader(self):
-        data_train = SPDataset(self.train_dir, self.num_seg, self.res, True, self.dataloader)
+        data_train = SPDataset(self.train_dir, self.num_seg, self.res, True, self.dataloader, self.coeff)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=False)
 
     def val_dataloader(self):
-        data_val = SPDataset(self.val_dir, self.num_seg, self.res, False, self.dataloader)
+        data_val = SPDataset(self.val_dir, self.num_seg, self.res, False, self.dataloader, self.coeff)
         return DataLoader(
                 data_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
 
     def test_dataloader(self):
-        data_test = SPDataset(self.test_dir, self.num_seg, self.res,  False, self.dataloader)
+        data_test = SPDataset(self.test_dir, self.num_seg, self.res,  False, self.dataloader, self.coeff)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)

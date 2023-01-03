@@ -23,7 +23,7 @@ def fft(region):
     # note the ddof arg to get the sample var if you so desire!
     region = (region.astype(int)*255).astype(np.uint8)
     rows, cols = region.shape[-2:]
-    contour = fourier_descriptor(region, 10, rows, cols)
+    contour = fourier_descriptor(region, 9, rows, cols)
 
     return contour
 
@@ -63,12 +63,12 @@ def reconstruct(descriptors, degree, rows, cols):
     contour_reconstruct = np.transpose(contour_reconstruct)
     contour_reconstruct = np.expand_dims(contour_reconstruct, axis=1)
     # make positive
-    if contour_reconstruct.min() < 0:
-        contour_reconstruct -= contour_reconstruct.min()
-    # normalization
-    contour_reconstruct /=  contour_reconstruct.max()
-    contour_reconstruct[:, :, 0] *= rows
-    contour_reconstruct[:, :, 1] *= cols
+    # if contour_reconstruct.min() < 0:
+    #     contour_reconstruct -= contour_reconstruct.min()
+    # # normalization
+    # contour_reconstruct /=  contour_reconstruct.max()
+    # contour_reconstruct[:, :, 0] *= rows
+    # contour_reconstruct[:, :, 1] *= cols
     # type cast to int32
     contour_reconstruct = contour_reconstruct.astype(np.int32, copy=False)
     
@@ -85,6 +85,7 @@ def truncate_descriptor(descriptors, degree):
     descriptors[:center_index - degree // 2] = 0
     descriptors[center_index + degree // 2:] = 0
     descriptors = np.fft.ifftshift(descriptors)
+    # descriptors[degree:] = 0
     return descriptors
     
 
@@ -121,8 +122,8 @@ for file in tqdm(os.listdir(dataset_images)):
     regions = regionprops_table(segments_ec, intensity_image=img, properties=('label', 'centroid', 'area', 'bbox', 'image'), extra_properties=[fft, contour])
     fig, ax = plt.subplots(1, 2)
     print(regions.keys())
-    np.save('/home/eddie/waterloo/supertransformer/Analysis/sample_sp',regions['image'][500])
-    assert(0)
+    # np.save('/home/eddie/waterloo/supertransformer/Analysis/sample_sp',regions['image'][500])
+
     for contours, y, x in zip(regions['contour'], regions['bbox-0'], regions['bbox-1']):
         coord = np.squeeze(contours)
         coord = np.concatenate((coord, coord[0:1]), axis=0)
