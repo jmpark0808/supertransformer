@@ -9,7 +9,6 @@ import numpy as np
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 from Wrappers.PositionalEncoding import PositionalEncodingSuperPixel
-import torch_sparse
 from dataset.constants import *
 
 def pair(t):
