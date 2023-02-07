@@ -1,10 +1,6 @@
 import pytorch_lightning as pl
 import torch
-from skimage.segmentation import slic
-from skimage.measure import regionprops_table
-from Blocks.GraphBlocks import GAT
 import torch.nn.functional as F
-import numpy as np
 import torch.nn as nn
 from Blocks.TransformerBlocks import Transformer
 
@@ -16,13 +12,13 @@ class ImageTransformer(pl.LightningModule):
         self.batch_size = kwargs.get("batch_size")
         self.lr = kwargs.get("lr")
         self.es_patience = kwargs.get('es_patience')
-
+        self.downsample = kwargs.get('downsample')
         # must be defined for logging computational graph
-        self.example_input_array = torch.rand((1, 3, 28, 28))
+        self.example_input_array = torch.rand((1, 3, self.downsample, self.downsample))
 
         # Generator that produces the HeatMap
-        self.transformer = Transformer(64, 50, 1, 64, 64)
-        self.pos_enc = nn.Parameter(torch.randn(1, 28*28, 64))
+        self.transformer = Transformer(64, 6, 8, 32, 32)
+        self.pos_enc = nn.Parameter(torch.randn(1, self.downsample**2, 64))
         self.linear_proj = nn.Linear(3, 64)
         self.final_linear = nn.Linear(64, 1)
         self.iteration = 0
@@ -70,6 +66,18 @@ class ImageTransformer(pl.LightningModule):
 
         return x
 
+    def on_train_epoch_start(self):
+        self.train_fscores = torch.zeros(256)
+        self.num_samples = 0
+    
+    def on_train_epoch_end(self):
+        fscores = self.train_fscores/self.num_samples
+        thlist = torch.linspace(0, 1 - 1e-10, 256)
+        self.log('Train Max F Score', torch.max(fscores))
+        self.log('Train Max F Threshold', thlist[torch.argmax(fscores)])
+
+
+
     def training_step(self, batch, batch_idx):
         """
         Compute and return the training loss
@@ -82,13 +90,36 @@ class ImageTransformer(pl.LightningModule):
 
         img = img.cuda()
         mask = mask.cuda()
-    
+
+        original_size = img.size(-1)
         # forward pass
+        img_downsampled = F.interpolate(img, (self.downsample, self.downsample), mode='bilinear')
+        mask_downsampled = F.interpolate(mask, (self.downsample, self.downsample), mode='bilinear')
         
-        pred = self.forward(img)
+        pred = self.forward(img_downsampled)
 
-        loss = self.loss(pred, mask)
+        loss = self.loss(pred, mask_downsampled)
 
+
+        pred = torch.sigmoid(pred)
+        pred = F.interpolate(pred, (original_size, original_size), mode='bilinear')
+
+
+        prec, recall = torch.zeros(pred.shape[0], 256), torch.zeros(pred.shape[0], 256)
+        pred = pred.reshape(pred.shape[0], -1)
+        mask = mask.reshape(mask.shape[0], -1)
+        thlist = torch.linspace(0, 1 - 1e-10, 256)
+        for j in range(256):
+            y_temp = (pred >= thlist[j]).float()
+            tp = (y_temp * mask).sum(dim=-1)
+            # avoid prec becomes 0
+            prec[:, j], recall[:, j] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
+        # (batch, threshold)
+        beta_square = 0.3
+        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
+        f_score = f_score.sum(dim=0)
+        self.train_fscores += f_score
+        self.num_samples += pred.size(0)
         self.log('loss', loss.item())
         self.iteration += 1
         return loss
@@ -106,52 +137,21 @@ class ImageTransformer(pl.LightningModule):
         mask = mask.cuda()
 
 
+        original_size = img.size(-1)
         # forward pass
-        pred = self.forward(img)
-
-        if batch_idx == 0:
-            tensorboard.add_images('Pred', torch.sigmoid(pred), self.iteration)
-            tensorboard.add_images('GT', mask, self.iteration)
-            tensorboard.add_images('Image', img, self.iteration)
-
-        mae = torch.mean(torch.abs(torch.sigmoid(pred) - mask))
-      
-        return mae
+        img_downsampled = F.interpolate(img, (self.downsample, self.downsample), mode='bilinear')
+        
+        pred = self.forward(img_downsampled)
 
 
-    def validation_epoch_end(self, validation_step_outputs):
-        self.log('Validation MAE', torch.mean(torch.stack(validation_step_outputs)))
-        self.scheduler.step(torch.mean(torch.stack(validation_step_outputs)))
-  
-                    
-    def on_test_start(self):
-        self.preds = []
-        self.masks = []
-        self.precs = []
-        self.recalls = []
+        pred = torch.sigmoid(pred)
+        pred = F.interpolate(pred, (original_size, original_size), mode='bilinear')
 
-    def test_step(self, batch, batch_idx):
-        """
-        Compute the metrics for validation batch
-        validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
-        """
-        tensorboard = self.logger.experiment
-        mask = batch['mask']
-        img = batch['image']
-
-        img = img.cuda()
-        mask = mask.cuda()
-
-
-        # forward pass
-        pred = self.forward(img)
-
-        mae = torch.mean(torch.abs(pred - mask))
-        self.preds.append(pred)
-        self.masks.append(mask)
-        prec, recall = torch.zeros(mask.shape[0], 256), torch.zeros(mask.shape[0], 256)
-        pred = pred.reshape(pred.size(0), -1)
-        mask = mask.reshape(mask.size(0), -1)
+        mae = torch.sum(torch.mean(torch.abs(pred - mask), dim=(1, 2, 3)))
+        self.maes += mae
+        prec, recall = torch.zeros(pred.shape[0], 256), torch.zeros(pred.shape[0], 256)
+        pred = pred.reshape(pred.shape[0], -1)
+        mask = mask.reshape(mask.shape[0], -1)
         thlist = torch.linspace(0, 1 - 1e-10, 256)
         for j in range(256):
             y_temp = (pred >= thlist[j]).float()
@@ -159,24 +159,31 @@ class ImageTransformer(pl.LightningModule):
             # avoid prec becomes 0
             prec[:, j], recall[:, j] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
         # (batch, threshold)
-        self.precs.append(prec)
-        self.recalls.append(recall)
-
+        beta_square = 0.3
+        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
+        f_score = f_score.sum(dim=0)
+        self.fscores += f_score
+        self.num_samples_val += pred.size(0)
+      
         return mae
 
 
-    def test_epoch_end(self, test_step_outputs):
-        prec = torch.cat(self.precs, dim=0).mean(dim=0)
-        recall = torch.cat(self.recalls, dim=0).mean(dim=0)
-        beta_square = 0.3
-        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
-        thlist = torch.linspace(0, 1 - 1e-10, 256)
-        self.log('Validation Max F Score', torch.max(f_score))
-        self.log('Validation Max F Threshold', thlist[torch.argmax(f_score)])
+    def validation_epoch_end(self, validation_step_outputs):
+        mae = self.maes/self.num_samples_val
+        self.log('Validation MAE', mae)
 
-        pred = torch.cat(self.preds, 0)
-        mask = torch.cat(self.masks, 0).round().float()
-        self.log('Validation MAE', torch.mean(torch.abs(pred-mask)))
+        fscores = self.fscores/self.num_samples_val
+        thlist = torch.linspace(0, 1 - 1e-10, 256)
+        self.log('Validation Max F Score', torch.max(fscores))
+        self.log('Validation Max F Threshold', thlist[torch.argmax(fscores)])
+
+        self.scheduler.step(torch.mean(torch.stack(validation_step_outputs)))
+
+    def on_validation_start(self):
+        self.maes = 0
+        self.fscores = torch.zeros(256)
+        self.num_samples_val = 0      
+
 
 
 

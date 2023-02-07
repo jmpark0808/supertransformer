@@ -27,6 +27,7 @@ from Wrappers.SP_TFM_TFM import SP_TFM_TFM_Wrapper
 from Wrappers.SP_TFM_FFT import SP_TFM_FFT_Wrapper
 from Wrappers.SP_TFM_Contour import SP_TFM_Contour_Wrapper
 from Wrappers.SP_GAT import SP_GAT_Wrapper
+from Wrappers.image_transformer import ImageTransformer
 
 # Import dataset modules
 from dataset.superpixel import DUTSDataModule,  SPDataModule
@@ -45,7 +46,7 @@ MODEL_DIRECTORY = {
     # "SPDTNN": SuperTransformerDeepTFMNN,
     # "SPDTBN": SuperTransformerDeepTFMBN,
     # "SPL": SuperLinear,
-    # "IT": ImageTransformer,
+    "IT": ImageTransformer,
     # "ITCNN": ImageTransformerCNN,
     # "ITCNNTFM": ImageTransformerCNNTFM,
     # "ITNMP": ImageTransformerNMP,
@@ -111,6 +112,7 @@ if __name__ == "__main__":
     parser.add_argument('--clip_grad_norm', help='Clipping gradient norm, 0 means no clipping', type=float, default=0.)
     parser.add_argument('--size', help='Image size for DUTS', type=int, default=224)
     parser.add_argument('--coeff', help='Number of coefficients for fft', type=int, default=7)
+    parser.add_argument('--downsample', help='Downsample resolution', type=int, default=28)
 
 
     args = parser.parse_args()
