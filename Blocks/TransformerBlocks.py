@@ -9,7 +9,7 @@ import numpy as np
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 from Wrappers.PositionalEncoding import PositionalEncodingSuperPixel
-
+import torch_sparse
 from dataset.constants import *
 
 def pair(t):
@@ -110,7 +110,7 @@ class PosAttention(nn.Module):
         return self.to_out(out)
 
 class GraphAttention(nn.Module):
-    def __init__(self, dim, num_regions, heads = 8, dim_head = 64, dropout = 0.):
+    def __init__(self, dim,  heads = 8, dim_head = 64, dropout = 0.):
         super().__init__()
         inner_dim = dim_head *  heads
         project_out = not (heads == 1 and dim_head == dim)
@@ -125,23 +125,32 @@ class GraphAttention(nn.Module):
             nn.Linear(inner_dim, dim),
             nn.Dropout(dropout)
         ) if project_out else nn.Identity()
-        self.eye = torch.eye(num_regions, device='cuda')
+  
 
-    def forward(self, x, adj, dilation):
+    def forward(self, x, adj):
         qkv = self.to_qkv(x).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
 
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale # seq_len x seq_len 
-        zero_vec = -9e15*torch.ones_like(dots)
+        zero_vec = 0*torch.ones_like(dots)
 
-        adj = torch.matrix_power(adj, dilation).bool().int()-torch.matrix_power(adj, dilation-1).bool().int()+self.eye
+        # adj = torch.matrix_power(adj, dilation).bool().int()-torch.matrix_power(adj, dilation-1).bool().int()+self.eye
         adj = adj.unsqueeze(1).bool() # B x 1 x R x R
         adj = adj.repeat(1, dots.size(1), 1, 1)
 
         attention = torch.where(adj > 0, dots, zero_vec)
         
         attn = self.attend(attention)
-
+        # all_out = []
+        # for j in range(v.size(0)):
+        #     for i in range(v.size(1)):
+        #         Ats = torch_sparse.SparseTensor.from_torch_sparse_coo_tensor(attn[j, i].to_sparse())
+        #         out_ = torch_sparse.matmul(Ats,v[j, i])
+        #         # temp_attn = attn[j, i].to_sparse()
+        #         # out_ = torch_sparse.spmm(temp_attn.indices(), temp_attn.values(), attn[j, i].size(0), attn[j, i].size(1), v[j, i])
+        #         all_out.append(out_)
+        # out = torch.stack(all_out, dim=0)
+        # out = out.reshape(v.size(0), v.size(1), v.size(2), -1)
         out = torch.matmul(attn, v)
         out = rearrange(out, 'b h n d -> b n (h d)')
         return self.to_out(out)
@@ -219,51 +228,30 @@ class PosTransformer(nn.Module):
         return x
 
 class GraphConvTransformer(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, num_regions, norm=True, dropout = 0.):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, norm=True, dropout = 0.):
         super().__init__()
         self.graph_conv_layers = nn.ModuleList([])
         if norm=='ln':
             for _ in range(depth):
                 self.graph_conv_layers.append(nn.ModuleList([
-                    PreNorm(dim, GraphAttention(dim, num_regions, heads = heads, dim_head = dim_head, dropout = dropout)),
-                    PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
-                ]))
-            self.graph_global_layers = nn.ModuleList([])
-            for _ in range(1):
-                self.graph_global_layers.append(nn.ModuleList([
-                    PreNorm(dim, Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
+                    PreNorm(dim, GraphAttention(dim,  heads = heads, dim_head = dim_head, dropout = dropout)),
                     PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
                 ]))
         elif norm=='bn':
             for _ in range(depth):
                 self.graph_conv_layers.append(nn.ModuleList([
-                    PreBatchNorm(dim, GraphAttention(dim, num_regions, heads = heads, dim_head = dim_head, dropout = dropout)),
-                    PreBatchNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
-                ]))
-            self.graph_global_layers = nn.ModuleList([])
-            for _ in range(1):
-                self.graph_global_layers.append(nn.ModuleList([
-                    PreBatchNorm(dim, Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
+                    PreBatchNorm(dim, GraphAttention(dim,  heads = heads, dim_head = dim_head, dropout = dropout)),
                     PreBatchNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
                 ]))
         else:
             for _ in range(depth):
                 self.graph_conv_layers.append(nn.ModuleList([
-                    GraphAttention(dim, num_regions, heads = heads, dim_head = dim_head, dropout = dropout),
-                    FeedForward(dim, mlp_dim, dropout = dropout)
-                ]))
-            self.graph_global_layers = nn.ModuleList([])
-            for _ in range(1):
-                self.graph_global_layers.append(nn.ModuleList([
-                    Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout),
+                    GraphAttention(dim, heads = heads, dim_head = dim_head, dropout = dropout),
                     FeedForward(dim, mlp_dim, dropout = dropout)
                 ]))
     def forward(self, x, adj):
         for attn, ff in self.graph_conv_layers:
-            x = attn(x, adj=adj, dilation=1) + x
-            x = ff(x) + x
-        for attn, ff in self.graph_global_layers:
-            x = attn(x) + x
+            x = attn(x, adj=adj) + x
             x = ff(x) + x
         return x
 

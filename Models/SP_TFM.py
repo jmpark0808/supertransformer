@@ -182,20 +182,22 @@ class SP_TFM_TFM(nn.Module):
     Graph Convolutions using Transformers + Global aggregation using transformers
     Deterministic Positional Encoding 
     '''
-    def __init__(self, nfeat, nhid, block_depth, dropout, nheads, ntfm, num_regions, norm='ln'):
+    def __init__(self, nfeat, nhid, block_depth, dropout, nheads, ntfm, norm='ln'):
         """Dense version of GAT."""
         super(SP_TFM_TFM, self).__init__()
-        self.linear = nn.Linear(nfeat, nhid * nheads)
-        self.transformers = nn.ModuleList([GraphConvTransformer(nhid*nheads, block_depth, nheads, nhid, nheads*nhid, num_regions, norm=norm, dropout=dropout) for _ in range(ntfm)])
+        self.linear = nn.Linear(nfeat-2, nhid * nheads)
+        self.transformers = nn.ModuleList([GraphConvTransformer(nhid*nheads, block_depth, nheads, nhid, nheads*nhid, norm=norm, dropout=dropout) for _ in range(ntfm)])
         self.pos_encoding = PositionalEncodingSuperPixel(nhid*nheads)
         self.out = nn.Linear(nhid * nheads, 1)
-    def forward(self, x, adj):
-        # centroids = x[:, :, :2]
-        # x = x[:, :, 2:]
+    def forward(self, input):
+        x = input[0]
+        adj = input[1]
+        centroids = x[:, :, :2]
+        x = x[:, :, 2:]
         x = self.linear(x)
+        x += self.pos_encoding(centroids)
         # x = torch.cat((centroids, x), dim=2)
         for layer in self.transformers:
-            x += self.pos_encoding(x)
             x = layer(x, adj)
         x = self.out(x)
         return x

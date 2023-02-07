@@ -17,7 +17,7 @@ class SP_TFM_TFM_Wrapper(pl.LightningModule):
         self.es_patience = kwargs.get('es_patience')
 
         # Generator that produces the HeatMap
-        self.supert = SP_TFM_TFM(11+NUM_CHUNK*4, 32, 3, 0., 8, 3, self.num_seg, norm='bn')
+        self.supert = SP_TFM_TFM(11, 32, 6, 0., 8, 1, norm='bn')
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()
@@ -54,11 +54,11 @@ class SP_TFM_TFM_Wrapper(pl.LightningModule):
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-        distance = 2
-        adj = torch.matrix_power(adj, distance).bool().int()
+        # distance = 2
+        # adj = torch.matrix_power(adj, distance).bool().int()
 
 
-        pred = self.supert(x, adj)
+        pred = self.supert([x, adj])
 
         return pred
 
