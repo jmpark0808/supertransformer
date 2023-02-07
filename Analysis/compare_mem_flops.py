@@ -1,7 +1,7 @@
 
 import sys
 sys.path.insert(0, '/home/eddie/waterloo/supertransformer')
-from Models.SP_TFM import SP_TFM
+from Models.SP_TFM import SP_TFM, SP_TFM_TFM
 from Models.ITSD import baseline
 from Models.EGNet import build_model
 import math
@@ -21,7 +21,7 @@ for ind, model in enumerate(models):
     inference_mems = []
     for res in resolutions:
         if model == 'SGT':
-            forward = SP_TFM(11, 16, 8, 6)
+            forward = SP_TFM(11, 16, 8, 6, 0)
             input_shape = (res, 11)
         elif model == 'ITSD':
             forward = baseline('resnet')
@@ -34,32 +34,7 @@ for ind, model in enumerate(models):
 
         input = torch.rand(input_shape)
         
-        # forward.cpu()
-        # optimizer = torch.optim.Adam(forward.parameters(), lr=.001)
-        # a = torch.cuda.memory_allocated(0)
-        # forward.to('cuda')
-        # b = torch.cuda.memory_allocated(0)
-        # model_memory = b - a
-        # input = torch.stack([input]*1, dim=0).to('cuda')
-        # # model_input = sample_input.unsqueeze(0).repeat(batch_size, 1)
-        # output = forward(input)
-        # c = torch.cuda.memory_allocated(0)
 
-        # forward_pass_memory = (c - b)
-        # gradient_memory = model_memory
-        # if isinstance(optimizer, torch.optim.Adam):
-        #     o = 2
-        # elif isinstance(optimizer, torch.optim.RMSprop):
-        #     o = 1
-        # elif isinstance(optimizer, torch.optim.SGD):
-        #     o = 0
-        # elif isinstance(optimizer, torch.optim.Adagrad):
-        #     o = 1
-        # else:
-        #     raise ValueError("Unsupported optimizer. Look up how many moments are" +
-        #         "stored by your optimizer and add a case to the optimizer checker.")
-        # gradient_moment_memory = o*gradient_memory
-        # total_memory = model_memory + forward_pass_memory + gradient_memory + gradient_moment_memory
         total_memory = util.estimate_memory_training(forward, input)
         training_mems.append(math.log10(total_memory))
 
@@ -103,6 +78,7 @@ for ind, model in enumerate(models):
     print(flops)
     print(training_mems)
     print(inference_mems)
+    assert(0)
 
 
 fig.tight_layout()
