@@ -113,6 +113,8 @@ if __name__ == "__main__":
     parser.add_argument('--size', help='Image size for DUTS', type=int, default=224)
     parser.add_argument('--coeff', help='Number of coefficients for fft', type=int, default=7)
     parser.add_argument('--downsample', help='Downsample resolution', type=int, default=28)
+    parser.add_argument('--tag', help='Tag for differentiating runs on CC', type=str)
+
 
 
     args = parser.parse_args()
@@ -129,12 +131,8 @@ if __name__ == "__main__":
     random_sec = random.randint(1, 20)
     time.sleep(random_sec)
     now = datetime.datetime.now().strftime('%m%d-%H%M%S')
-    weight_save_dir = os.path.join(dict_args["logdir"], os.path.join('models', 'state_dict', now))
-    while os.path.exists(weight_save_dir):
-        random_sec = random.randint(1, 20)
-        time.sleep(random_sec)
-        now = datetime.datetime.now().strftime('%m%d%H%M%S')
-        weight_save_dir = os.path.join(dict_args["logdir"], os.path.join('models', 'state_dict', now))
+    weight_save_dir = os.path.join(dict_args["logdir"], os.path.join('models', 'state_dict', now+'_'+dict_args["tag"]))
+ 
 
     os.makedirs(weight_save_dir, exist_ok=True)
 
@@ -159,7 +157,7 @@ if __name__ == "__main__":
     # Trainer: initialize training behaviour
     profiler = SimpleProfiler()
     lr_monitor = LearningRateMonitor(logging_interval='step')
-    logger = TensorBoardLogger(save_dir=dict_args['logdir'], version=now, name='lightning_logs', log_graph=True)
+    logger = TensorBoardLogger(save_dir=dict_args['logdir'], version=now+'_'+dict_args["tag"], name='lightning_logs', log_graph=True)
     trainer = pl.Trainer(
         callbacks=[early_stopping_callback, checkpoint_callback, lr_monitor],
         val_check_interval=dict_args['val_freq'],
