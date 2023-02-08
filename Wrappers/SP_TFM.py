@@ -16,9 +16,10 @@ class SP_TFM_Wrapper(pl.LightningModule):
         self.lr = kwargs.get("lr")
         self.num_seg = kwargs.get('num_seg')
         self.es_patience = kwargs.get('es_patience')
+        self.dropout = kwargs.get('dropout')
 
         # Generator that produces the HeatMap
-        self.supert = SP_TFM(11, 32, 8, 6, 0.)
+        self.supert = SP_TFM(11, 32, 8, 6, self.dropout)
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()
@@ -139,7 +140,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         Compute the metrics for validation batch
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
-        tensorboard = self.logger.experiment
+        # tensorboard = self.logger.experiment
         features = batch['features']
         seq_mask = batch['seq_mask']
         segments = batch['segments']
@@ -168,15 +169,15 @@ class SP_TFM_Wrapper(pl.LightningModule):
             samples.append(plt_image)
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1))
-        tensorboard.add_images('Test Pred', samples, self.test_iteration)
+        # tensorboard.add_images('Test Pred', samples, self.test_iteration)
         samples_mask = []
         for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
             plt_image = masked[labels-1].reshape([img_size, img_size])
             samples_mask.append(plt_image)
 
         samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
-        tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
-        tensorboard.add_images('Test Image', img, self.test_iteration)
+        # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
+        # tensorboard.add_images('Test Image', img, self.test_iteration)
 
         mae = torch.sum(torch.mean(torch.abs(samples - samples_mask), dim=(1, 2, 3)))
         self.maes += mae
