@@ -76,7 +76,7 @@ class ToTensorSP(object):
         mask_np = np.array(mask)/255.
         segments = slic(img_np, n_segments=self.num_seg,
             compactness=COMPACTNESS,
-            max_num_iter=10,
+            max_num_iter=3,
             convert2lab=True,
             enforce_connectivity=True,
             slic_zero=False)
@@ -91,7 +91,7 @@ class ToTensorSP(object):
     
 
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean',
-                                                                                    'extent', 'coords', 'eccentricity'), extra_properties=[image_stdev, hist])#, polarize])
+                                                                                    'extent', 'coords', 'eccentricity'), extra_properties=[image_stdev])#, polarize])
                     
         seq_len = len(regions['label'])
         features = np.zeros([self.num_seg, 11])

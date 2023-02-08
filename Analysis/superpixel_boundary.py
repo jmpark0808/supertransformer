@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 import pickle
+import time
 
 dataset_images = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Image'
 masks = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Mask'
@@ -17,7 +18,7 @@ compactness = [0.1, 1, 10, 50]
 d= {}
 d['segment_numbers'] = segment_numbers
 num_images = 3000
-use_pickle = True
+use_pickle = False
 
 
 plt.figure(figsize=(10,10))
@@ -65,12 +66,14 @@ else:
                 msk[msk>125] = 1
                 
                 num_seg = seg*seg
+                start = time.time()
                 segments = slic(img, n_segments=num_seg,
                 compactness=compact,
                 max_num_iter=10,
                 convert2lab=True,
                 enforce_connectivity=False,
                 slic_zero=False)
+                
 
                 # segments = slic(image=img, n_segments=seg, compactness=compact, min_size_factor=0.5, max_num_iter=3, enforce_connectivity=False)
                 # segments = slic.iterate(img)
@@ -78,7 +81,11 @@ else:
                 # superpixel_boundaries = np.sum(mark_boundaries(empty_background, segments), axis=2)
 
                 # iou = np.sum(np.logical_and((msk_boundaries == 2),(superpixel_boundaries == 2)))/np.sum(msk_boundaries>0)
-                regions = regionprops_table(segments, properties=('label', 'coords', ))
+                regions = regionprops_table(segments, img, properties=('label', 'centroid', 'area', 'intensity_mean',
+                                                                                     'coords',))
+                end = time.time()
+                ms = end-start
+                print(ms)
                 try:
                     max(regions['label'])
                 except:
