@@ -114,6 +114,9 @@ if __name__ == "__main__":
     parser.add_argument('--coeff', help='Number of coefficients for fft', type=int, default=7)
     parser.add_argument('--downsample', help='Downsample resolution', type=int, default=28)
     parser.add_argument('--tag', help='Tag for differentiating runs on CC', default='', type=str)
+    parser.add_argument('--tfmhp', default=[8, 16, 6], 
+                    nargs=3, metavar=('Heads', 'Hidden Dim', 'Number of Layers'),
+                    type=int, help='Hyperparameters for Transformer')
 
 
 
