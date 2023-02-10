@@ -17,9 +17,10 @@ class SP_TFM_Wrapper(pl.LightningModule):
         self.num_seg = kwargs.get('num_seg')
         self.es_patience = kwargs.get('es_patience')
         self.dropout = kwargs.get('dropout')
+        self.tfm_hp = kwargs.get('tfmhp')
 
         # Generator that produces the HeatMap
-        self.supert = SP_TFM(11, 8, 8, 6, self.dropout)
+        self.supert = SP_TFM(11, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout)
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()
