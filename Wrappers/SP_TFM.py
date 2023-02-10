@@ -62,14 +62,14 @@ class SP_TFM_Wrapper(pl.LightningModule):
         return pred
 
     def on_train_epoch_start(self):
-        self.train_fscores = torch.zeros(256)
+        self.train_fscores = 0
         self.num_samples = 0
     
     def on_train_epoch_end(self):
         fscores = self.train_fscores/self.num_samples
-        thlist = torch.linspace(0, 1 - 1e-10, 256)
+        # thlist = torch.linspace(0, 1 - 1e-10, 256)
         self.log('Train Max F Score', torch.max(fscores))
-        self.log('Train Max F Threshold', thlist[torch.argmax(fscores)])
+        # self.log('Train Max F Threshold', thlist[torch.argmax(fscores)])
 
 
 
@@ -116,15 +116,14 @@ class SP_TFM_Wrapper(pl.LightningModule):
 
         samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
 
-        prec, recall = torch.zeros(samples_mask.shape[0], 256), torch.zeros(samples_mask.shape[0], 256)
+        prec, recall = torch.zeros(samples_mask.shape[0], 1), torch.zeros(samples_mask.shape[0], 1)
         pred = samples.reshape(samples.shape[0], -1)
         mask = samples_mask.reshape(samples_mask.shape[0], -1)
-        thlist = torch.linspace(0, 1 - 1e-10, 256)
-        for j in range(256):
-            y_temp = (pred >= thlist[j]).float()
-            tp = (y_temp * mask).sum(dim=-1)
-            # avoid prec becomes 0
-            prec[:, j], recall[:, j] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
+        
+        y_temp = (pred >= 0.5).float()
+        tp = (y_temp * mask).sum(dim=-1)
+        # avoid prec becomes 0
+        prec[:, 0], recall[:, 0] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
         # (batch, threshold)
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
