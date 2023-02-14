@@ -140,7 +140,6 @@ class SP_TFM_Wrapper(pl.LightningModule):
         Compute the metrics for validation batch
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
-        # tensorboard = self.logger.experiment
         features = batch['features']
         seq_mask = batch['seq_mask']
         segments = batch['segments']
@@ -179,8 +178,9 @@ class SP_TFM_Wrapper(pl.LightningModule):
         # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
         # tensorboard.add_images('Test Image', img, self.test_iteration)
 
-        mae = torch.sum(torch.mean(torch.abs(samples - samples_mask), dim=(1, 2, 3)))
-        self.maes += mae
+        mae = torch.mean(torch.abs(samples - samples_mask))
+        self.preds.append(samples)
+        self.masks.append(samples_mask)
         prec, recall = torch.zeros(samples_mask.shape[0], 256), torch.zeros(samples_mask.shape[0], 256)
         pred = samples.reshape(samples.shape[0], -1)
         mask = samples_mask.reshape(samples_mask.shape[0], -1)
@@ -191,30 +191,31 @@ class SP_TFM_Wrapper(pl.LightningModule):
             # avoid prec becomes 0
             prec[:, j], recall[:, j] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
         # (batch, threshold)
-
-        beta_square = 0.3
-        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
-        f_score = f_score.sum(dim=0)
-        self.fscores += f_score
-        self.num_samples_val += features.size(0)
+        self.precs.append(prec)
+        self.recalls.append(recall)
+        self.test_iteration += 1
         return mae
 
 
     def validation_epoch_end(self, validation_step_outputs):
-        mae = self.maes/self.num_samples_val
-        self.log('Validation MAE', mae)
-
-        fscores = self.fscores/self.num_samples_val
+        prec = torch.cat(self.precs, dim=0).mean(dim=0)
+        recall = torch.cat(self.recalls, dim=0).mean(dim=0)
+        beta_square = 0.3
+        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
         thlist = torch.linspace(0, 1 - 1e-10, 256)
-        self.log('Validation Max F Score', torch.max(fscores))
-        self.log('Validation Max F Threshold', thlist[torch.argmax(fscores)])
+        self.log('Validation Max F Score', torch.max(f_score))
+        self.log('Validation Max F Threshold', thlist[torch.argmax(f_score)])
 
+        pred = torch.cat(self.preds, 0)
+        mask = torch.cat(self.masks, 0).round().float()
+        self.log('Validation MAE', torch.mean(torch.abs(pred-mask)))
         self.scheduler.step(torch.mean(torch.stack(validation_step_outputs)))
 
     def on_validation_start(self):
-        self.maes = 0
-        self.fscores = torch.zeros(256)
-        self.num_samples_val = 0 
+        self.preds = []
+        self.masks = []
+        self.precs = []
+        self.recalls = []
 
                     
     
