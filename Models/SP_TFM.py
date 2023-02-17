@@ -15,6 +15,7 @@ class SP_TFM(nn.Module):
         """Dense version of GAT."""
         super(SP_TFM, self).__init__()
         self.linear = nn.Linear(nfeat-2, nhid * nheads)
+        self.dropout = nn.Dropout(dropout)
         # self.pos = nn.Linear(2, nhid*nheads)
         self.encoder = nn.TransformerEncoderLayer(d_model=nhid*nheads, nhead=nheads, dropout=dropout, dim_feedforward=nhid*nheads, batch_first=True)
         self.transformer_enc = nn.TransformerEncoder(self.encoder, num_layers=ntfm)
@@ -31,6 +32,7 @@ class SP_TFM(nn.Module):
         x = self.linear(x)
 
         x += self.pos_encoding(centroids)
+        x = self.dropout(x)
         x = self.transformer_enc(x)
         # x = self.transformer_dec(x, x)
         x = self.out(x)
