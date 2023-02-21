@@ -31,9 +31,9 @@ class SP_GAT_Wrapper(pl.LightningModule):
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()
-        flops, params = get_model_complexity_info(self.model, input_res=(1, self.num_seg), input_constructor=prepare_input_gat,
-                                              as_strings=False, print_per_layer_stat=False)#input_constructor=prepare_input_gat,
-        print(flops)
+        # flops, params = get_model_complexity_info(self.model, input_res=(1, self.num_seg), input_constructor=prepare_input_gat,
+        #                                       as_strings=False, print_per_layer_stat=False)#input_constructor=prepare_input_gat,
+        # print(flops)
 
     def loss(self, pred, label):
         """
