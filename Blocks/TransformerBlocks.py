@@ -60,6 +60,7 @@ class Attention(nn.Module):
 
         self.attend = nn.Softmax(dim = -1)
         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
+        self.att_dropout = nn.Dropout(dropout)
 
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, dim),
@@ -70,7 +71,8 @@ class Attention(nn.Module):
         qkv = self.to_qkv(x).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
 
-        dots = torch.matmul(q, k.transpose(-1, -2))  #* self.scale
+        dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
+        dots = self.att_dropout(dots)
 
         attn = self.attend(dots)
 
