@@ -19,7 +19,7 @@ class SP_TFM(nn.Module):
         # self.pos = nn.Linear(2, nhid*nheads)
         # self.encoder = nn.TransformerEncoderLayer(d_model=nhid*nheads, nhead=nheads, dropout=dropout, dim_feedforward=nhid*nheads, batch_first=True)
         # self.transformer_enc = nn.TransformerEncoder(self.encoder, num_layers=ntfm)
-        self.transformers_enc = Transformer(nhid*nheads, ntfm, nheads, nhid, nhid*nheads, dropout)
+        self.transformer_enc = Transformer(nhid*nheads, ntfm, nheads, nhid, nhid*nheads, dropout)
         # self.transformers = nn.ModuleList([GraphConvTransformer(nhid*nheads, block_depth, nheads, nhid, nheads*nhid, num_regions, norm=norm, dropout=dropout) for _ in range(ntfm)])
 
 
