@@ -15,10 +15,12 @@ from pytorch_lightning.profiler import SimpleProfiler
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from Wrappers.SP_MNIST_TFM import SP_MNIST_TFM_Wrapper
+from Wrappers.SP_CIFAR_TFM import SP_CIFAR_TFM_Wrapper
 
 
 # Import dataset modules
 from dataset.mnist import SPMNISTDataModule
+from dataset.cifar import SPCIFARDataModule
 
 
 # Metric logging
@@ -26,11 +28,13 @@ from dataset.mnist import SPMNISTDataModule
 # Deterministic
 
 MODEL_DIRECTORY = {
-    'SP_TFM': SP_MNIST_TFM_Wrapper
+    'SP_MNIST': SP_MNIST_TFM_Wrapper,
+    'SP_CIFAR': SP_CIFAR_TFM_Wrapper,
 
 }
 DATALOADER_DIRECTORY = {
-    'SP': SPMNISTDataModule
+    'MNIST': SPMNISTDataModule,
+    'CIFAR': SPCIFARDataModule,
 
 } 
 
