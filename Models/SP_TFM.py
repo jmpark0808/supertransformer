@@ -279,6 +279,7 @@ class SP_MNIST_TFM(nn.Module):
         x = x[:, :, 2:]
         x = self.linear(x)
         pos = self.pos_linear(centroids)
+        pos = F.pad(pos, (0, 0, 1, 0), 'constant', 0)
        
         cls_tokens = self.cls_token.repeat(x.size(0), 1, 1)
         x = torch.cat((cls_tokens, x), dim=1)

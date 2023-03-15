@@ -100,14 +100,13 @@ class PosAttention(nn.Module):
         qkv = self.to_qkv(x).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
 
-        dots = torch.matmul(q, k.transpose(-1, -2)[:, :, :, 1:])
+        dots = torch.matmul(q, k.transpose(-1, -2))
         batch_size, seq_len, _ = x.shape
         start = self.max_len - seq_len 
 
         Er_t = emb.transpose(1, 2).unsqueeze(1)
         QEr = torch.matmul(q, Er_t)
         Srel = self.skew(QEr)
-        print(dots.size(), Srel.size())
         attn = self.attend((dots+Srel)*self.scale)
 
         out = torch.matmul(attn, v)
