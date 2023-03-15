@@ -79,13 +79,14 @@ class Attention(nn.Module):
         return self.to_out(out)
 
 class PosAttention(nn.Module):
-    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.):
+    def __init__(self, dim, max_len, heads = 8, dim_head = 64, dropout = 0.):
         super().__init__()
         inner_dim = dim_head *  heads
         project_out = not (heads == 1 and dim_head == dim)
 
         self.heads = heads
         self.scale = dim_head ** -0.5
+        self.max_len = max_len
 
         self.attend = nn.Softmax(dim = -1)
         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
@@ -95,18 +96,35 @@ class PosAttention(nn.Module):
             nn.Dropout(dropout)
         ) if project_out else nn.Identity()
 
-    def forward(self, x, emb_x, emb_y):
+    def forward(self, x, emb):
         qkv = self.to_qkv(x).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
 
-        dots = torch.matmul(q, k.transpose(-1, -2))
-        dots_x = torch.matmul(q, emb_x.transpose(-1, -2).unsqueeze(1).repeat(1, dots.size(1), 1, 1)) 
-        dots_y = torch.matmul(q, emb_y.transpose(-1, -2).unsqueeze(1).repeat(1, dots.size(1), 1, 1))
-        attn = self.attend((dots+dots_x+dots_y)*self.scale)
+        dots = torch.matmul(q, k.transpose(-1, -2)[:, :, :, 1:])
+        batch_size, seq_len, _ = x.shape
+        start = self.max_len - seq_len 
+
+        Er_t = emb.transpose(1, 2).unsqueeze(1)
+        QEr = torch.matmul(q, Er_t)
+        Srel = self.skew(QEr)
+        print(dots.size(), Srel.size())
+        attn = self.attend((dots+Srel)*self.scale)
 
         out = torch.matmul(attn, v)
         out = rearrange(out, 'b h n d -> b n (h d)')
         return self.to_out(out)
+    
+    def skew(self, QEr):
+        # QEr.shape = (batch_size, num_heads, seq_len, seq_len)
+        padded = F.pad(QEr, (1, 0))
+        # padded.shape = (batch_size, num_heads, seq_len, 1 + seq_len)
+        batch_size, num_heads, num_rows, num_cols = padded.shape
+        reshaped = padded.reshape(batch_size, num_heads, num_cols, num_rows)
+        # reshaped.size = (batch_size, num_heads, 1 + seq_len, seq_len)
+        Srel = reshaped[:, :, 1:, :]
+        # Srel.shape = (batch_size, num_heads, seq_len, seq_len)
+        return Srel
+
 
 class GraphAttention(nn.Module):
     def __init__(self, dim,  heads = 8, dim_head = 64, dropout = 0.):
@@ -212,17 +230,17 @@ class Transformer(nn.Module):
         return x
 
 class PosTransformer(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
+    def __init__(self, dim, max_len, depth, heads, dim_head, mlp_dim, dropout = 0.):
         super().__init__()
         self.layers = nn.ModuleList([])
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                PreNorm(dim, PosAttention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
+                PreNorm(dim, PosAttention(dim, max_len, heads = heads, dim_head = dim_head, dropout = dropout)),
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
-    def forward(self, x, emb_x, emb_y):
+    def forward(self, x, emb):
         for attn, ff in self.layers:
-            x = attn(x, emb_x=emb_x, emb_y=emb_y) + x
+            x = attn(x, emb=emb) + x
             x = ff(x) + x
         return x
 
