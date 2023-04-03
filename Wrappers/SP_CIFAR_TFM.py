@@ -1,6 +1,6 @@
 import pytorch_lightning as pl
 import torch
-from Models.SP_TFM import SP_MNIST_TFM
+from Models.SP_TFM import SP_MNIST_TFM, CIFAR_TFM
 
 import torch.nn.functional as F
 import numpy as np
@@ -20,7 +20,7 @@ class SP_CIFAR_TFM_Wrapper(pl.LightningModule):
         self.tfm_hp = kwargs.get('tfmhp')
 
         # Generator that produces the HeatMap
-        self.supert = SP_MNIST_TFM(9, self.num_seg, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout)
+        self.supert = CIFAR_TFM(self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout)
         self.loss_fn = torch.nn.CrossEntropyLoss()
         self.iteration = 0
         self.test_iteration = 0

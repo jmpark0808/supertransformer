@@ -288,3 +288,35 @@ class SP_MNIST_TFM(nn.Module):
         x = x[:, 0] # B, D
         x = self.out(x)
         return x
+    
+class CIFAR_TFM(nn.Module):
+    '''
+    Pure Global aggregation using transformers
+    Deterministic Positional Encoding 
+    '''
+    def __init__(self,  nhid, nheads, ntfm, dropout):
+        """Dense version of GAT."""
+        super(CIFAR_TFM, self).__init__()
+        self.linear = nn.Linear(3, nhid * nheads)
+        self.pos_enc = nn.Parameter(torch.randn(1, 32**2, nhid*nheads))
+        self.dropout = nn.Dropout(dropout)
+        self.pos_linear = nn.Linear(2, nhid)
+        self.encoder = nn.TransformerEncoderLayer(d_model=nhid*nheads, nhead=nheads, dim_feedforward=nhid*nheads, dropout=dropout, batch_first=True)
+        self.transformer_enc = nn.TransformerEncoder(self.encoder, num_layers=ntfm)
+        
+        self.mlp_head = nn.Sequential(
+            nn.LayerNorm(nhid * nheads),
+            nn.Linear(nhid * nheads, 10)
+        )
+        # self.out = nn.Linear(nhid * nheads, 10)
+    def forward(self, x):
+        x = x.permute(0, 2, 3, 1) # batch, X, Y, 3
+        x = self.linear(x) # batch, X, Y, channels
+        x = x.reshape(x.size(0), -1, x.size(3))
+        x += self.pos_enc
+        x = self.dropout(x)
+        x = self.transformer_enc(x)
+
+        x = torch.mean(x, dim=1)
+        x = self.mlp_head(x)
+        return x

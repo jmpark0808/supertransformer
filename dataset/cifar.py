@@ -47,41 +47,41 @@ class CIFARDataset(torchvision.datasets.CIFAR10):
         if self.target_transform is not None:
             target = self.target_transform(target)
 
-        
-        img = np.transpose(img.cpu().numpy(), (1, 2, 0))
-        img_size = img.shape[1]
+        return img, target
+        # img = np.transpose(img.cpu().numpy(), (1, 2, 0))
+        # img_size = img.shape[1]
 
-        segments = slic(img, n_segments=self.num_seg,
-            compactness=COMPACTNESS,
-            max_num_iter=10,
-            convert2lab=False,
-            enforce_connectivity=True,
-            slic_zero=False,
-            )
-        # if !test_set return the label as well, otherwise don't
+        # segments = slic(img, n_segments=self.num_seg,
+        #     compactness=COMPACTNESS,
+        #     max_num_iter=10,
+        #     convert2lab=False,
+        #     enforce_connectivity=True,
+        #     slic_zero=False,
+        #     )
+        # # if !test_set return the label as well, otherwise don't
 
-        # plt.imshow(mark_boundaries(img, segments))
-        # plt.show()
+        # # plt.imshow(mark_boundaries(img, segments))
+        # # plt.show()
 
-        regions = regionprops_table(segments, intensity_image=img, properties=('label', 'centroid', 'area',
-                                                                                 'intensity_mean', 'coords'), extra_properties=[image_stdev])#, polarize])
+        # regions = regionprops_table(segments, intensity_image=img, properties=('label', 'centroid', 'area',
+        #                                                                          'intensity_mean', 'coords'), extra_properties=[image_stdev])#, polarize])
                     
-        features = np.zeros([self.num_seg, 9])
-        label = regions['label']
-        features[label-1, 0] = regions['centroid-0']
-        features[label-1, 1] = regions['centroid-1']
-        features[label-1, 2] = regions['area'] / (img_size**2)
-        features[label-1, 3] = regions['intensity_mean-0']/255.
-        features[label-1, 4] = regions['intensity_mean-1']/255.
-        features[label-1, 5] = regions['intensity_mean-2']/255.
-        features[label-1, 6] = regions['image_stdev-0']/255.
-        features[label-1, 7] = regions['image_stdev-1']/255.
-        features[label-1, 8] = regions['image_stdev-2']/255.
+        # features = np.zeros([self.num_seg, 9])
+        # label = regions['label']
+        # features[label-1, 0] = regions['centroid-0']
+        # features[label-1, 1] = regions['centroid-1']
+        # features[label-1, 2] = regions['area'] / (img_size**2)
+        # features[label-1, 3] = regions['intensity_mean-0']/255.
+        # features[label-1, 4] = regions['intensity_mean-1']/255.
+        # features[label-1, 5] = regions['intensity_mean-2']/255.
+        # features[label-1, 6] = regions['image_stdev-0']/255.
+        # features[label-1, 7] = regions['image_stdev-1']/255.
+        # features[label-1, 8] = regions['image_stdev-2']/255.
 
 
-        features  = torch.tensor(features).float()
+        # features  = torch.tensor(features).float()
 
-        return features, target
+        # return features, target
         
 
 class SPCIFARDataModule(pl.LightningDataModule):
@@ -90,8 +90,9 @@ class SPCIFARDataModule(pl.LightningDataModule):
         super().__init__()
 
         train_transform = transforms.Compose(
-                    [transforms.RandomAffine(degrees=20, translate=(0.1,0.1), scale=(0.9, 1.1)),
-                    transforms.ColorJitter(brightness=0.2, contrast=0.2),
+                    [transforms.RandomCrop(32, padding=4),
+                    transforms.Resize(32),
+                    transforms.RandomHorizontalFlip(),
                     transforms.ToTensor()
                     ])
 
