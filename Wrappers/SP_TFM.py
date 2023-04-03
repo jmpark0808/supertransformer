@@ -1,6 +1,6 @@
 import pytorch_lightning as pl
 import torch
-from Models.SP_TFM import SP_TFM
+from Models.SP_TFM import SP_TFM, SP_TFM_REL
 
 import torch.nn.functional as F
 import numpy as np
@@ -20,7 +20,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         self.tfm_hp = kwargs.get('tfmhp')
 
         # Generator that produces the HeatMap
-        self.supert = SP_TFM(11, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout)
+        self.supert = SP_TFM_REL(11, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout)
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()

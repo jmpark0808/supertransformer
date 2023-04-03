@@ -40,6 +40,7 @@ class CIFARDataset(torchvision.datasets.CIFAR10):
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
         img = Image.fromarray(img)
+        img_gray = np.array(img.convert('L'))
 
         if self.transform is not None:
             img = self.transform(img)
@@ -56,17 +57,25 @@ class CIFARDataset(torchvision.datasets.CIFAR10):
             max_num_iter=10,
             convert2lab=False,
             enforce_connectivity=True,
-            slic_zero=False,
+            slic_zero=True,
             )
         # if !test_set return the label as well, otherwise don't
 
-        # plt.imshow(mark_boundaries(img, segments))
+
+        # fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(5, 3))
+        # axes[0].imshow(mark_boundaries(img, segments))
+        # axes[1].imshow(img)
         # plt.show()
+
+        lbp_np = local_binary_pattern(img_gray, LBP_RADIUS*LBP_POINTS, LBP_RADIUS, method='uniform')
+
+
+        regions_lbp = regionprops_table(segments, intensity_image=lbp_np, extra_properties=[lbp])
 
         regions = regionprops_table(segments, intensity_image=img, properties=('label', 'centroid', 'area',
                                                                                  'intensity_mean', 'coords'), extra_properties=[image_stdev])#, polarize])
                     
-        features = np.zeros([self.num_seg, 9])
+        features = np.zeros([self.num_seg, 9+(LBP_RADIUS*LBP_POINTS+2)])
         label = regions['label']
         features[label-1, 0] = regions['centroid-0']
         features[label-1, 1] = regions['centroid-1']
@@ -78,6 +87,8 @@ class CIFARDataset(torchvision.datasets.CIFAR10):
         features[label-1, 7] = regions['image_stdev-1']/255.
         features[label-1, 8] = regions['image_stdev-2']/255.
 
+        for ind in range(LBP_RADIUS*LBP_POINTS+2):
+            features[label-1, ind+9] = regions_lbp[f'lbp-{ind}']
 
         features  = torch.tensor(features).float()
 

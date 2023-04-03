@@ -63,8 +63,8 @@ def embed(region, intensities):
 
 def lbp(region, intensities):
     (hist, _) = np.histogram(intensities[region].ravel(),
-			bins=np.arange(0, 57 + 3),
-			range=(0, 57 + 2))
+			bins=np.arange(0, LBP_POINTS*LBP_RADIUS+3),
+			range=(0, LBP_POINTS*LBP_RADIUS+2))
     hist = hist.astype("float")
     hist /= (hist.sum() + 1e-7)
     return hist
