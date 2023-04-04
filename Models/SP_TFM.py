@@ -41,23 +41,26 @@ class SP_TFM_REL(nn.Module):
     Pure Global aggregation using transformers
     Deterministic Positional Encoding 
     '''
-    def __init__(self, nfeat, max_len, nhid, nheads, ntfm, dropout):
+    def __init__(self, nfeat, coeff, dilation, nhid, nheads, ntfm, dropout):
         """Dense version of GAT."""
         super(SP_TFM_REL, self).__init__()
-        self.linear = nn.Linear(nfeat-2, nhid * nheads)
-        self.pos_linear = nn.Linear(2, nhid)
-        self.cls_token = nn.Parameter(torch.randn(1, 1, nhid*nheads))
-        self.transformer_enc = PosTransformer(nhid * nheads, max_len, ntfm, nheads, nhid, nhid*nheads, dropout)
+        self.linear = nn.Linear(nfeat-2+((coeff//2*2-1)*2), nhid * nheads)
+        self.pos_linear = nn.Linear(2, nhid*nheads)
+
+        
+        self.transformer_enc = PosTransformer(nhid * nheads, dilation, ntfm, nheads, nhid, nhid*nheads, dropout)
+        # self.encoder = nn.TransformerEncoderLayer(d_model=nhid*nheads, nhead=nheads, dropout=dropout, dim_feedforward=nhid*nheads, batch_first=True)
+        # self.transformer_enc = nn.TransformerEncoder(self.encoder, num_layers=ntfm)
 
         self.out = nn.Linear(nhid * nheads, 1)
-    def forward(self, x):
-        centroids = x[:, :, :2]
+    def forward(self, x, adj):
+        pos = x[:, :, :2]
         x = x[:, :, 2:]
         x = self.linear(x)
-        pos = self.pos_linear(centroids)
+        pos = self.pos_linear(pos)
        
-        x = self.transformer_enc(x, pos)
-        # x = self.transformer_dec(x, x)
+        x = self.transformer_enc(x, pos, adj)
+
         x = self.out(x)
         return x
 

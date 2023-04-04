@@ -79,14 +79,14 @@ class Attention(nn.Module):
         return self.to_out(out)
 
 class PosAttention(nn.Module):
-    def __init__(self, dim, max_len, heads = 8, dim_head = 64, dropout = 0.):
+    def __init__(self, dim, dilation, heads = 8, dim_head = 64, dropout = 0.):
         super().__init__()
         inner_dim = dim_head *  heads
         project_out = not (heads == 1 and dim_head == dim)
 
         self.heads = heads
         self.scale = dim_head ** -0.5
-        self.max_len = max_len
+        self.dilation = dilation
 
         self.attend = nn.Softmax(dim = -1)
         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
@@ -96,18 +96,23 @@ class PosAttention(nn.Module):
             nn.Dropout(dropout)
         ) if project_out else nn.Identity()
 
-    def forward(self, x, emb):
+    def forward(self, x, emb, adj):
         qkv = self.to_qkv(x).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
 
         dots = torch.matmul(q, k.transpose(-1, -2))
-        batch_size, seq_len, _ = x.shape
-        start = self.max_len - seq_len 
+        zero_vec = 0*torch.ones_like(dots)
+
+        adj = torch.matrix_power(adj, self.dilation).bool().int()
+        adj = adj.unsqueeze(1).bool() # B x 1 x R x R
+        adj = adj.repeat(1, dots.size(1), 1, 1)
 
         Er_t = emb.transpose(1, 2).unsqueeze(1)
         QEr = torch.matmul(q, Er_t)
         Srel = self.skew(QEr)
-        attn = self.attend((dots+Srel)*self.scale)
+        attention = torch.where(adj > 0, dots+Srel, zero_vec)
+
+        attn = self.attend((attention)*self.scale)
 
         out = torch.matmul(attn, v)
         out = rearrange(out, 'b h n d -> b n (h d)')
@@ -229,17 +234,17 @@ class Transformer(nn.Module):
         return x
 
 class PosTransformer(nn.Module):
-    def __init__(self, dim, max_len, depth, heads, dim_head, mlp_dim, dropout = 0.):
+    def __init__(self, dim, dilation, depth, heads, dim_head, mlp_dim, dropout = 0.):
         super().__init__()
         self.layers = nn.ModuleList([])
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                PreNorm(dim, PosAttention(dim, max_len, heads = heads, dim_head = dim_head, dropout = dropout)),
+                PreNorm(dim, PosAttention(dim, dilation, heads = heads, dim_head = dim_head, dropout = dropout)),
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
-    def forward(self, x, emb):
+    def forward(self, x, emb, adj):
         for attn, ff in self.layers:
-            x = attn(x, emb=emb) + x
+            x = attn(x, emb=emb, adj=adj) + x
             x = ff(x) + x
         return x
 

@@ -112,6 +112,7 @@ if __name__ == "__main__":
     parser.add_argument('--clip_grad_norm', help='Clipping gradient norm, 0 means no clipping', type=float, default=0.)
     parser.add_argument('--size', help='Image size for DUTS', type=int, default=224)
     parser.add_argument('--coeff', help='Number of coefficients for fft', type=int, default=7)
+    parser.add_argument('--dilation', help='Dilation for local transformer', type=int, default=5)
     parser.add_argument('--downsample', help='Downsample resolution', type=int, default=28)
     parser.add_argument('--tag', help='Tag for differentiating runs on CC', default='', type=str)
     parser.add_argument('--tfmhp', default=[8, 16, 6], 
