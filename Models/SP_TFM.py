@@ -45,7 +45,7 @@ class SP_TFM_REL(nn.Module):
         """Dense version of GAT."""
         super(SP_TFM_REL, self).__init__()
         self.linear = nn.Linear(nfeat-2+((coeff//2*2-1)*2), nhid * nheads)
-        self.pos_linear = nn.Linear(2, nhid*nheads)
+        self.pos_linear = nn.Linear(2, nhid)
 
         
         self.transformer_enc = PosTransformer(nhid * nheads, dilation, ntfm, nheads, nhid, nhid*nheads, dropout)
