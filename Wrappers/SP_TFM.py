@@ -52,7 +52,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         return optimizer
       
 
-    def forward(self, input):
+    def forward(self, input, adj):
         """
         Forward pass through model
         :param x: Input features
@@ -60,7 +60,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
 
-        pred = self.supert(input[0])
+        pred = self.supert(input, adj)
 
         return pred
 
@@ -96,7 +96,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
 
         # forward pass
         
-        pred = self.forward([features, adj])
+        pred = self.forward(features, adj)
 
         loss = self.loss(pred, seq_mask)
         
@@ -156,7 +156,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
 
 
         # forward pass
-        pred = self.forward([features, adj])
+        pred = self.forward(features, adj)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
