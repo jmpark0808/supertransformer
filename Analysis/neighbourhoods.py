@@ -138,8 +138,8 @@ for file in tqdm(os.listdir(data_dir)):
         compactness=10.0,
         max_num_iter=10,
         convert2lab=True,
-        enforce_connectivity=False,
-        slic_zero=False)
+        enforce_connectivity=True,
+        slic_zero=True)
     vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
     vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
     vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
@@ -254,28 +254,30 @@ for file in tqdm(os.listdir(data_dir)):
 
 
     # Try dilation
-    # neighbor_array = np.linalg.matrix_power(neighbor_array, 1).astype(bool).astype(int) - np.linalg.matrix_power(neighbor_array, 0).astype(bool).astype(int) 
-    # + np.eye(seq_len).astype(bool).astype(int)
-    # # neighbor_array = neighbor_array.astype(bool).astype(int)
+    dilation = 2
+    neighbor_array = np.linalg.matrix_power(neighbor_array, dilation).astype(bool).astype(int)
+    # neighbor_array = neighbor_array.astype(bool).astype(int)
 
-    # random_sp = np.random.randint(0, 599)
+    random_sp = 100
 
-    # segments_ids = np.unique(segments)
+    segments_ids = np.unique(segments)
 
-    # # centers
-    # centers = np.array([np.mean(np.nonzero(segments==i),axis=1) for i in segments_ids])
+    # centers
+    centers = np.array([np.mean(np.nonzero(segments==i),axis=1) for i in segments_ids])
 
-    # fig = plt.figure(figsize=(10,10))
-    # ax = fig.add_subplot(111)
-    # plt.imshow(mark_boundaries(img_np, segments))
+    fig = plt.figure(figsize=(10,10))
+    ax = fig.add_subplot(111)
+    plt.imshow(mark_boundaries(img_np, segments))
     # plt.scatter(centers[:,1],centers[:,0], c='blue', s=30)
     # for ind, (x, y) in enumerate(zip(features[:, 1], features[:, 0])):
     #     plt.text(x, y, str(regions['label'][ind]))
 
-    # plt.scatter(features[:, 1], features[:, 0], c='red', s=30)
+    plt.scatter(features[:, 1], features[:, 0], c='red', s=40)
 
-    # for neighbours in np.argwhere(neighbor_array[random_sp]==1):
-    #     plt.scatter(features[neighbours, 1], features[neighbours, 0], s=40, c='blue')
+    for neighbours in np.argwhere(neighbor_array[random_sp]==1):
+        plt.scatter(features[neighbours, 1], features[neighbours, 0], s=40, c='blue')
+
+    plt.scatter(features[random_sp, 1], features[random_sp, 0], c='green', s=40)
 
     # plt.scatter(features[random_sp, 1], features[random_sp, 0], s=40, c='red')
 
@@ -290,11 +292,11 @@ for file in tqdm(os.listdir(data_dir)):
     #     l = Line2D([x0,x1],[y0,y1], alpha=0.5)
     #     ax.add_line(l)
 
-    # plt.show()
+    plt.show()
 
 
     # assert(0)
 
     
-print(np.min(heights), np.max(heights))
-print(np.min(widths), np.max(widths))
+# print(np.min(heights), np.max(heights))
+# print(np.min(widths), np.max(widths))

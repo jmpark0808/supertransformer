@@ -47,7 +47,7 @@ class SP_TFM_REL(nn.Module):
         self.linear = nn.Linear(nfeat-2+((coeff//2*2-1)*2), nhid * nheads)
         self.pos_linear = nn.Linear(2, nhid*nheads)
 
-        
+        self.pos_encoding = PositionalEncodingSuperPixel(nhid*nheads)
         self.transformer_enc = PosTransformer(nhid * nheads, dilation, ntfm, nheads, nhid, nhid*nheads, dropout)
         # self.encoder = nn.TransformerEncoderLayer(d_model=nhid*nheads, nhead=nheads, dropout=dropout, dim_feedforward=nhid*nheads, batch_first=True)
         # self.transformer_enc = nn.TransformerEncoder(self.encoder, num_layers=ntfm)
@@ -57,9 +57,10 @@ class SP_TFM_REL(nn.Module):
         pos = x[:, :, :2]
         x = x[:, :, 2:]
         x = self.linear(x)
-        pos = self.pos_linear(pos)
-       
-        x = self.transformer_enc(x, pos, adj)
+        # pos = self.pos_linear(pos)
+        pos = self.pos_encoding(pos)
+        x += pos
+        x = self.transformer_enc(x, None, adj)
 
         x = self.out(x)
         return x

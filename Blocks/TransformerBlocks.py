@@ -107,10 +107,13 @@ class PosAttention(nn.Module):
         adj = adj.unsqueeze(1).bool() # B x 1 x R x R
         adj = adj.repeat(1, dots.size(1), 1, 1)
 
-        Er_t = emb.transpose(1, 2).unsqueeze(1)
-        QEr = torch.matmul(q, Er_t)
-        Srel = self.skew(QEr)
-        attention = torch.where(adj > 0, dots+Srel, zero_vec)
+        if emb is not None:
+            Er_t = emb.transpose(1, 2).unsqueeze(1)
+            QEr = torch.matmul(q, Er_t)
+            Srel = self.skew(QEr)
+            attention = torch.where(adj > 0, dots+Srel, zero_vec)
+        else:
+            attention = torch.where(adj > 0, dots, zero_vec)
 
         attn = self.attend((attention)*self.scale)
 
