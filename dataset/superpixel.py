@@ -165,10 +165,11 @@ class ToTensorSP(object):
 
 
 class ToTensorSPFFT(object):
-    def __init__(self, num_seg, coeff):
+    def __init__(self, num_seg, compactness, coeff):
         self.tensor = transforms.ToTensor()
         self.num_seg = num_seg
         self.coeff = coeff
+        self.compactness = compactness
         
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
@@ -201,7 +202,7 @@ class ToTensorSPFFT(object):
         img_size = img_np.shape[1]
         mask_np = np.array(mask)/255.
         segments = slic(img_np, n_segments=self.num_seg,
-            compactness=COMPACTNESS,
+            compactness=self.compactness,
             max_num_iter=3,
             convert2lab=True,
             enforce_connectivity=True,
@@ -502,22 +503,22 @@ class ToTensorRaw(object):
         return {'image': img, 'mask': mask}
 
 class SPDataset(data.Dataset):
-    def __init__(self, root_dir, num_seg, size, data_augmentation=True, dataloader=None, coeff=None):
+    def __init__(self, root_dir, num_seg, size, compactness, data_augmentation=True, dataloader=None, coeff=None):
         self.root_dir = root_dir
         self.image_list = sorted(os.listdir('{}/Image'.format(root_dir)))
         self.mask_list = sorted(os.listdir('{}/Mask'.format(root_dir)))
         if dataloader == 'SP':
-            totensor = ToTensorSP(num_seg)
+            totensor = ToTensorSP(num_seg, compactness)
         elif dataloader == 'SPFFT':
-            totensor = ToTensorSPFFT(num_seg, coeff)
+            totensor = ToTensorSPFFT(num_seg, compactness, coeff)
         elif dataloader == 'SPED':
-            totensor = ToTensorSPET(num_seg)
+            totensor = ToTensorSPET(num_seg, compactness)
         elif dataloader == 'SPEmbed':
-            totensor = ToTensorSPEmbed(num_seg)
+            totensor = ToTensorSPEmbed(num_seg, compactness)
         elif dataloader == 'SPCNN':
-            totensor = ToTensorSPCNN(num_seg)
+            totensor = ToTensorSPCNN(num_seg, compactness)
         elif dataloader == 'SPContour':
-            totensor = ToTensorSPContour(num_seg)
+            totensor = ToTensorSPContour(num_seg, compactness)
         else:
             raise 'Unrecongized dataloader'
 
@@ -590,22 +591,23 @@ class SPDataModule(pl.LightningDataModule):
         self.res = kwargs.get('size')
         self.dataloader = kwargs.get('dataloader')
         self.coeff = kwargs.get('coeff')
+        self.compactness = kwargs.get('compactness')
 
         
     def train_dataloader(self):
-        data_train = SPDataset(self.train_dir, self.num_seg, self.res, True, self.dataloader, self.coeff)
+        data_train = SPDataset(self.train_dir, self.num_seg, self.res, self.compactness, True, self.dataloader, self.coeff)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=False)
 
     def val_dataloader(self):
-        data_val = SPDataset(self.val_dir, self.num_seg, self.res, False, self.dataloader, self.coeff)
+        data_val = SPDataset(self.val_dir, self.num_seg, self.res, self.compactness, False, self.dataloader, self.coeff)
         return DataLoader(
                 data_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
 
     def test_dataloader(self):
-        data_test = SPDataset(self.test_dir, self.num_seg, self.res,  False, self.dataloader, self.coeff)
+        data_test = SPDataset(self.test_dir, self.num_seg, self.res,  self.compactness, False, self.dataloader, self.coeff)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
