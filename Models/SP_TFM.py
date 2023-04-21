@@ -57,8 +57,8 @@ class SP_TFM_REL(nn.Module):
         pos = x[:, :, :2]
         x = x[:, :, 2:]
         x = self.linear(x)
-        # pos = self.pos_linear(pos)
-        pos = self.pos_encoding(pos)
+        pos = self.pos_linear(pos)
+        # pos = self.pos_encoding(pos)
         x += pos
         x = self.transformer_enc(x, None, adj)
 
