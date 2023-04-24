@@ -53,14 +53,14 @@ class SP_TFM_REL(nn.Module):
         # self.transformer_enc = nn.TransformerEncoder(self.encoder, num_layers=ntfm)
 
         self.out = nn.Linear(nhid * nheads, 1)
-    def forward(self, x, adj):
-        pos = x[:, :, :2]
+    def forward(self, x, adj, distances):
+        # pos = x[:, :, :2]
         x = x[:, :, 2:]
         x = self.linear(x)
-        pos = self.pos_linear(pos)
+        # pos = self.pos_linear(pos)
         # pos = self.pos_encoding(pos)
-        x += pos
-        x = self.transformer_enc(x, None, adj)
+        # x += pos
+        x = self.transformer_enc(x, None, adj, distances)
 
         x = self.out(x)
         return x

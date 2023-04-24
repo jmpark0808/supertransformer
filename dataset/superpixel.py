@@ -191,6 +191,7 @@ class ToTensorSPFFT(object):
             amp = abs(fourier_result)
             phase = np.arctan2(fourier_result.imag, fourier_result.real)
 
+            # return np.array(amp)
             return np.concatenate((amp, phase))
 
         self.fourier_descriptors = fourier_descriptors
@@ -205,7 +206,7 @@ class ToTensorSPFFT(object):
             compactness=self.compactness,
             max_num_iter=3,
             convert2lab=True,
-            enforce_connectivity=True,
+            enforce_connectivity=False,
             slic_zero=False)
 
 
@@ -216,7 +217,7 @@ class ToTensorSPFFT(object):
         bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
     
 
-        regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean',
+        regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
                                                                                     'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
 
         seq_len = len(regions['label'])
@@ -244,10 +245,13 @@ class ToTensorSPFFT(object):
         neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
         # neighbor_array -= eye
 
-
+        spatial_distances_x = (features[:, 0:1] - features[:, 0:1].T)
+        spatial_distances_y = (features[:, 1:2] - features[:, 1:2].T)
+        edge_features = np.stack((spatial_distances_x, spatial_distances_y), axis=2)
+        edge_features = torch.from_numpy(edge_features).float()
         features, neighbor_array, seq_mask, segments, mask, img = torch.tensor(features).float(), torch.tensor(neighbor_array).float(), torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
 
-        return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask, 'img': img, 'neighbor_array': neighbor_array, }
+        return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask, 'img': img, 'neighbor_array': neighbor_array, 'edge_features': edge_features}
 
 class ToTensorSPContour(object):
     def __init__(self, num_seg):

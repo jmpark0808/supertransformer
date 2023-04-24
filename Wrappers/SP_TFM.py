@@ -46,13 +46,13 @@ class SP_TFM_Wrapper(pl.LightningModule):
             optimizer,
             mode='min',
             factor=0.1,
-            patience=self.es_patience-3,
+            patience=self.es_patience//2,
             min_lr=1e-8,
             verbose=True)
         return optimizer
       
 
-    def forward(self, input, adj):
+    def forward(self, input, adj, distances):
         """
         Forward pass through model
         :param x: Input features
@@ -60,7 +60,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
 
-        pred = self.supert(input, adj)
+        pred = self.supert(input, adj, distances)
 
         return pred
 
@@ -88,15 +88,19 @@ class SP_TFM_Wrapper(pl.LightningModule):
         mask = batch['mask']
         img = batch['img']
         adj = batch['neighbor_array']
+        distances = batch['edge_features']
+
 
 
         features = features.cuda()
         seq_mask = seq_mask.cuda()
         adj = adj.cuda()
+        distances = distances.cuda()
+
 
         # forward pass
         
-        pred = self.forward(features, adj)
+        pred = self.forward(features, adj, distances)
 
         loss = self.loss(pred, seq_mask)
         
@@ -148,15 +152,17 @@ class SP_TFM_Wrapper(pl.LightningModule):
         mask = batch['mask']
         img = batch['img']
         adj = batch['neighbor_array']
+        distances = batch['edge_features']
 
 
         features = features.cuda()
         seq_mask = seq_mask.cuda()
         adj = adj.cuda()
+        distances = distances.cuda()
 
 
         # forward pass
-        pred = self.forward(features, adj)
+        pred = self.forward(features, adj, distances)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()

@@ -90,13 +90,15 @@ class PosAttention(nn.Module):
 
         self.attend = nn.Softmax(dim = -1)
         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
+        self.distances_linear_x = nn.Linear(1, 1)
+        self.distances_linear_y = nn.Linear(1, 1) 
 
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, dim),
             nn.Dropout(dropout)
         ) if project_out else nn.Identity()
 
-    def forward(self, x, emb, adj):
+    def forward(self, x, emb, adj, distances):
         qkv = self.to_qkv(x).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
 
@@ -113,7 +115,9 @@ class PosAttention(nn.Module):
             Srel = self.skew(QEr)
             attention = torch.where(adj > 0, dots+Srel, zero_vec)
         else:
-            attention = torch.where(adj > 0, dots, zero_vec)
+            distances_x = self.distances_linear_x(distances[:, :, :, 0:1]).unsqueeze(1).repeat(1, dots.size(1), 1, 1, 1).squeeze(4)
+            distances_y = self.distances_linear_y(distances[:, :, :, 1:2]).unsqueeze(1).repeat(1, dots.size(1), 1, 1, 1).squeeze(4)
+            attention = torch.where(adj > 0, dots+distances_x+distances_y, zero_vec)
 
         attn = self.attend((attention)*self.scale)
 
@@ -245,9 +249,9 @@ class PosTransformer(nn.Module):
                 PreNorm(dim, PosAttention(dim, dilation, heads = heads, dim_head = dim_head, dropout = dropout)),
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
-    def forward(self, x, emb, adj):
+    def forward(self, x, emb, adj, distances):
         for attn, ff in self.layers:
-            x = attn(x, emb=emb, adj=adj) + x
+            x = attn(x, emb=emb, adj=adj, distances=distances) + x
             x = ff(x) + x
         return x
 
