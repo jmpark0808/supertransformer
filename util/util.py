@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import numpy as np
-
+from dataset.constants import *
 
 def estimate_memory_training(model, sample_input, optimizer_type=torch.optim.Adam, batch_size=1, use_amp=False, device=0):
     """Predict the maximum memory usage of the model. 
@@ -146,3 +146,12 @@ def resample_2d(points, N):
     xi = np.interp(dSi, d, xc)
     yi = np.interp(dSi, d, yc)
     return xi, yi
+
+
+def get_input_dim(dataloader, args):
+    if dataloader == 'SP':
+        return 7 
+    elif dataloader == 'SPFFT':
+        return 6+((args.get('coeff')//2*2-1)*2)
+    else:
+        raise 'Unrecognized dataloader'

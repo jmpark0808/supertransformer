@@ -27,7 +27,10 @@ from Wrappers.SP_TFM_TFM import SP_TFM_TFM_Wrapper
 from Wrappers.SP_TFM_FFT import SP_TFM_FFT_Wrapper
 from Wrappers.SP_TFM_Contour import SP_TFM_Contour_Wrapper
 from Wrappers.SP_GAT import SP_GAT_Wrapper
+from Wrappers.SP_Baseline import SP_Baseline_Wrapper
+from Wrappers.SP_Baseline_DPE import SP_Baseline_DPE_Wrapper
 from Wrappers.image_transformer import ImageTransformer
+
 
 # Import dataset modules
 from dataset.superpixel import DUTSDataModule,  SPDataModule
@@ -67,6 +70,8 @@ MODEL_DIRECTORY = {
     "SP_GAT": SP_GAT_Wrapper,
     "SP_TFM_FFT": SP_TFM_FFT_Wrapper,
     'SP_TFM_Contour': SP_TFM_Contour_Wrapper,
+    'SP_Baseline': SP_Baseline_Wrapper,
+    'SP_Baseline_DPE': SP_Baseline_DPE_Wrapper,
 
 }
 DATALOADER_DIRECTORY = {

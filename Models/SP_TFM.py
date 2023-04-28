@@ -11,28 +11,18 @@ class SP_TFM(nn.Module):
     Pure Global aggregation using transformers
     Deterministic Positional Encoding 
     '''
-    def __init__(self, nfeat, nhid, nheads, ntfm, dropout):
+    def __init__(self, seq_len, nfeat, nhid, nheads, ntfm, dropout):
         """Dense version of GAT."""
         super(SP_TFM, self).__init__()
-        self.linear = nn.Linear(nfeat-2, nhid * nheads)
-        # self.pos = nn.Linear(2, nhid*nheads)
+        self.linear = nn.Linear(nfeat, nhid * nheads)
         self.encoder = nn.TransformerEncoderLayer(d_model=nhid*nheads, nhead=nheads, dropout=dropout, dim_feedforward=nhid*nheads, batch_first=True)
         self.transformer_enc = nn.TransformerEncoder(self.encoder, num_layers=ntfm)
-        # self.transformers_enc = Transformer(nhid*nheads, ntfm, nheads, nhid, nhid*nheads, dropout)
-        # self.transformers = nn.ModuleList([GraphConvTransformer(nhid*nheads, block_depth, nheads, nhid, nheads*nhid, num_regions, norm=norm, dropout=dropout) for _ in range(ntfm)])
-        # self.decoder = nn.TransformerDecoderLayer(d_model=nhid*nheads, nhead=nheads, dim_feedforward=nhid*nheads, batch_first=True)
-        # self.transformer_dec = nn.TransformerDecoder(self.decoder, num_layers=ntfm)
-
-        self.pos_encoding = PositionalEncodingSuperPixel(nhid*nheads)
+        self.pos_encoding = nn.Parameter(torch.randn(1, seq_len, nhid*nheads))
         self.out = nn.Linear(nhid * nheads, 1)
     def forward(self, x):
-        centroids = x[:, :, :2]
-        x = x[:, :, 2:]
         x = self.linear(x)
-
-        x += self.pos_encoding(centroids)
+        x += self.pos_encoding
         x = self.transformer_enc(x)
-        # x = self.transformer_dec(x, x)
         x = self.out(x)
         return x
     
@@ -41,25 +31,25 @@ class SP_TFM_REL(nn.Module):
     Pure Global aggregation using transformers
     Deterministic Positional Encoding 
     '''
-    def __init__(self, nfeat, coeff, dilation, nhid, nheads, ntfm, dropout):
+    def __init__(self, nfeat, dilation, nhid, nheads, ntfm, dropout):
         """Dense version of GAT."""
         super(SP_TFM_REL, self).__init__()
-        self.linear = nn.Linear(nfeat-2+((coeff//2*2-1)*2), nhid * nheads)
+        self.linear = nn.Linear(nfeat, nhid * nheads)
         self.pos_linear = nn.Linear(2, nhid*nheads)
 
-        self.pos_encoding = PositionalEncodingSuperPixel(nhid*nheads)
+        # self.pos_encoding = PositionalEncodingSuperPixel(nhid*nheads)
         self.transformer_enc = PosTransformer(nhid * nheads, dilation, ntfm, nheads, nhid, nhid*nheads, dropout)
         # self.encoder = nn.TransformerEncoderLayer(d_model=nhid*nheads, nhead=nheads, dropout=dropout, dim_feedforward=nhid*nheads, batch_first=True)
         # self.transformer_enc = nn.TransformerEncoder(self.encoder, num_layers=ntfm)
 
         self.out = nn.Linear(nhid * nheads, 1)
     def forward(self, x, adj, distances):
-        # pos = x[:, :, :2]
+        pos = x[:, :, :2]
         x = x[:, :, 2:]
         x = self.linear(x)
-        # pos = self.pos_linear(pos)
+        pos = self.pos_linear(pos)
         # pos = self.pos_encoding(pos)
-        # x += pos
+        x += pos
         x = self.transformer_enc(x, None, adj, distances)
 
         x = self.out(x)

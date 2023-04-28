@@ -65,9 +65,10 @@ class RandomFlip(object):
 
 
 class ToTensorSP(object):
-    def __init__(self, num_seg):
+    def __init__(self, num_seg, compactness):
         self.tensor = transforms.ToTensor()
         self.num_seg = num_seg
+        self.compactness = compactness
 
     def __call__(self, sample):
         img, mask = sample['image'], sample['mask']
@@ -75,50 +76,37 @@ class ToTensorSP(object):
         img_size = img_np.shape[1]
         mask_np = np.array(mask)/255.
         segments = slic(img_np, n_segments=self.num_seg,
-            compactness=COMPACTNESS,
+            compactness=self.compactness,
             max_num_iter=3,
             convert2lab=True,
-            enforce_connectivity=True,
+            enforce_connectivity=False,
             slic_zero=False)
-        # slic = SlicAvx2(num_components=self.num_seg, compactness=10)
-        # segments = slic.iterate(img_np)
-
-        vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
-        vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
-        vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
-        vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
-        bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
+   
     
 
-        regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean',
-                                                                                    'extent', 'coords', 'eccentricity'), extra_properties=[image_stdev])#, polarize])
+        regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'area', 'intensity_mean',
+                                                                                     'coords'), extra_properties=[image_stdev])#, polarize])
                     
         seq_len = len(regions['label'])
-        features = np.zeros([self.num_seg, 11])
+        features = np.zeros([self.num_seg, 7])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
-        features[label-1, 0] = regions['centroid-0']
-        features[label-1, 1] = regions['centroid-1']
-        features[label-1, 2] = regions['area'] / (img_size**2)
-        features[label-1, 3] = regions['intensity_mean-0']/255.
-        features[label-1, 4] = regions['intensity_mean-1']/255.
-        features[label-1, 5] = regions['intensity_mean-2']/255.
-        features[label-1, 6] = regions['extent']
-        features[label-1, 7] = regions['eccentricity']
-        features[label-1, 8] = regions['image_stdev-0']/255.
-        features[label-1, 9] = regions['image_stdev-1']/255.
-        features[label-1, 10] = regions['image_stdev-2']/255.
-        # for i in range(NUM_CHUNK*2):
-        #     features[label-1, 11+i] = regions[f'polarize-{i}-0']
-        #     features[label-1, 11+NUM_CHUNK*2+i] = regions[f'polarize-{i}-1']
+        features[label-1, 0] = regions['area'] / (img_size**2)
+        features[label-1, 1] = regions['intensity_mean-0']/255.
+        features[label-1, 2] = regions['intensity_mean-1']/255.
+        features[label-1, 3] = regions['intensity_mean-2']/255.
+        features[label-1, 4] = regions['image_stdev-0']/255.
+        features[label-1, 5] = regions['image_stdev-1']/255.
+        features[label-1, 6] = regions['image_stdev-2']/255.
+
 
         for ind, coord in zip(regions['label'], regions['coords']):
             seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
 
         neighbor_array = np.zeros([self.num_seg, self.num_seg])
         # eye = np.eye(self.num_seg)
-        neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
-        neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+        # neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+        # neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
         # neighbor_array -= eye
 
 
