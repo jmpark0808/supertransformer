@@ -82,7 +82,11 @@ class ToTensorSP(object):
             enforce_connectivity=False,
             slic_zero=False)
    
-    
+        vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
+        vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
+        vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
+        vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
+        bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
 
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'area', 'intensity_mean',
                                                                                      'coords'), extra_properties=[image_stdev])#, polarize])
@@ -105,8 +109,8 @@ class ToTensorSP(object):
 
         neighbor_array = np.zeros([self.num_seg, self.num_seg])
         # eye = np.eye(self.num_seg)
-        # neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
-        # neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+        neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+        neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
         # neighbor_array -= eye
 
 
@@ -231,6 +235,7 @@ class ToTensorSPFFT(object):
         # eye = np.eye(self.num_seg)
         neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
         neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+
         # neighbor_array -= eye
 
         spatial_distances_x = (features[:, 0:1] - features[:, 0:1].T)

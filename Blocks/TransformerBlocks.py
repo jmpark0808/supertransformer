@@ -103,7 +103,7 @@ class PosAttention(nn.Module):
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
 
         dots = torch.matmul(q, k.transpose(-1, -2))
-        zero_vec = -1e99*torch.ones_like(dots)
+        zero_vec = -1e9*torch.ones_like(dots)
 
         adj = torch.matrix_power(adj, self.dilation).bool().int()
         adj = adj.unsqueeze(1).bool() # B x 1 x R x R
@@ -121,6 +121,7 @@ class PosAttention(nn.Module):
             attention = torch.where(adj > 0, dots, zero_vec)
 
         attn = self.attend((attention)*self.scale)
+
 
         out = torch.matmul(attn, v)
         out = rearrange(out, 'b h n d -> b n (h d)')
