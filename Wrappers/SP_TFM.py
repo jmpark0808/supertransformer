@@ -5,7 +5,7 @@ from Models.SP_TFM import SP_TFM, SP_TFM_REL
 import torch.nn.functional as F
 import numpy as np
 from dataset.constants import *
-from dataset.constants import NUM_CHUNK
+from util.util import get_input_dim
 
 class SP_TFM_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
@@ -20,9 +20,10 @@ class SP_TFM_Wrapper(pl.LightningModule):
         self.tfm_hp = kwargs.get('tfmhp')
         self.coeff = kwargs.get('coeff')
         self.dilation = kwargs.get('dilation')
-
+        self.dataloader = kwargs.get('dataloader')
+        input_dim = get_input_dim(self.dataloader, kwargs)
         # Generator that produces the HeatMap
-        self.supert = SP_TFM_REL(8, self.coeff, self.dilation, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout)
+        self.supert = SP_TFM_REL(input_dim, self.dilation, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout)
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()

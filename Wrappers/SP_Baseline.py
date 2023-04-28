@@ -55,7 +55,7 @@ class SP_Baseline_Wrapper(pl.LightningModule):
         return optimizer
       
 
-    def forward(self, input, adj, distances):
+    def forward(self, input):
         """
         Forward pass through model
         :param x: Input features
@@ -63,7 +63,7 @@ class SP_Baseline_Wrapper(pl.LightningModule):
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
 
-        pred = self.supert(input, adj, distances)
+        pred = self.supert(input)
 
         return pred
 
@@ -91,19 +91,19 @@ class SP_Baseline_Wrapper(pl.LightningModule):
         mask = batch['mask']
         img = batch['img']
         adj = batch['neighbor_array']
-        distances = batch['edge_features']
+
 
 
 
         features = features.cuda()
         seq_mask = seq_mask.cuda()
         adj = adj.cuda()
-        distances = distances.cuda()
+
 
 
         # forward pass
         
-        pred = self.forward(features, adj, distances)
+        pred = self.forward(features)
 
         loss = self.loss(pred, seq_mask)
         
@@ -155,17 +155,16 @@ class SP_Baseline_Wrapper(pl.LightningModule):
         mask = batch['mask']
         img = batch['img']
         adj = batch['neighbor_array']
-        distances = batch['edge_features']
-
+      
 
         features = features.cuda()
         seq_mask = seq_mask.cuda()
         adj = adj.cuda()
-        distances = distances.cuda()
+   
 
 
         # forward pass
-        pred = self.forward(features, adj, distances)
+        pred = self.forward(features)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()

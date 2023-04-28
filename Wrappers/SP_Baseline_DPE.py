@@ -25,7 +25,7 @@ class SP_Baseline_DPE_Wrapper(pl.LightningModule):
 
         input_dim = get_input_dim(self.dataloader, kwargs)
         # Generator that produces the HeatMap
-        self.supert = SP_TFM_REL(input_dim, self.dilation, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout)
+        self.supert = SP_TFM_REL(input_dim-2, self.dilation, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout)
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()
@@ -91,19 +91,19 @@ class SP_Baseline_DPE_Wrapper(pl.LightningModule):
         mask = batch['mask']
         img = batch['img']
         adj = batch['neighbor_array']
-        distances = batch['edge_features']
+   
 
 
 
         features = features.cuda()
         seq_mask = seq_mask.cuda()
         adj = adj.cuda()
-        distances = distances.cuda()
+     
 
 
         # forward pass
         
-        pred = self.forward(features, adj, distances)
+        pred = self.forward(features, adj, None)
 
         loss = self.loss(pred, seq_mask)
         
@@ -155,17 +155,17 @@ class SP_Baseline_DPE_Wrapper(pl.LightningModule):
         mask = batch['mask']
         img = batch['img']
         adj = batch['neighbor_array']
-        distances = batch['edge_features']
+    
 
 
         features = features.cuda()
         seq_mask = seq_mask.cuda()
         adj = adj.cuda()
-        distances = distances.cuda()
+       
 
 
         # forward pass
-        pred = self.forward(features, adj, distances)
+        pred = self.forward(features, adj, None)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
