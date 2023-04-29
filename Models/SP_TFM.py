@@ -20,6 +20,7 @@ class SP_TFM(nn.Module):
         self.pos_encoding = nn.Parameter(torch.randn(1, seq_len, nhid*nheads))
         self.out = nn.Linear(nhid * nheads, 1)
     def forward(self, x):
+        x = x[:, :, 2:]
         x = self.linear(x)
         x += self.pos_encoding
         x = self.transformer_enc(x)

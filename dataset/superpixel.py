@@ -88,20 +88,22 @@ class ToTensorSP(object):
         vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
         bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
 
-        regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'area', 'intensity_mean',
+        regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean',
                                                                                      'coords'), extra_properties=[image_stdev])#, polarize])
                     
         seq_len = len(regions['label'])
-        features = np.zeros([self.num_seg, 7])
+        features = np.zeros([self.num_seg, 9])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
-        features[label-1, 0] = regions['area'] / (img_size**2)
-        features[label-1, 1] = regions['intensity_mean-0']/255.
-        features[label-1, 2] = regions['intensity_mean-1']/255.
-        features[label-1, 3] = regions['intensity_mean-2']/255.
-        features[label-1, 4] = regions['image_stdev-0']/255.
-        features[label-1, 5] = regions['image_stdev-1']/255.
-        features[label-1, 6] = regions['image_stdev-2']/255.
+        features[label-1, 0] = regions['centroid-0']
+        features[label-1, 1] = regions['centroid-1']
+        features[label-1, 2] = regions['area'] / (img_size**2)
+        features[label-1, 3] = regions['intensity_mean-0']/255.
+        features[label-1, 4] = regions['intensity_mean-1']/255.
+        features[label-1, 5] = regions['intensity_mean-2']/255.
+        features[label-1, 6] = regions['image_stdev-0']/255.
+        features[label-1, 7] = regions['image_stdev-1']/255.
+        features[label-1, 8] = regions['image_stdev-2']/255.
 
 
         for ind, coord in zip(regions['label'], regions['coords']):
