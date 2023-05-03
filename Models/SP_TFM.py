@@ -36,8 +36,8 @@ class SP_TFM_REL(nn.Module):
         """Dense version of GAT."""
         super(SP_TFM_REL, self).__init__()
         self.linear = nn.Linear(nfeat, nhid * nheads)
-        self.pos_linear = nn.Linear(2, 64)
-        self.pos_linear2 = nn.Linear(64, nhid*nheads)
+        # self.pos_linear = nn.Linear(2, 64)
+        # self.pos_linear2 = nn.Linear(64, nhid*nheads)
 
         # self.pos_encoding = PositionalEncodingSuperPixel(nhid*nheads)
         self.transformer_enc = PosTransformer(nhid * nheads, dilation, ntfm, nheads, nhid, nhid*nheads, dropout)
@@ -49,11 +49,11 @@ class SP_TFM_REL(nn.Module):
         pos = x[:, :, :2]
         x = x[:, :, 2:]
         x = self.linear(x)
-        pos = self.pos_linear(pos)
-        pos = torch.relu(pos)
-        pos = self.pos_linear2(pos)
+        # pos = self.pos_linear(pos)
+        # pos = torch.relu(pos)
+        # pos = self.pos_linear2(pos)
         # pos = self.pos_encoding(pos)
-        x += pos
+        # x += pos
         x = self.transformer_enc(x, None, adj, distances)
 
         x = self.out(x)
