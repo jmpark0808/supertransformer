@@ -29,6 +29,7 @@ from Wrappers.SP_TFM_Contour import SP_TFM_Contour_Wrapper
 from Wrappers.SP_GAT import SP_GAT_Wrapper
 from Wrappers.SP_Baseline import SP_Baseline_Wrapper
 from Wrappers.SP_Baseline_DPE import SP_Baseline_DPE_Wrapper
+from Wrappers.SP_Baseline_LAP import SP_Baseline_LAP_Wrapper
 from Wrappers.image_transformer import ImageTransformer
 
 
@@ -72,14 +73,13 @@ MODEL_DIRECTORY = {
     'SP_TFM_Contour': SP_TFM_Contour_Wrapper,
     'SP_Baseline': SP_Baseline_Wrapper,
     'SP_Baseline_DPE': SP_Baseline_DPE_Wrapper,
-
+    'SP_Baseline_LAP': SP_Baseline_LAP_Wrapper,
 }
 DATALOADER_DIRECTORY = {
     'SP': SPDataModule,
     'DUTS': DUTSDataModule,
     'SPCNN': SPDataModule,
-    'SPE': SPDataModule,
-    'SPEmbed': SPDataModule,
+    'SPLAP': SPDataModule,
     "SPFFT": SPDataModule,
     'SPContour': SPDataModule
 

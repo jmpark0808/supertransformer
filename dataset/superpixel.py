@@ -157,6 +157,75 @@ class ToTensorSP(object):
         return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask, 'img': img, 'neighbor_array': neighbor_array, }
         # 'edge_features':edge_features}
 
+class ToTensorSPLAP(object):
+    def __init__(self, num_seg, compactness):
+        self.tensor = transforms.ToTensor()
+        self.num_seg = num_seg
+        self.compactness = compactness
+
+    def __call__(self, sample):
+        img, mask = sample['image'], sample['mask']
+        img_np = np.array(img)
+        img_size = img_np.shape[1]
+        mask_np = np.array(mask)/255.
+        segments = slic(img_np, n_segments=self.num_seg,
+            compactness=self.compactness,
+            max_num_iter=3,
+            convert2lab=True,
+            enforce_connectivity=False,
+            slic_zero=False)
+   
+        vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
+        vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
+        vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
+        vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
+        bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
+
+        regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean',
+                                                                                     'coords'), extra_properties=[image_stdev])#, polarize])
+                    
+        seq_len = len(regions['label'])
+        features = np.zeros([self.num_seg, 9])
+        seq_mask = np.zeros([self.num_seg])
+        label = regions['label']
+        features[label-1, 0] = regions['centroid-0']
+        features[label-1, 1] = regions['centroid-1']
+        features[label-1, 2] = regions['area'] / (img_size**2)
+        features[label-1, 3] = regions['intensity_mean-0']/255.
+        features[label-1, 4] = regions['intensity_mean-1']/255.
+        features[label-1, 5] = regions['intensity_mean-2']/255.
+        features[label-1, 6] = regions['image_stdev-0']/255.
+        features[label-1, 7] = regions['image_stdev-1']/255.
+        features[label-1, 8] = regions['image_stdev-2']/255.
+
+
+        for ind, coord in zip(regions['label'], regions['coords']):
+            seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
+
+        neighbor_array = np.zeros([self.num_seg, self.num_seg])
+        eye = np.eye(self.num_seg)
+        neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+        neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+        neighbor_array -= eye
+
+
+        A = neighbor_array.astype(float)
+        N = sp.diags(np.sum(A, axis=0).clip(1) ** -0.5, dtype=float)
+        L = eye - N * A * N
+
+
+        # Eigenvectors with numpy
+        EigVal, EigVec = np.linalg.eig(L)
+        idx = EigVal.argsort() # increasing order
+        EigVal, EigVec = EigVal[idx], np.real(EigVec[:,idx])
+        pos_enc = torch.from_numpy(EigVec[:,1:]).float() 
+
+     
+
+        features, neighbor_array, seq_mask, segments, mask, img = torch.tensor(features).float(), torch.tensor(neighbor_array).float(), torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
+        return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask, 'img': img, 'neighbor_array': neighbor_array, 'pos_enc': pos_enc}
+ 
+
 
 class ToTensorSPFFT(object):
     def __init__(self, num_seg, compactness, coeff):
@@ -309,130 +378,6 @@ class ToTensorSPContour(object):
         return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask, 'img': img, 'neighbor_array': neighbor_array, }
 
 
-class ToTensorSPET(object):
-    def __init__(self, num_seg):
-        self.tensor = transforms.ToTensor()
-        self.num_seg = num_seg
-
-    def __call__(self, sample):
-        img, mask = sample['image'], sample['mask']
-        img_np = np.array(img)
-        img_size = img_np.shape[1]
-        mask_np = np.array(mask)/255.
-        segments = slic(img_np, n_segments=self.num_seg,
-            compactness=COMPACTNESS,
-            max_num_iter=10,
-            convert2lab=True,
-            enforce_connectivity=False,
-            slic_zero=True, min_size_factor=0.)
-        # slic = SlicAvx2(num_components=self.num_seg, compactness=10)
-        # segments = slic.iterate(img_np)
-
-        # vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
-        # vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
-        # vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
-        # vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
-        # bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
-    
-
-        regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'coords'), extra_properties=[hist, polarize])#, polarize])
-        seq_len = len(regions['label'])
-        features = np.zeros([self.num_seg, 2+BINS*3])
-        seq_mask = np.zeros([self.num_seg])
-        label = regions['label']
-        features[label-1, 0] = regions['centroid-0']
-        features[label-1, 1] = regions['centroid-1']
-        # features[label-1, 0] = regions['area'] / (img_size**2)
-        # features[label-1, 1] = regions['intensity_mean-0']/255.
-        # features[label-1, 2] = regions['intensity_mean-1']/255.
-        # features[label-1, 3] = regions['intensity_mean-2']/255.
-        # features[label-1, 4] = regions['extent']
-        # features[label-1, 5] = regions['eccentricity']
-        # features[label-1, 6] = regions['image_stdev-0']/255.
-        # features[label-1, 7] = regions['image_stdev-1']/255.
-        # features[label-1, 8] = regions['image_stdev-2']/255.
-        # features[label-1, 9] = regions['euler_number']
-        # features[label-1, 10] = regions['feret_diameter_max']
-
-        for i in range(BINS):
-            features[label-1, 2+i] = regions[f'hist-{i}-0']/90000.
-            features[label-1, 2+BINS+i] = regions[f'hist-{i}-1']/90000.
-            features[label-1, 2+BINS*2+i] = regions[f'hist-{i}-2']/90000.
-
-
-        # for i in range(NUM_CHUNK):
-        #     features[label-1, 2+BINS*3+i] = regions[f'polarize-{i}-0']+regions['centroid-0']
-        #     features[label-1, 2+BINS*3+NUM_CHUNK+i] = regions[f'polarize-{i}-1']+regions['centroid-1']
-
-        for ind, coord in zip(regions['label'], regions['coords']):
-            seq_mask[ind-1] = np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0])
-
-        # plt.scatter(features[:, 6:6+NUM_CHUNK], features[:, 6+NUM_CHUNK*2:6+NUM_CHUNK*2+NUM_CHUNK], c='red')
-        # plt.scatter(features[:, 6+NUM_CHUNK:6+NUM_CHUNK*2], features[:, 6+NUM_CHUNK*2+NUM_CHUNK:], c='blue')
-        # plt.show()
-        # assert(0)
-        # centroids = np.zeros([self.num_seg, 2])
-        # centroids[label-1, 0] = regions['centroid-0']
-        # centroids[label-1, 1] = regions['centroid-1']
-        # distances = euclidean_distances(centroids, centroids)
-        # ind = distances <= 30
-
-        # ind = np.argsort(distances, axis=1)
-        # ranged_ind = np.array(range(self.num_seg))
-        # ranged_ind = np.tile(ranged_ind, (self.num_seg, 1)) 
-        # ind = np.take_along_axis(ranged_ind, ind, axis=1)
-        # ind = ind[:, :NUM_NEIGHBOURS]
-        # ind = ind <= NUM_NEIGHBOURS
-        
-        
-        ind = np.zeros([self.num_seg, self.num_seg])
-  
-        features, neighbor_array, seq_mask, segments, mask, img = torch.tensor(features).float(), torch.tensor(ind).long(), torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
-        return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask, 'img': img, 'neighbor_array': neighbor_array}
-
-class ToTensorSPEmbed(object):
-    def __init__(self, num_seg):
-        self.tensor = transforms.ToTensor()
-        self.num_seg = num_seg
-
-    def __call__(self, sample):
-        img, mask = sample['image'], sample['mask']
-        img_np = np.array(img)
-        img_size = img_np.shape[1]
-        mask_np = np.array(mask)/255.
-        segments = slic(img_np, n_segments=self.num_seg,
-            compactness=COMPACTNESS,
-            max_num_iter=10,
-            convert2lab=True,
-            enforce_connectivity=False,
-            slic_zero=False, min_size_factor=0.)
-    
-
-        regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid','coords'), extra_properties=[embed])
-                    
-        features = np.zeros([self.num_seg, 2+2401*3])
-        seq_mask = np.zeros([self.num_seg])
-        label = regions['label']
-        features[label-1, 0] = regions['centroid-0']
-        features[label-1, 1] = regions['centroid-1']
-        for i in range(3):
-            for j in range(2401):
-                features[label-1, i*2401+j] = regions[f'embed-{j}-{i}']
-
-        for ind, coord in zip(regions['label'], regions['coords']):
-            seq_mask[ind-1] = np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0])
-
-        distances = euclidean_distances(features[:, :2], features[:, :2])
-        # ind = np.argsort(distances, axis=1)
-        # ranged_ind = np.array(range(self.num_seg))
-        # ranged_ind = np.tile(ranged_ind, (self.num_seg, 1)) 
-        # ind = np.take_along_axis(ranged_ind, ind, axis=1)
-        # ind = ind[:, :NUM_NEIGHBOURS]
-        ind = distances <= 20
-  
-        features, neighbor_array, seq_mask, segments, mask, img = torch.tensor(features).float(), torch.tensor(ind).long(), torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
-        return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask, 'img': img, 'neighbor_array': neighbor_array}
-
 class ToTensorSPCNN(object):
     def __init__(self, num_seg):
         self.tensor = transforms.ToTensor()
@@ -510,10 +455,8 @@ class SPDataset(data.Dataset):
             totensor = ToTensorSP(num_seg, compactness)
         elif dataloader == 'SPFFT':
             totensor = ToTensorSPFFT(num_seg, compactness, coeff)
-        elif dataloader == 'SPED':
-            totensor = ToTensorSPET(num_seg, compactness)
-        elif dataloader == 'SPEmbed':
-            totensor = ToTensorSPEmbed(num_seg, compactness)
+        elif dataloader == 'SPLAP':
+            totensor = ToTensorSPLAP(num_seg, compactness)
         elif dataloader == 'SPCNN':
             totensor = ToTensorSPCNN(num_seg, compactness)
         elif dataloader == 'SPContour':

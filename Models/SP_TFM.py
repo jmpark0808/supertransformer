@@ -58,6 +58,31 @@ class SP_TFM_REL(nn.Module):
 
         x = self.out(x)
         return x
+    
+class SP_TFM_LAP(nn.Module):
+    '''
+    Pure Global aggregation using transformers
+    Deterministic Positional Encoding 
+    '''
+    def __init__(self, nfeat, dilation, nhid, nheads, ntfm, dropout):
+        """Dense version of GAT."""
+        super(SP_TFM_LAP, self).__init__()
+        self.linear = nn.Linear(nfeat, nhid * nheads)
+        self.pos_linear = nn.Linear(POS_EMBEDDING, nhid*nheads)
+ 
+        self.transformer_enc = PosTransformer(nhid * nheads, dilation, ntfm, nheads, nhid, nhid*nheads, dropout)
+
+
+        self.out = nn.Linear(nhid * nheads, 1)
+    def forward(self, x, adj, lap):
+        x = x[:, :, 2:]
+        x = self.linear(x)
+        lap = self.pos_linear(lap[:, :, :POS_EMBEDDING])
+        x += lap
+        x = self.transformer_enc(x, None, adj, None)
+
+        x = self.out(x)
+        return x
 
 
 class SP_TFM_FFT(nn.Module):
