@@ -90,7 +90,7 @@ class PosAttention(nn.Module):
 
         self.attend = nn.Softmax(dim = -1)
         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
-        self.distances_linear = nn.Linear(2, dim_head*heads)
+        self.distances_linear = nn.Linear(2, heads*dim_head)
         self.distances_1 = nn.Linear(dim_head*heads, 1)
 
 
@@ -115,12 +115,12 @@ class PosAttention(nn.Module):
             QEr = torch.matmul(q, Er_t)
             Srel = self.skew(QEr)
             attention = torch.where(adj > 0, dots+Srel, zero_vec)
-        elif distances is not None:
-            distances = torch.relu(self.distances_linear(distances))
-            distances = self.distances_1(distances).reshape(distances.size(0), 1, distances.size(1), distances.size(2))
-            # QEr = torch.einsum('abcd,aced->abce', q, distances)
-            # attention = torch.where(adj > 0, dots+QEr, zero_vec)
-            attention = torch.where(adj > 0, dots+distances, zero_vec)
+        # elif distances is not None:
+        #     distances = torch.relu(self.distances_linear(distances))
+        #     distances = self.distances_1(distances).reshape(distances.size(0), 1, distances.size(1), distances.size(2))
+        #     # QEr = torch.einsum('abcd,aced->abce', q, distances)
+        #     # attention = torch.where(adj > 0, dots+QEr, zero_vec)
+        #     attention = torch.where(adj > 0, dots+distances, zero_vec)
         else:
             attention = torch.where(adj > 0, dots, zero_vec)
 

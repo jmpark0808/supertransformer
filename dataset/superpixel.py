@@ -312,6 +312,8 @@ class ToTensorSPFFT(object):
         spatial_distances_x = (features[:, 0:1] - features[:, 0:1].T)
         spatial_distances_y = (features[:, 1:2] - features[:, 1:2].T)
         edge_features = np.stack((spatial_distances_x, spatial_distances_y), axis=2)
+
+      
         edge_features = torch.from_numpy(edge_features).float()
         features, neighbor_array, seq_mask, segments, mask, img = torch.tensor(features).float(), torch.tensor(neighbor_array).float(), torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
 
@@ -487,6 +489,7 @@ class SPDataset(data.Dataset):
         sample = {'image': img, 'mask': mask}
 
         sample = self.transform(sample)
+        sample['file_name'] = self.image_list[item]
         return sample
 
 

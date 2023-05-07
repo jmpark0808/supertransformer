@@ -26,6 +26,9 @@ class SP_Baseline_LAP_Wrapper(pl.LightningModule):
         input_dim = get_input_dim(self.dataloader, kwargs)
         # Generator that produces the HeatMap
         self.supert = SP_TFM_LAP(input_dim, 100, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout)
+
+
+
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()

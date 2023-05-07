@@ -9,6 +9,9 @@ from ptflops import get_model_complexity_info
 matplotlib.use('Agg')
 import time
 from train import DATALOADER_DIRECTORY, MODEL_DIRECTORY
+from util.util import AverageMeter
+import cv2
+import os
 
 
 k = 5
@@ -41,9 +44,19 @@ def main():
     parser.add_argument('--batch_size', help="batchsize, default = 1", default=1, type=int)
     parser.add_argument('--num_workers', help="# of dataloader cpu process", default=0, type=int)
     parser.add_argument('--num_seg', help='Approximate number of segmentations', default=600, type=int)
-
-
+    parser.add_argument('--dropout', help='Dropout for Transformers', default=0., type=float)
+    parser.add_argument('--seed', help='Seed for reproduceability', 
+                        default=42, type=int)
+    parser.add_argument('--clip_grad_norm', help='Clipping gradient norm, 0 means no clipping', type=float, default=0.)
+    parser.add_argument('--compactness', help='Compactness for SLIC', type=float, default=10)
     parser.add_argument('--size', help='Image size for DUTS', type=int, default=224)
+    parser.add_argument('--coeff', help='Number of coefficients for fft', type=int, default=7)
+    parser.add_argument('--dilation', help='Dilation for local transformer', type=int, default=5)
+    parser.add_argument('--downsample', help='Downsample resolution', type=int, default=28)
+    parser.add_argument('--tag', help='Tag for differentiating runs on CC', default='', type=str)
+    parser.add_argument('--tfmhp', default=[8, 16, 6], 
+                    nargs=3, metavar=('Heads', 'Hidden Dim', 'Number of Layers'),
+                    type=int, help='Hyperparameters for Transformer')
 
 
     dict_args = vars(parser.parse_args())
@@ -69,14 +82,17 @@ def main():
     # Iterate through each batch to generate visuals
     print("[p] processing batches")
     item_idx = 0
-    flops = None
-    total_score = []
+    preds = []
+    masks = []
+    precs = []
+    recalls = []
     for batch in tqdm(val_dataloader):
         features = batch['features']
         seq_mask = batch['seq_mask']
         segments = batch['segments']
         mask = batch['mask']
         img = batch['img']
+        file_names = batch['file_name']
         # pos_enc = batch['pos_enc']
         # edge_features = batch['edge_features']
 
@@ -85,20 +101,28 @@ def main():
         seq_mask = seq_mask.cuda()
         # pos_enc = pos_enc.cuda()
         # edge_features = edge_features.cuda()
+        if dict_args['model'] == 'SP_GAT':
+            adj = batch['neighbor_array']
+            adj = adj.cuda()
+
+            pred = model([features, adj])
+        elif dict_args['model'] == 'SP_CNN_LIN':
+            pred = model(features)
+            pred = pred.reshape(pred.size(0), -1)
+        elif dict_args['model'] == 'SP_TFM':
+            adj = batch['neighbor_array']
+            # distances = batch['edge_features']
+            adj = adj.cuda()
+            pred = model(features, adj, None)
+        elif dict_args['model'] == 'SP_Baseline_LAP':
+            adj = batch['neighbor_array']
+            adj = adj.cuda()
+
+            lap = batch['pos_enc'].cuda()
+            pred = model(features, adj, lap)
 
 
-        # forward pass
-        start = time.time()
-        # pred = model([features, edge_features])
-        end = time.time()
-        print(end-start)
-        if flops is None:
-            flops, params = get_model_complexity_info(model, input_res=(1, 70, 25, 25), 
-                                              as_strings=True, print_per_layer_stat=False)#input_constructor=prepare_input_gat,
-            print(flops, params)
-            assert(0)
-        
-        # _, _, pred_egnet = egnet(img.cuda())
+
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
@@ -119,58 +143,48 @@ def main():
             samples_mask.append(plt_image)
 
         samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
-
-        # prec, recall = torch.zeros(samples_mask.shape[0], 256), torch.zeros(samples_mask.shape[0], 256)
+        preds.append(samples)
+        masks.append(samples_mask)
+        prec, recall = torch.zeros(samples_mask.shape[0], 256), torch.zeros(samples_mask.shape[0], 256)
         pred = samples.reshape(samples.shape[0], -1)
         mask = samples_mask.reshape(samples_mask.shape[0], -1)
-        # thlist = torch.linspace(0, 1 - 1e-10, 256)
-        # for j in range(256):
-        #     y_temp = (pred >= thlist[j]).float()
-        #     tp = (y_temp * mask).sum(dim=-1)
-        #     # avoid prec becomes 0
-        #     prec[:, j], recall[:, j] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
-        y_temp = (pred >= 0.7647).float()
-        tp = (y_temp * mask).sum(dim=-1)
-        prec, recall = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
+        thlist = torch.linspace(0, 1 - 1e-10, 256)
+        for j in range(256):
+            y_temp = (pred >= thlist[j]).float()
+            tp = (y_temp * mask).sum(dim=-1)
+            # avoid prec becomes 0
+            prec[:, j], recall[:, j] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
 
-        beta_square = 0.3
-        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
-        max_f_score = f_score
+        
+        precs.append(prec)
+        recalls.append(recall)
+
+        for sample, file_name in zip(samples, file_names):
+            output = (sample.squeeze().detach().cpu().numpy() * 255.0).astype(np.uint8)
+            if not os.path.exists('./visualization/'+dict_args['model']+'/'+dict_args['dataset_val'].split('/')[-1]):
+                os.makedirs('./visualization/'+dict_args['model']+'/'+dict_args['dataset_val'].split('/')[-1])
+            cv2.imwrite('./visualization/'+dict_args['model']+'/'+dict_args['dataset_val'].split('/')[-1]+'/'+file_name, output)
 
 
+    prec = torch.cat(precs, dim=0).mean(dim=0)
+    recall = torch.cat(recalls, dim=0).mean(dim=0)
+    beta_square = 0.3
+    f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
+    print('Max F score:',torch.max(f_score))
+    pred = torch.cat(preds, 0)
+    mask = torch.cat(masks, 0).round().float()
+    print('MAE:',torch.mean(torch.abs(pred-mask)))
 
-        for sample, f_score, gt, img in zip(samples, max_f_score, samples_mask, img):
-            fig = plt.figure(num=1, clear=True)
-            ax1 = fig.add_subplot(131)
-            ax2 = fig.add_subplot(132)
-            ax3 = fig.add_subplot(133)
-    
-     
-            ax1.imshow(np.squeeze(sample.detach().cpu().numpy()), cmap='gray')
-            ax1.set_title(f"Prediction")
-            ax1.axis('off')
-
-            ax2.imshow(np.squeeze(gt.detach().cpu().numpy()), cmap='gray')
-            ax2.set_title(f"Ground Truth")
-            ax2.axis('off')
-
-            ax3.imshow(np.transpose(img.detach().cpu().numpy(), axes=(1, 2, 0)))
-            ax3.set_title(f"Raw Image")
-            ax3.axis('off')
-            
-
-            fig.savefig(f'./results/sp_tfm_results/{item_idx}_{round(float(f_score.detach().cpu().numpy().item()), 2)}.png')
-            total_score.append(float(f_score.detach().cpu().numpy().item()))
-            item_idx += 1
-    print(flops)
-    (hist, _) = np.histogram(total_score, bins=100, range=(0, 1), density=True)
-    fig = plt.figure(num=1, clear=True)
-    ax1 = fig.add_subplot(111)
-    ax1.bar(list(range(0,100)), hist)
-    ax1.set_xlabel('F1-score bins')
-    ax1.set_title('Histogram of F1-scores on DUTS-TE')
-    ax1.set_ylabel('Normalized frequency')
-    fig.savefig('./results/histogram.png')
+        
+    # print(flops)
+    # (hist, _) = np.histogram(total_score, bins=100, range=(0, 1), density=True)
+    # fig = plt.figure(num=1, clear=True)
+    # ax1 = fig.add_subplot(111)
+    # ax1.bar(list(range(0,100)), hist)
+    # ax1.set_xlabel('F1-score bins')
+    # ax1.set_title('Histogram of F1-scores on DUTS-TE')
+    # ax1.set_ylabel('Normalized frequency')
+    # fig.savefig('./results/histogram.png')
 
 
 
