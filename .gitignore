@@ -134,4 +134,5 @@ log
 lightning_logs/
 models/
 visualization/
+demo/
 .vscode

@@ -79,7 +79,7 @@ class ToTensorSP(object):
             compactness=self.compactness,
             max_num_iter=3,
             convert2lab=True,
-            enforce_connectivity=False,
+            enforce_connectivity=True,
             slic_zero=False)
    
         vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
@@ -89,10 +89,10 @@ class ToTensorSP(object):
         bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
 
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean',
-                                                                                     'coords'), extra_properties=[image_stdev])#, polarize])
+                                                                                     'coords'), extra_properties=[image_stdev, eccen])#, polarize])
                     
         seq_len = len(regions['label'])
-        features = np.zeros([self.num_seg, 9])
+        features = np.zeros([self.num_seg, 12])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
         features[label-1, 0] = regions['centroid-0']
@@ -104,6 +104,9 @@ class ToTensorSP(object):
         features[label-1, 6] = regions['image_stdev-0']/255.
         features[label-1, 7] = regions['image_stdev-1']/255.
         features[label-1, 8] = regions['image_stdev-2']/255.
+        features[label-1, 9] = regions['eccen-0']
+        features[label-1, 10] = regions['eccen-1']
+        features[label-1, 11] = regions['eccen-2']
 
 
         for ind, coord in zip(regions['label'], regions['coords']):

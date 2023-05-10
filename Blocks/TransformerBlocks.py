@@ -90,8 +90,8 @@ class PosAttention(nn.Module):
 
         self.attend = nn.Softmax(dim = -1)
         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
-        self.distances_linear = nn.Linear(2, heads*dim_head)
-        self.distances_1 = nn.Linear(dim_head*heads, 1)
+        self.distances_linear = nn.Linear(2, dim_head)
+        # self.distances_1 = nn.Linear(dim_head*heads, 1)
 
 
         self.to_out = nn.Sequential(
