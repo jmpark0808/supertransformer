@@ -99,68 +99,16 @@ def contours_polar(region):
 
 
 def eccen(region):
-    try:
-        region = (region*255).astype(np.uint8)
-        contours, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        points = contours[0][:, 0, :]
-        xi, yi = resample_2d(points, RESAMPLE_POINTS)
-        contour_array = np.expand_dims(np.stack((xi, yi), axis=1), 1)
-        ellipse = cv2.fitEllipse(contours[0])
-        (xc,yc),(d1,d2),angle = ellipse
-    except:
-        return np.array([0,0,0])
-    
-    if math.isnan(d1) or math.isnan(d2) or math.isnan(angle):
-        return np.array([0,0,0])
-    return d1, d2, angle
+    centroid = np.mean(np.nonzero(region),axis=1)
+    coords = np.nonzero(region)
 
+    sigma = np.matmul(coords-centroid[:, None], (coords-centroid[:, None]).T)/len(coords)
+    Val, Vec = np.linalg.eig(sigma)
 
-    # plt.figure()
-    # ax = plt.gca()
-    # ellipse_pyplot = Ellipse(xy=(xc, yc), width=d1, height=d2, angle=angle)
+    angle = np.arctan2(Vec[0],Vec[1])
 
-    # ax.imshow(region)
-    # ax.add_patch(ellipse_pyplot)
-    # plt.show()
-    # # draw ellipse in green
-    # result = region.copy()
-    # cv2.ellipse(result, ellipse, (0, 255, 0), 3)
-
-    # # draw circle at center
-    # xc, yc = ellipse[0]
-    # cv2.circle(result, (int(xc),int(yc)), 10, (255, 255, 255), -1)
-
-    # # draw major axis line in red
-    # rmajor = max(d1,d2)/2
-    # if angle > 90:
-    #     angle = angle - 90
-    # else:
-    #     angle = angle + 90
-    # print(angle)
-    # x1 = xc + math.cos(math.radians(angle))*rmajor
-    # y1 = yc + math.sin(math.radians(angle))*rmajor
-    # x2 = xc + math.cos(math.radians(angle+180))*rmajor
-    # y2 = yc + math.sin(math.radians(angle+180))*rmajor
-    # cv2.line(result, (int(x1),int(y1)), (int(x2),int(y2)), (0, 0, 255), 3)
-
-    # # draw minor axis line in blue
-    # rminor = min(d1,d2)/2
-    # if angle > 90:
-    #     angle = angle - 90
-    # else:
-    #     angle = angle + 90
-    # print(angle)
-    # x1 = xc + math.cos(math.radians(angle))*rminor
-    # y1 = yc + math.sin(math.radians(angle))*rminor
-    # x2 = xc + math.cos(math.radians(angle+180))*rminor
-    # y2 = yc + math.sin(math.radians(angle+180))*rminor
-    # cv2.line(result, (int(x1),int(y1)), (int(x2),int(y2)), (255, 0, 0), 3)
-
+    return np.array([Val[0], Val[1], angle[0], angle[1]])
 
     
-    # cv2.imshow("labrador2_ellipse", result)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
-   
 
 
