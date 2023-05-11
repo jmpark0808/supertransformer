@@ -102,12 +102,26 @@ def eccen(region):
     centroid = np.mean(np.nonzero(region),axis=1)
     coords = np.nonzero(region)
 
-    sigma = np.matmul(coords-centroid[:, None], (coords-centroid[:, None]).T)/len(coords)
-    Val, Vec = np.linalg.eig(sigma)
 
-    angle = np.arctan2(Vec[0],Vec[1])
+    # sigma = np.matmul(coords-centroid[:, None], (coords-centroid[:, None]).T)/len(coords)
+    if (coords-centroid[:, None]).shape[1]==1:
+        return np.array([0, 0, 0, 0])
+    U, S, V = np.linalg.svd(coords-centroid[:, None])
+    # U, S = np.linalg.eig(coords-centroid[:, None])
 
-    return np.array([Val[0], Val[1], angle[0], angle[1]])
+    angle = np.arctan2(U[0],U[1])
+    
+
+
+    # tt = np.linspace(0, 2*np.pi, 1000)
+    # circle = np.stack((np.cos(tt), np.sin(tt)))    # unit circle
+    # transform = np.sqrt(2/len(coords[0])) * U.dot(np.diag(S))   # transformation matrix
+    # fit = transform.dot(circle) + np.array([[centroid[0]], [centroid[1]]])
+    # plt.plot(coords[0], coords[1], '.')
+    # plt.plot(fit[0, :], fit[1, :], 'r')
+    # plt.title(f'{S[0]}, {S[1]}, {angle[0]}, {angle[1]}')
+    # plt.show()
+    return np.array([S[0], S[1], angle[0], angle[1]])
 
     
 
