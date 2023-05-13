@@ -109,7 +109,7 @@ def eccen(region):
     U, S, V = np.linalg.svd(coords-centroid[:, None])
     # U, S = np.linalg.eig(coords-centroid[:, None])
 
-    angle = np.arctan2(U[0],U[1])
+    angle = np.arctan2(U[1],U[0])
     
 
 
@@ -121,7 +121,8 @@ def eccen(region):
     # plt.plot(fit[0, :], fit[1, :], 'r')
     # plt.title(f'{S[0]}, {S[1]}, {angle[0]}, {angle[1]}')
     # plt.show()
-    return np.array([S[0], S[1], angle[0], angle[1]])
+
+    return np.array([np.sqrt(2/len(coords[0]))*S[0], np.sqrt(2/len(coords[0]))*S[1], angle[0], angle[1]])
 
     
 
