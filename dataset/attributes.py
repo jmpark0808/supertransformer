@@ -100,29 +100,52 @@ def contours_polar(region):
 
 def eccen(region):
     centroid = np.mean(np.nonzero(region),axis=1)
+    centroid_x = centroid[1]
+    centroid_y = -centroid[0]
     coords = np.nonzero(region)
+    coords_x = coords[1]
+    coords_y = -coords[0]
+
+    region_shape = region.shape
+    
+
+
 
 
     # sigma = np.matmul(coords-centroid[:, None], (coords-centroid[:, None]).T)/len(coords)
     if (coords-centroid[:, None]).shape[1]==1:
-        return np.array([0, 0, 0, 0])
-    U, S, V = np.linalg.svd(coords-centroid[:, None])
+        return np.array([0, 0, 0])
+    U, S, V = np.linalg.svd(np.stack((coords_x-centroid_x, coords_y-centroid_y)))
     # U, S = np.linalg.eig(coords-centroid[:, None])
 
     angle = np.arctan2(U[1],U[0])
-    
+
+    major_angle = angle[0]
+    if major_angle < 0:
+        major_angle += np.pi
 
 
-    # tt = np.linspace(0, 2*np.pi, 1000)
-    # circle = np.stack((np.cos(tt), np.sin(tt)))    # unit circle
-    # transform = np.sqrt(2/len(coords[0])) * U.dot(np.diag(S))   # transformation matrix
-    # fit = transform.dot(circle) + np.array([[centroid[0]], [centroid[1]]])
-    # plt.plot(coords[0], coords[1], '.')
-    # plt.plot(fit[0, :], fit[1, :], 'r')
-    # plt.title(f'{S[0]}, {S[1]}, {angle[0]}, {angle[1]}')
-    # plt.show()
+    tt = np.linspace(0, 2*np.pi, 1000)
+    circle = np.stack((np.cos(tt), np.sin(tt)))    # unit circle
+    transform = np.sqrt(2/len(coords[0])) * U.dot(np.diag(S))   # transformation matrix
+    fit = transform.dot(circle) + np.array([[centroid_x], [centroid_y]])
 
-    return np.array([np.sqrt(2/len(coords[0]))*S[0], np.sqrt(2/len(coords[0]))*S[1], angle[0], angle[1]])
+
+    # Check square
+    if np.prod(region_shape) == len(coords[0]):
+        if region_shape[1]>= region_shape[0]: # longer horizontally
+            major_angle = 0
+        else:
+            major_angle = np.pi/2
+        # plt.plot(coords_x, coords_y,  '.')
+        # plt.plot(fit[0, :], fit[1, :],  'r')
+        # plt.plot([centroid_x, centroid_x+np.sqrt(2/len(coords[0]))*S[0]*math.cos(major_angle)], 
+        #          [centroid_y, centroid_y+np.sqrt(2/len(coords[0]))*S[0]*math.sin(major_angle)])
+        # plt.title(f'{np.sqrt(2/len(coords[0]))*S[0]}, {np.sqrt(2/len(coords[0]))*S[1]}, {major_angle}, {region_shape}')
+        # plt.axis('scaled')
+        # plt.show()
+
+    return np.array([np.sqrt(2/len(coords[0]))*S[0], np.sqrt(2/len(coords[0]))*S[1], major_angle])
 
     
 
