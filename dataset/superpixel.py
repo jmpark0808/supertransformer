@@ -92,7 +92,7 @@ class ToTensorSP(object):
                                                                                      'coords'), extra_properties=[image_stdev, eccen])#, polarize])
                     
         seq_len = len(regions['label'])
-        features = np.zeros([self.num_seg, 12])
+        features = np.zeros([self.num_seg, 15])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
         features[label-1, 0] = regions['centroid-0']
@@ -107,6 +107,9 @@ class ToTensorSP(object):
         features[label-1, 9] = regions['eccen-0']
         features[label-1, 10] = regions['eccen-1']
         features[label-1, 11] = regions['eccen-2']
+        features[label-1, 12] = regions['eccen-3']
+        features[label-1, 13] = regions['eccen-4']
+        features[label-1, 14] = regions['eccen-5']
     
 
 

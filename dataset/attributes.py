@@ -114,7 +114,7 @@ def eccen(region):
 
     # sigma = np.matmul(coords-centroid[:, None], (coords-centroid[:, None]).T)/len(coords)
     if (coords-centroid[:, None]).shape[1]==1:
-        return np.array([0, 0, 0])
+        return np.array([0, 0, 0, 0, 0, 0])
     U, S, V = np.linalg.svd(np.stack((coords_x-centroid_x, coords_y-centroid_y)))
     # U, S = np.linalg.eig(coords-centroid[:, None])
 
@@ -133,19 +133,21 @@ def eccen(region):
 
     # Check square
     if np.prod(region_shape) == len(coords[0]):
-        if region_shape[1]>= region_shape[0]: # longer horizontally
+        if region_shape[1]>= region_shape[0] or np.isclose(S[0], S[1]): # longer horizontally
             major_angle = 0
         else:
             major_angle = np.pi/2
-        # plt.plot(coords_x, coords_y,  '.')
-        # plt.plot(fit[0, :], fit[1, :],  'r')
-        # plt.plot([centroid_x, centroid_x+np.sqrt(2/len(coords[0]))*S[0]*math.cos(major_angle)], 
-        #          [centroid_y, centroid_y+np.sqrt(2/len(coords[0]))*S[0]*math.sin(major_angle)])
-        # plt.title(f'{np.sqrt(2/len(coords[0]))*S[0]}, {np.sqrt(2/len(coords[0]))*S[1]}, {major_angle}, {region_shape}')
-        # plt.axis('scaled')
-        # plt.show()
 
-    return np.array([np.sqrt(2/len(coords[0]))*S[0], np.sqrt(2/len(coords[0]))*S[1], major_angle])
+    # plt.scatter(coords_x, coords_y,  c='blue', s=50)
+    # plt.plot(fit[0, :], fit[1, :],  c='red', linewidth=5)
+    # plt.plot([centroid_x, centroid_x+np.sqrt(2/len(coords[0]))*S[0]*math.cos(major_angle)], 
+    #             [centroid_y, centroid_y+np.sqrt(2/len(coords[0]))*S[0]*math.sin(major_angle)], c='green', linewidth=5)
+    # plt.title(f'{np.sqrt(2/len(coords[0]))*S[0]}, {np.sqrt(2/len(coords[0]))*S[1]}, {major_angle}, {region_shape}')
+    # plt.axis('scaled')
+    # plt.axis('off')
+    # plt.show()
+
+    return np.array([np.sqrt(2/len(coords[0]))*S[0], np.sqrt(2/len(coords[0]))*S[1], np.cos(major_angle), np.sin(major_angle), np.cos(major_angle+np.pi), np.sin(major_angle+np.pi)])
 
     
 
