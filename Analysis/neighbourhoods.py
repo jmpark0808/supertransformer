@@ -1,7 +1,7 @@
 # load image 
 import sys
 from threading import local
-sys.path.insert(0, '/home/eddie/waterloo/supertransformer')
+sys.path.insert(0, '/home/abcd/abcde/supertransformer')
 from torchvision import transforms, datasets
 import torch
 from PIL import Image

@@ -5,13 +5,13 @@ import matplotlib.pyplot as plt
 
 images_dir = '/mnt/hdd/Datasets/DUTS/DUTS-TE/Image'
 mask_dir = '/mnt/hdd/Datasets/DUTS/DUTS-TE/Mask'
-gat_dir = '/home/eddie/waterloo/supertransformer/visualization/SP_GAT/DUTS-TE'
-sc_dir = '/home/eddie/waterloo/supertransformer/visualization/SP_CNN_LIN/DUTS-TE'
-gf_dir = '/home/eddie/waterloo/supertransformer/visualization/SP_Baseline_LAP/DUTS-TE'
-sf_dir = '/home/eddie/waterloo/supertransformer/visualization/SP_TFM/DUTS-TE'
-mbnet_dir = '/home/eddie/waterloo/TRACER/mask_MobileNet/DUTS/Test/images'
-vst_dir = '/home/eddie/waterloo/VST/RGB_VST/preds_DUTS-TE/DUTS/RGB_VST/'
-tracer_dir = '/home/eddie/waterloo/TRACER/mask/DUTS/Test/images/'
+gat_dir = '/home/abcd/abcde/supertransformer/visualization/SP_GAT/DUTS-TE'
+sc_dir = '/home/abcd/abcde/supertransformer/visualization/SP_CNN_LIN/DUTS-TE'
+gf_dir = '/home/abcd/abcde/supertransformer/visualization/SP_Baseline_LAP/DUTS-TE'
+sf_dir = '/home/abcd/abcde/supertransformer/visualization/SP_TFM/DUTS-TE'
+mbnet_dir = '/home/abcd/abcde/TRACER/mask_MobileNet/DUTS/Test/images'
+vst_dir = '/home/abcd/abcde/VST/RGB_VST/preds_DUTS-TE/DUTS/RGB_VST/'
+tracer_dir = '/home/abcd/abcde/TRACER/mask/DUTS/Test/images/'
 
 
 file_names = [f.split('.')[0] for f in os.listdir(images_dir)]

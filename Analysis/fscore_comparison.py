@@ -2,8 +2,8 @@
 import os
 from glob import glob
 
-egnet_dir = '/home/eddie/waterloo/supertransformer/results/egnet_results'
-sp_tfm_dir = '/home/eddie/waterloo/supertransformer/results/sp_tfm_results'
+egnet_dir = '/home/abcd/abcde/supertransformer/results/egnet_results'
+sp_tfm_dir = '/home/abcd/abcde/supertransformer/results/sp_tfm_results'
 d = {}
 for i in range(5019):
     egnet_files = glob(os.path.join(egnet_dir, f'{i}_*'))

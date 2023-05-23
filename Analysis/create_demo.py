@@ -13,15 +13,15 @@ girl_gt_dir = '/mnt/hdd/Datasets/SegTrackv2/GroundTruth/girl'
 soldier_gt_dir = '/mnt/hdd/Datasets/SegTrackv2/GroundTruth/soldier'
 bird_gt_dir = '/mnt/hdd/Datasets/SegTrackv2/GroundTruth/bird_of_paradise'
 
-monkey_tracer_dir = '/home/eddie/waterloo/TRACER/mask/monkey'
-girl_tracer_dir = '/home/eddie/waterloo/TRACER/mask/girl'
-soldier_tracer_dir = '/home/eddie/waterloo/TRACER/mask/soldier'
-bird_tracer_dir = '/home/eddie/waterloo/TRACER/mask/bird_of_paradise'
+monkey_tracer_dir = '/home/abcd/abcde/TRACER/mask/monkey'
+girl_tracer_dir = '/home/abcd/abcde/TRACER/mask/girl'
+soldier_tracer_dir = '/home/abcd/abcde/TRACER/mask/soldier'
+bird_tracer_dir = '/home/abcd/abcde/TRACER/mask/bird_of_paradise'
 
-monkey_sf_dir = '/home/eddie/waterloo/supertransformer/visualization/SP_TFM/Monkey'
-girl_sf_dir = '/home/eddie/waterloo/supertransformer/visualization/SP_TFM/Girl'
-soldier_sf_dir = '/home/eddie/waterloo/supertransformer/visualization/SP_TFM/Solider'
-bird_sf_dir = '/home/eddie/waterloo/supertransformer/visualization/SP_TFM/Bird_of_paradise'
+monkey_sf_dir = '/home/abcd/abcde/supertransformer/visualization/SP_TFM/Monkey'
+girl_sf_dir = '/home/abcd/abcde/supertransformer/visualization/SP_TFM/Girl'
+soldier_sf_dir = '/home/abcd/abcde/supertransformer/visualization/SP_TFM/Solider'
+bird_sf_dir = '/home/abcd/abcde/supertransformer/visualization/SP_TFM/Bird_of_paradise'
 
 all_objects = [monkey_dir, girl_dir, soldier_dir, bird_dir]
 ground_truths = [monkey_gt_dir, girl_gt_dir, soldier_gt_dir, bird_gt_dir]
@@ -67,8 +67,8 @@ for object, gt, tracer, sf in zip(all_objects, ground_truths, tracers, sfs):
         ax[4].axis('off')
         ax[4].set_title('SuperFormer (Ours)')
 
-        if not os.path.exists('/home/eddie/waterloo/supertransformer/demo/'+object.split('/')[-1]):
-            os.makedirs('/home/eddie/waterloo/supertransformer/demo/'+object.split('/')[-1])
-        fig.savefig(os.path.join('/home/eddie/waterloo/supertransformer/demo/'+object.split('/')[-1], c.split('.')[0]+'jpg'))
+        if not os.path.exists('/home/abcd/abcde/supertransformer/demo/'+object.split('/')[-1]):
+            os.makedirs('/home/abcd/abcde/supertransformer/demo/'+object.split('/')[-1])
+        fig.savefig(os.path.join('/home/abcd/abcde/supertransformer/demo/'+object.split('/')[-1], c.split('.')[0]+'jpg'))
         plt.close('all')
     

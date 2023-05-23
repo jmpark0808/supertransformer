@@ -1,6 +1,6 @@
 
 import sys
-sys.path.insert(0, '/home/eddie/waterloo/supertransformer')
+sys.path.insert(0, '/home/abcd/abcde/supertransformer')
 from Models.SP_TFM import SP_TFM, SP_TFM_TFM
 from Models.ITSD import baseline
 from Models.EGNet import build_model
@@ -82,7 +82,7 @@ for ind, model in enumerate(models):
 
 
 fig.tight_layout()
-fig.savefig('/home/eddie/waterloo/supertransformer/results/image_res_vs_computation.png')
+fig.savefig('/home/abcd/abcde/supertransformer/results/image_res_vs_computation.png')
 # plt.show()
 
 

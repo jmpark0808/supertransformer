@@ -1,6 +1,6 @@
 import os
 import sys
-sys.path.insert(0, '/home/eddie/waterloo/supertransformer')
+sys.path.insert(0, '/home/abcd/abcde/supertransformer')
 import matplotlib.pyplot as plt
 import cv2
 from skimage import io
@@ -122,7 +122,7 @@ for file in tqdm(os.listdir(dataset_images)):
     regions = regionprops_table(segments_ec, intensity_image=img, properties=('label', 'centroid', 'area', 'bbox', 'image'), extra_properties=[fft, contour])
     fig, ax = plt.subplots(1, 2)
     print(regions.keys())
-    # np.save('/home/eddie/waterloo/supertransformer/Analysis/sample_sp',regions['image'][500])
+    # np.save('/home/abcd/abcde/supertransformer/Analysis/sample_sp',regions['image'][500])
 
     for contours, y, x in zip(regions['contour'], regions['bbox-0'], regions['bbox-1']):
         coord = np.squeeze(contours)

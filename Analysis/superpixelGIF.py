@@ -112,7 +112,7 @@ for file in tqdm(os.listdir(dataset_images)):
         plt.imshow(mark_boundaries(img, segments))
         plt.axis('off')
         plt.title(f'Iteration: {i}')
-        plt.savefig(f'/home/eddie/waterloo/supertransformer/results/superpixelgif/{i}.jpg')
+        plt.savefig(f'/home/abcd/abcde/supertransformer/results/superpixelgif/{i}.jpg')
 
         # fig, ax = plt.subplots(1, 2)
         # labels = np.unique(segments)

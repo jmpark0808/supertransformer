@@ -59,7 +59,7 @@ def main():
     # model.eval()
 
     egnet = build_model('resnet').cuda()
-    egnet.load_state_dict(torch.load('/home/eddie/waterloo/EGNet/epoch_resnet.pth'))
+    egnet.load_state_dict(torch.load('/home/abcd/abcde/EGNet/epoch_resnet.pth'))
     egnet.eval()
 
     # Iterate through each batch to generate visuals

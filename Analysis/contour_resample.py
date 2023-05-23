@@ -9,7 +9,7 @@ from PIL import Image
 # rectangle[35:40, 35:40] = 1
 # rectangle = (rectangle*255).astype(np.uint8)
 
-rectangle = np.load('/home/eddie/waterloo/supertransformer/Analysis/sample_sp.npy')
+rectangle = np.load('/home/abcd/abcde/supertransformer/Analysis/sample_sp.npy')
 rectangle = (rectangle*255).astype(np.uint8)
 # fig, ax = plt.subplots(1, 2)
 # ax[0].imshow(rectangle, cmap='gray', origin='lower')
