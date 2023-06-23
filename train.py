@@ -124,6 +124,8 @@ if __name__ == "__main__":
     parser.add_argument('--tfmhp', default=[8, 16, 6], 
                     nargs=3, metavar=('Heads', 'Hidden Dim', 'Number of Layers'),
                     type=int, help='Hyperparameters for Transformer')
+    parser.add_argument('--ignore_phase', help='Whether or not to use phase of FFT'
+                        , default=False, action="store_true")
 
 
 
