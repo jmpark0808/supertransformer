@@ -152,7 +152,10 @@ def get_input_dim(dataloader, args):
     if dataloader == 'SP' or dataloader == 'SPLAP':
         return 13
     elif dataloader == 'SPFFT':
-        return 6+((args.get('coeff')//2*2-1)*2)
+        if args.get('ignore_phase'):
+            return 6+((args.get('coeff')//2*2-1))
+        else:
+            return 6+((args.get('coeff')//2*2-1)*2)
     else:
         raise 'Unrecognized dataloader'
     
