@@ -292,6 +292,8 @@ class ToTensorSPFFT(object):
                                                                                     'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
 
         seq_len = len(regions['label'])
+        seq_mask = np.zeros([self.num_seg])
+        label = regions['label']
         features = np.zeros([self.num_seg, 8+((self.coeff//2)*2-1)*2])
         if self.ignore_phase:
             features = np.zeros([self.num_seg, 8+((self.coeff//2)*2-1)])
@@ -301,8 +303,7 @@ class ToTensorSPFFT(object):
             for i in range(((self.coeff//2)*2-1)*2):
                 features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
-        seq_mask = np.zeros([self.num_seg])
-        label = regions['label']
+        
         features[label-1, 0] = regions['centroid-0']
         features[label-1, 1] = regions['centroid-1']
         features[label-1, 2] = regions['intensity_mean-0']/255.
