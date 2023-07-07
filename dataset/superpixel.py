@@ -469,6 +469,14 @@ class SPDataset(data.Dataset):
         self.root_dir = root_dir
         self.image_list = sorted(os.listdir('{}/Image'.format(root_dir)))
         self.mask_list = sorted(os.listdir('{}/Mask'.format(root_dir)))
+
+        if not data_augmentation and 'TR' in root_dir: # Validating
+            self.image_list = self.image_list[int(len(self.image_list)*0.85):]
+            self.mask_list = self.mask_list[int(len(self.mask_list)*0.85):]
+        else: # Training
+            self.image_list = self.image_list[:int(len(self.image_list)*0.85)]
+            self.mask_list = self.mask_list[:int(len(self.mask_list)*0.85)]
+            
         if dataloader == 'SP':
             totensor = ToTensorSP(num_seg, compactness)
         elif dataloader == 'SPFFT':
