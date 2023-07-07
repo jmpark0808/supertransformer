@@ -255,8 +255,8 @@ class ToTensorSPFFT(object):
             contour_complex.imag = contour_array[:, 1]
             fourier_result = np.fft.fft(contour_complex)
 
-            fourier_result_front = fourier_result[1:coeff//2]
-            fourier_result_back = fourier_result[-coeff//2:]
+            fourier_result_front = fourier_result[1:1+coeff//2]
+            fourier_result_back = fourier_result[-coeff//2-1:-1]
             fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
 
             amp = abs(fourier_result)
@@ -294,13 +294,13 @@ class ToTensorSPFFT(object):
         seq_len = len(regions['label'])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
-        features = np.zeros([self.num_seg, 8+((self.coeff//2)*2-1)*2])
+        features = np.zeros([self.num_seg, 8+(self.coeff)*2])
         if self.ignore_phase:
-            features = np.zeros([self.num_seg, 8+((self.coeff//2)*2-1)])
-            for i in range(((self.coeff//2)*2-1)):
+            features = np.zeros([self.num_seg, 8+self.coeff])
+            for i in range(self.coeff):
                 features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
         else:
-            for i in range(((self.coeff//2)*2-1)*2):
+            for i in range(self.coeff*2):
                 features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
         

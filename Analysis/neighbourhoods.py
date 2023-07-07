@@ -268,14 +268,20 @@ for file in tqdm(os.listdir(data_dir)):
     fig = plt.figure(figsize=(10,10))
     ax = fig.add_subplot(111)
     plt.imshow(mark_boundaries(img_np, segments))
+    for i in range(len(features)):
+        x0,y0 = features[random_sp, 1], features[random_sp, 0]
+        x1,y1 = features[i, 1], features[i, 0]
+
+        l = Line2D([x0,x1],[y0,y1], alpha=0.5)
+        ax.add_line(l)
     # plt.scatter(centers[:,1],centers[:,0], c='blue', s=30)
     # for ind, (x, y) in enumerate(zip(features[:, 1], features[:, 0])):
     #     plt.text(x, y, str(regions['label'][ind]))
 
     plt.scatter(features[:, 1], features[:, 0], c='red', s=40)
 
-    for neighbours in np.argwhere(neighbor_array[random_sp]==1):
-        plt.scatter(features[neighbours, 1], features[neighbours, 0], s=40, c='blue')
+    # for neighbours in np.argwhere(neighbor_array[random_sp]==1):
+    #     plt.scatter(features[neighbours, 1], features[neighbours, 0], s=40, c='blue')
 
     plt.scatter(features[random_sp, 1], features[random_sp, 0], c='green', s=40)
 
@@ -291,6 +297,8 @@ for file in tqdm(os.listdir(data_dir)):
 
     #     l = Line2D([x0,x1],[y0,y1], alpha=0.5)
     #     ax.add_line(l)
+
+    
 
     plt.show()
 
