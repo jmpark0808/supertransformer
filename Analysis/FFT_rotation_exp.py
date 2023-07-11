@@ -102,14 +102,14 @@ ax[0, 0].set_title('Original')
 ax[0, 0].set_ylabel('Images')
 ax[0, 0].set_aspect('equal')
 
-ax[1, 0].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
+ax[1, 0].stem(np.linspace(0, np.pi, len(fourier_result))[1:-1], abs(fourier_result[1:-1]), 'b', markerfmt=" ", basefmt="-b")
 # ax[1, 0].plot(fourier_result.real[1:], label='Real')
 # ax[1, 0].plot(fourier_result.imag[1:], label='Imag')
 # ax[1, 0].legend(loc='lower left')
 ax[1, 0].set_ylabel('Amplitude')
 
 phase = np.arctan2(fourier_result.imag, fourier_result.real)
-ax[2, 0].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
+ax[2, 0].stem(np.linspace(0, np.pi, len(fourier_result))[1:-1], phase[1:-1], 'b', markerfmt=" ", basefmt="-b")
 ax[2, 0].set_ylabel('Phase')
 
 
@@ -128,13 +128,13 @@ ax[0, 1].scatter(xi[11], yi[11], c='Green', label='Second')
 ax[0, 1].legend()
 ax[0, 1].set_title('New starting point')
 ax[0, 1].set_aspect('equal')
-ax[1, 1].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
+ax[1, 1].stem(np.linspace(0, np.pi, len(fourier_result))[1:-1], abs(fourier_result[1:-1]), 'b', markerfmt=" ", basefmt="-b")
 # ax[1, 1].plot(fourier_result.real[1:], label='Real')
 # ax[1, 1].plot(fourier_result.imag[1:], label='Imag')
 # ax[1, 1].legend(loc='lower left')
 
 phase = np.arctan2(fourier_result.imag, fourier_result.real)
-ax[2, 1].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
+ax[2, 1].stem(np.linspace(0, np.pi, len(fourier_result))[1:-1], phase[1:-1], 'b', markerfmt=" ", basefmt="-b")
 
 
 # ROTATION
@@ -154,14 +154,14 @@ ax[0, 2].scatter(xi_rotate[1], yi_rotate[1], c='Green', label='Second')
 ax[0, 2].legend()
 ax[0, 2].set_title('Rotated')
 ax[0, 2].set_aspect('equal')
-ax[1, 2].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
+ax[1, 2].stem(np.linspace(0, np.pi, len(fourier_result))[:], abs(fourier_result[:]), 'b', markerfmt=" ", basefmt="-b")
 # ax[1, 3].plot(fourier_result.real[1:], label='Real')
 # ax[1, 3].plot(fourier_result.imag[1:], label='Imag')
 # ax[1, 3].legend(loc='lower left')
 
 phase = np.arctan2(fourier_result.imag, fourier_result.real)
-ax[2, 2].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
-print('Rotated', fourier_result.real[1:])
+ax[2, 2].stem(np.linspace(0, np.pi, len(fourier_result))[:], phase[:], 'b', markerfmt=" ", basefmt="-b")
+
 
 # Use less coefficients 
 # xi, yi = resample_2d(points, N)
@@ -231,3 +231,11 @@ fourier_result = np.fft.fft(contour_complex)
 # ax[2, 4].stem(list(range(len(phase[1:]))), phase[1:], 'b', markerfmt=" ", basefmt="-b")
 fig.supxlabel('Frequency (2nd and 3rd row)')
 plt.show()
+
+plt.bar([0, 1, 2, 3], [0.7523, 0.7531, 0.7547, 0.758])
+plt.xticks([0, 1,2,3],['4 Coef', '8 Coef', '12 Coef', '70 Coef'])
+plt.errorbar([0, 1, 2, 3], [0.7523, 0.7531, 0.7547, 0.758], [0.006045, 0.004842, 0.0042, 0.002425], linestyle='None', marker='^', color='red')
+plt.ylim((0.74, 0.77))
+plt.ylabel('Test data Max F1 score')
+plt.show()
+
