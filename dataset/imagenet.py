@@ -146,7 +146,7 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
             fourier_result = np.fft.fft(contour_complex)
 
             fourier_result_front = fourier_result[1:1+coeff//2]
-            fourier_result_back = fourier_result[-coeff//2-1:-1]
+            fourier_result_back = fourier_result[-coeff//2:]
             fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
 
             amp = abs(fourier_result)
@@ -174,7 +174,7 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
 
         if os.path.exists(sp_file_path):
             features = torch.tensor(np.load(sp_file_path)).float()
-            return features, target
+            return features, torch.tensor(target)
         else:
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
@@ -267,7 +267,7 @@ class SPImageNetDataModule(pl.LightningDataModule):
         train_dataset, val_dataset = torch.utils.data.random_split(train_dataset, [train_size, val_size])
         val_dataset.dataset.transform = val_test_transform
 
-        test_dataset = ImageNetDatasetTest(test_dir, val_test_transform, self.coeff, class_to_idx)
+        test_dataset = ImageNetDatasetTest(test_dir, val_test_transform, self.num_seg, self.coeff, class_to_idx)
 
         self.train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,
                                                                num_workers =self.num_workers, drop_last=True)
