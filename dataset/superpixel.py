@@ -256,7 +256,7 @@ class ToTensorSPFFT(object):
             fourier_result = np.fft.fft(contour_complex)
 
             fourier_result_front = fourier_result[1:1+coeff//2]
-            fourier_result_back = fourier_result[-coeff//2-1:-1]
+            fourier_result_back = fourier_result[-coeff//2:]
             fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
 
             amp = abs(fourier_result)

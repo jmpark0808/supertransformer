@@ -80,7 +80,9 @@ class MaxPoolingCNN(nn.Module):
 
         return self.act(output)
 
-
+class Matmul(nn.Module):
+    def forward(self, *args):
+        return torch.matmul(*args)
 
 class GraphAttentionLayer(nn.Module):
     """
@@ -99,16 +101,17 @@ class GraphAttentionLayer(nn.Module):
         nn.init.xavier_uniform_(self.a.data, gain=1.414)
         self.leakyrelu = nn.LeakyReLU(alpha)
         self.dropout = nn.Dropout(dropout)
+        self.matmul = Matmul()
 
     def forward(self, h, adj):
-        Wh = torch.matmul(h, self.W) # h.shape: (B, N, in_features), Wh.shape: (B, N, out_features)
+        Wh = self.matmul(h, self.W) # h.shape: (B, N, in_features), Wh.shape: (B, N, out_features)
         e = self._prepare_attentional_mechanism_input(Wh)
 
         zero_vec = -9e15*torch.ones_like(e)
         attention = torch.where(adj > 0, e, zero_vec)
         attention = F.softmax(attention, dim=-1)
         attention = self.dropout(attention)
-        h_prime = torch.matmul(attention, Wh)
+        h_prime = self.matmul(attention, Wh)
 
         if self.concat:
             return F.elu(h_prime)
@@ -120,8 +123,8 @@ class GraphAttentionLayer(nn.Module):
         # self.a.shape (2 * out_feature, 1)
         # Wh1&2.shape (B, N, 1)
         # e.shape (B, N, N)
-        Wh1 = torch.matmul(Wh, self.a[:self.out_features, :])
-        Wh2 = torch.matmul(Wh, self.a[self.out_features:, :])
+        Wh1 = self.matmul(Wh, self.a[:self.out_features, :])
+        Wh2 = self.matmul(Wh, self.a[self.out_features:, :])
         # broadcast add
         e = Wh1 + Wh2.permute(0, 2, 1)
         return self.leakyrelu(e)

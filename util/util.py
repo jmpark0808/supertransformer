@@ -151,7 +151,7 @@ def resample_2d(points, N):
 def get_input_dim(dataloader, args):
     if dataloader == 'SP' or dataloader == 'SPLAP':
         return 13
-    elif dataloader == 'SPFFT':
+    elif dataloader == 'SPFFT' or dataloader == 'ImageNet':
         if args.get('ignore_phase'):
             return 6+(args.get('coeff'))
         else:
