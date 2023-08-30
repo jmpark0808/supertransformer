@@ -132,6 +132,6 @@ if __name__ == "__main__":
 
     # Evaluate model on best ckpt (defined in 'ModelCheckpoint' callback)
     if dict_args['eval'] and dict_args['test_dir']:
-        trainer.test(model, ckpt_path='best', datamodule=data_module)
+        trainer.test(model, ckpt_path='best', datamodule=data_module) # 
     else:
         print("Evaluation skipped")

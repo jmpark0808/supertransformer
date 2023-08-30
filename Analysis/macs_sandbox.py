@@ -5,6 +5,7 @@ import sys
 sys.path.insert(0, '/home/eddie/waterloo/supertransformer')
 # from Blocks.GraphBlocks import *
 from Models.SP_TFM import SP_TFM_FFT
+from Models.SP_GAT import SP_GAT
 import torch.nn as nn
 import torch.functional as F
 from fvcore.nn import FlopCountAnalysis
@@ -45,18 +46,18 @@ class GraphAttentionLayer(nn.Module):
         h, adj = x
         Wh = torch.matmul(h, self.W) # h.shape: (B, N, in_features), Wh.shape: (B, N, out_features)
         e = self._prepare_attentional_mechanism_input(Wh)
-        return e
 
-        # zero_vec = -9e15*torch.ones_like(e)
-        # attention = torch.where(adj > 0, e, zero_vec)
-        # attention = torch.softmax(attention, dim=-1)
-        # attention = self.dropout(attention)
-        # h_prime = torch.matmul(attention, Wh)
 
-        # if self.concat:
-        #     return self.elu(h_prime)
-        # else:
-        #     return h_prime
+        zero_vec = -9e15*torch.ones_like(e)
+        attention = torch.where(adj > 0, e, zero_vec)
+        attention = torch.softmax(attention, dim=-1)
+        attention = self.dropout(attention)
+        h_prime = torch.matmul(attention, Wh)
+
+        if self.concat:
+            return self.elu(h_prime)
+        else:
+            return h_prime
 
     def _prepare_attentional_mechanism_input(self, Wh):
         # Wh.shape (B, N, out_feature)
@@ -112,4 +113,13 @@ print(flop_count_table(flops))
 
 model = SP_TFM_FFT(146, 16, 8, 6, 0)
 flops = FlopCountAnalysis(model, inp)
+print(flop_count_table(flops))
+
+# model = GraphAttentionLayer(144, 16*8, 0, True,0.2)
+model = SP_GAT(11, 64, 0, 8, 6, 0.2)
+
+adj = torch.ones([1,625, 625])
+inp = torch.ones([1,625, 11])
+
+flops = FlopCountAnalysis(model, [inp, adj])
 print(flop_count_table(flops))

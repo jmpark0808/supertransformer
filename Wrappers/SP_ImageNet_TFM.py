@@ -108,6 +108,7 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
     def validation_epoch_end(self, validation_step_outputs):
         acc = self.val_acc/self.val_num_samples
         self.log('Validation Accuracy', acc)
+        self.scheduler.step(torch.mean(torch.stack(validation_step_outputs)))
 
     def on_validation_start(self):
         self.val_acc = 0
@@ -167,6 +168,7 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
         loss = self.loss(pred, label)
         
         max_scores, max_idx_class = pred.max(dim=1)
+
         n = pred.size(0)
         acc = (max_idx_class == label).sum().item() 
 

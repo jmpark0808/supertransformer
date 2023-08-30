@@ -24,13 +24,15 @@ import torchvision
 import xml.etree.ElementTree as ET
 
 class ImageNetDatasetTest(data.Dataset):
-    def __init__(self, root_dir, transforms, num_seg,coeff, class_to_idx):
+    def __init__(self, root_dir, transforms, num_seg, coeff, class_to_idx, compactness):
         self.root_dir = root_dir
         self.image_list = sorted(os.listdir('{}/Data/CLS-LOC/val'.format(root_dir)))
         self.target_list = sorted(os.listdir('{}/Annotations/CLS-LOC/val'.format(root_dir)))
         self.transform = transforms
         self.class_to_idx = class_to_idx
         self.num_seg = num_seg
+        self.compactness = compactness
+        self.coeff = coeff
 
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
@@ -68,14 +70,22 @@ class ImageNetDatasetTest(data.Dataset):
         sp_file_name = self.image_list[item].split('.')[0]+'.npy'
         sp_file_folder = os.path.join(self.root_dir, 'Data/CLS-LOC/sp_test')
         if not os.path.exists(sp_file_folder):
-            os.makedirs(sp_file_folder)
+            os.makedirs(sp_file_folder, exist_ok=True)
         sp_file_path = os.path.join(sp_file_folder, sp_file_name)
+        target = ET.parse(target_name)
+        root = target.getroot()
+        target = root[5][0].text
+        target = self.class_to_idx[target]
+
         if os.path.exists(sp_file_path):
             features = torch.tensor(np.load(sp_file_path)).float()
+
+            features, target = torch.tensor(features).float(), torch.tensor(target)
             return features, target
         else:
 
             img = Image.open(img_name)
+            img = img.convert('RGB')
             img = self.transform(img)
 
             img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
@@ -115,14 +125,7 @@ class ImageNetDatasetTest(data.Dataset):
 
             features, target = torch.tensor(features).float(), torch.tensor(target)
 
-
-
-            target = ET.parse(target_name)
-            target = target[5][0].text
-            target = self.class_to_idx[target]
-
-
-            return img, target
+            return features, target
 
 
 
@@ -169,7 +172,7 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
         sp_file_name = img[0].split('/')[-1].split('.')[0]+'.npy'
         sp_file_folder = os.path.join('/',*img[0].split('/')[:-3], 'sp_train')
         if not os.path.exists(sp_file_folder):
-            os.makedirs(sp_file_folder)
+            os.makedirs(sp_file_folder, exist_ok=True)
         sp_file_path = os.path.join(sp_file_folder, sp_file_name)
 
         if os.path.exists(sp_file_path):
@@ -267,7 +270,7 @@ class SPImageNetDataModule(pl.LightningDataModule):
         train_dataset, val_dataset = torch.utils.data.random_split(train_dataset, [train_size, val_size])
         val_dataset.dataset.transform = val_test_transform
 
-        test_dataset = ImageNetDatasetTest(test_dir, val_test_transform, self.num_seg, self.coeff, class_to_idx)
+        test_dataset = ImageNetDatasetTest(test_dir, val_test_transform, self.num_seg, self.coeff, class_to_idx, self.compactness)
 
         self.train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,
                                                                num_workers =self.num_workers, drop_last=True)
