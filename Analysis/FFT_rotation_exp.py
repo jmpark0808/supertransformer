@@ -171,8 +171,8 @@ ax[2, 2].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', ma
 # Horizontal Flip
 
 
-xi_flip = -xi#horizontal_flip(xi)
-yi_flip = yi
+xi_flip = np.roll(np.flip(-xi), 1)#horizontal_flip(xi)
+yi_flip = np.roll(np.flip(yi), 1)
 contour_array = np.stack((xi_flip, yi_flip), axis=1)
 contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
 contour_complex.real = contour_array[:, 0]

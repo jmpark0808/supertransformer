@@ -80,8 +80,7 @@ if __name__ == "__main__":
     # Initialize model to train
     assert dict_args['model'] in MODEL_DIRECTORY
     model = MODEL_DIRECTORY[dict_args['model']](**dict_args)
-    if dict_args['load']:
-        model = model.load_from_checkpoint(dict_args['load'])
+
 
     # Initialize logging paths
     random_sec = random.randint(1, 20)

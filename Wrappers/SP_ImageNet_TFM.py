@@ -21,10 +21,17 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
         self.coeff = kwargs.get('coeff')
         self.tfm_hp = kwargs.get('tfmhp')
         self.dataloader = kwargs.get('dataloader')
+        self.load = kwargs.get('load', None)
         input_dim = get_input_dim(self.dataloader, kwargs)
         # Generator that produces the HeatMap
         self.supert = SP_ImageNet_TFM(input_dim, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout)
+        if self.load:
+            ckpt = torch.load(self.load)
+            for key in list(ckpt['state_dict'].keys()):
+                ckpt['state_dict'][key.replace('supert.', '')] = ckpt['state_dict'].pop(key)
+            self.supert.load_state_dict(ckpt['state_dict'])
 
+  
         self.loss_fn = torch.nn.CrossEntropyLoss()
         self.iteration = 0
         self.test_iteration = 0
