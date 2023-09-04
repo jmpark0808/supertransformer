@@ -22,6 +22,7 @@ import pandas as pd
 from skimage.segmentation import mark_boundaries
 import torchvision 
 import xml.etree.ElementTree as ET
+from dataset.fft_transform import *
 
 class ImageNetDatasetTest(data.Dataset):
     def __init__(self, root_dir, transforms, num_seg, coeff, class_to_idx, compactness):
@@ -80,7 +81,7 @@ class ImageNetDatasetTest(data.Dataset):
         if os.path.exists(sp_file_path):
             features = torch.tensor(np.load(sp_file_path)).float()
 
-            features, target = torch.tensor(features).float(), torch.tensor(target)
+            target = torch.tensor(target)
             return features, target
         else:
 
@@ -130,11 +131,12 @@ class ImageNetDatasetTest(data.Dataset):
 
 
 class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
-    def __init__(self, root, num_seg, coeff, compactness, transform) -> None:
+    def __init__(self, root, num_seg, coeff, compactness, transform, mode) -> None:
         super().__init__(root, transform=transform)
         self.num_seg = num_seg
         self.compactness = compactness
         self.coeff = coeff
+        self.mode = mode
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
             contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -176,7 +178,15 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
         sp_file_path = os.path.join(sp_file_folder, sp_file_name)
 
         if os.path.exists(sp_file_path):
-            features = torch.tensor(np.load(sp_file_path)).float()
+            if self.mode == 'train':
+                features_np = np.load(sp_file_path)
+                features_np = horizontal_flip(features_np, self.coeff, 0.5)
+                features_np = rotate(features_np, self.coeff, 30, 0.5)
+                features = torch.tensor(features_np).float()
+
+            else:
+                features = torch.tensor(np.load(sp_file_path)).float()
+
             return features, torch.tensor(target)
         else:
         # doing this so that it is consistent with all other datasets
@@ -248,7 +258,7 @@ class SPImageNetDataModule(pl.LightningDataModule):
         #             transforms.RandomVerticalFlip(),
         #             transforms.ToTensor()
         #             ])
-        train_transform = None
+        FFT_transform = []
         # val_test_transform = None
         
         val_test_transform = transforms.Compose(
@@ -263,12 +273,13 @@ class SPImageNetDataModule(pl.LightningDataModule):
         self.coeff = kwargs.get('coeff', 70)
         self.compactness = kwargs.get('compactness', 10)
 
-        train_dataset = ImageNetDatasetTrain(train_dir, self.num_seg, self.coeff, self.compactness, val_test_transform)
+        train_dataset = ImageNetDatasetTrain(train_dir, self.num_seg, self.coeff, self.compactness, val_test_transform, 'train')
         class_to_idx = train_dataset.class_to_idx
         train_size = int(0.8*len(train_dataset))
         val_size = len(train_dataset) - train_size
         train_dataset, val_dataset = torch.utils.data.random_split(train_dataset, [train_size, val_size])
         val_dataset.dataset.transform = val_test_transform
+        val_dataset.mode = 'val'
 
         test_dataset = ImageNetDatasetTest(test_dir, val_test_transform, self.num_seg, self.coeff, class_to_idx, self.compactness)
 
