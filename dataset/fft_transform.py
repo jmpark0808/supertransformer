@@ -48,6 +48,20 @@ def rotate(array, coeff, degrees, chance):
 
 
     return array
+
+def translate(array, alpha, chance):
+    if np.random.random() < chance:
+        ys = array[:, 0]
+        xs = array[:, 1]
+        random_shift_horizontal = np.random.randint(-int(alpha*256), int(alpha*256))
+        random_shift_vertical = np.random.randint(-int(alpha*256), int(alpha*256))
+        ys += random_shift_vertical
+        xs += random_shift_horizontal
+        array[:, 0] = ys
+        array[:, 1] = xs
+
+    return array
+
 # import matplotlib.pyplot as plt
 # fig, ax = plt.subplots(1, 2)
 # random_phase = np.random.random(70)*2*np.pi-np.pi

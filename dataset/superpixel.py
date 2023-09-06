@@ -1,4 +1,5 @@
 import os
+from typing import Any
 import torch.utils.data as data
 import torchvision.transforms as transforms
 from collections import defaultdict
@@ -62,6 +63,17 @@ class RandomFlip(object):
             return {'image': img, 'mask': mask}
         else:
             return sample
+        
+class Rotation(object):
+    def __init__(self, degree) -> None:
+        self.degree = degree
+        
+
+    def __call__(self, sample) -> Any:
+        img, mask = sample['image'], sample['mask']
+        img = transforms.functional.rotate(img, self.degree)
+        mask = transforms.functional.rotate(mask, self.degree)
+        return {'image': img, 'mask': mask}
 
 
 class ToTensorSP(object):
@@ -255,7 +267,7 @@ class ToTensorSPFFT(object):
             contour_complex.imag = contour_array[:, 1]
             fourier_result = np.fft.fft(contour_complex)
 
-            fourier_result_front = fourier_result[1:1+coeff//2]
+            fourier_result_front = fourier_result[1:coeff//2]# 1+
             fourier_result_back = fourier_result[-coeff//2:]
             fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
 
@@ -294,13 +306,13 @@ class ToTensorSPFFT(object):
         seq_len = len(regions['label'])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
-        features = np.zeros([self.num_seg, 8+(self.coeff)*2])
+        features = np.zeros([self.num_seg, 8+(self.coeff)*2-2])
         if self.ignore_phase:
             features = np.zeros([self.num_seg, 8+self.coeff])
             for i in range(self.coeff):
                 features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
         else:
-            for i in range(self.coeff*2):
+            for i in range(self.coeff*2-2):
                 features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
         
@@ -495,7 +507,9 @@ class SPDataset(data.Dataset):
              RandomCrop(size, int(size*1.14)),
              totensor])
         if not data_augmentation:
-            self.transform = transforms.Compose([Resize(size), totensor])
+            self.transform = transforms.Compose([Resize(size),
+                                                 Rotation(30),
+                                                  totensor])
 
         self.root_dir = root_dir
         self.data_augmentation = data_augmentation
@@ -527,7 +541,8 @@ class DUTSDataset(data.Dataset):
              RandomCrop(size, int(size*1.2)),
              ToTensorRaw()])
         if not (train and data_augmentation):
-            self.transform = transforms.Compose([Resize(size), ToTensorRaw()])
+            self.transform = transforms.Compose([Resize(size),
+                                                  ToTensorRaw()])
         self.root_dir = root_dir
 
 

@@ -23,9 +23,11 @@ class SP_TFM_Wrapper(pl.LightningModule):
         self.coeff = kwargs.get('coeff')
         self.dilation = kwargs.get('dilation')
         self.dataloader = kwargs.get('dataloader')
+        
         input_dim = get_input_dim(self.dataloader, kwargs)
+
         # Generator that produces the HeatMap
-        self.supert = SP_TFM_REL(input_dim, self.dilation, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout)
+        self.supert = SP_TFM_REL(144, self.dilation, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout)
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()
