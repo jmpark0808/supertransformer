@@ -126,6 +126,11 @@ for file in tqdm(os.listdir(data_dir)):
     img = img.convert('RGB')
     img = img.resize((1000, 1000), resample=Image.BILINEAR)
 
+    # tfm = transforms.ColorJitter(0.1, 0.1, 0.1, 0.1)
+    # img_transform = tfm(img)
+    # plt.imshow(img_transform)
+    # plt.show()
+    # assert(0)
     img_np = np.array(img).astype(np.float32)/255.
 
     num_seg = 256

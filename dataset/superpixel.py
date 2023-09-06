@@ -5,7 +5,7 @@ from collections import defaultdict
 import numpy as np
 import torch
 from PIL import Image, ImageCms
-from skimage.segmentation import slic
+from skimage.segmentation import slic, mark_boundaries
 from skimage.measure import regionprops_table
 from skimage.feature import local_binary_pattern
 from sklearn.metrics.pairwise import euclidean_distances
@@ -62,6 +62,36 @@ class RandomFlip(object):
             return {'image': img, 'mask': mask}
         else:
             return sample
+
+class RandomAffine(object):
+    def __init__(self, rotate, translate, scale):
+        self.rotate = rotate
+        self.translate = translate
+        self.scale = scale
+                
+
+    def __call__(self, sample):
+        img, mask = sample['image'], sample['mask']
+        H, W = img.size
+        random_rotate = np.random.randint(-self.rotate, self.rotate)
+        random_translate_x = int(np.random.random()*self.translate*W)
+        random_translate_y = int(np.random.random()*self.translate*H)
+        random_scale = 1+np.random.random()*2*self.scale-self.scale
+        img = transforms.functional.affine(img, random_rotate, [random_translate_x, random_translate_y], random_scale, 0)
+        mask = transforms.functional.affine(mask, random_rotate, [random_translate_x, random_translate_y], random_scale, 0)
+        return {'image': img, 'mask': mask}
+
+class RandomColorJitter(object):
+    def __init__(self, brightness, contrast, saturation, hue) -> None:
+        self.transform = transforms.ColorJitter(brightness, contrast, saturation, hue)
+
+    def __call__(self, sample):
+        img, mask = sample['image'], sample['mask']
+
+        img = self.transform(img)
+
+        return {'image': img, 'mask': mask}
+
 
 
 class ToTensorSP(object):
@@ -271,15 +301,21 @@ class ToTensorSPFFT(object):
     def __call__(self, sample):
         img, mask = sample['image'], sample['mask']
         img_np = np.array(img)
-        img_size = img_np.shape[1]
         mask_np = np.array(mask)/255.
-        segments = slic(img_np, n_segments=self.num_seg,
-            compactness=self.compactness,
-            max_num_iter=3,
-            convert2lab=True,
-            enforce_connectivity=False,
-            slic_zero=False)
 
+        # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
+            
+        slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
+        segments = slic.iterate(img_np)
+        # segments = slic(img_np, n_segments=self.num_seg,
+        #     compactness=self.compactness,
+        #     max_num_iter=3,
+        #     convert2lab=True,
+        #     enforce_connectivity=False,
+        #     slic_zero=False)
+
+        # plt.imshow(mark_boundaries(img_np, segments))
+        # plt.show()
 
         vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
         vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
@@ -493,6 +529,8 @@ class SPDataset(data.Dataset):
         self.transform = transforms.Compose(
             [RandomFlip(0.5),
              RandomCrop(size, int(size*1.14)),
+             RandomAffine(30, 0.2, 0.3),
+             RandomColorJitter(0.2, 0.2, 0.2, 0.2),
              totensor])
         if not data_augmentation:
             self.transform = transforms.Compose([Resize(size), totensor])
