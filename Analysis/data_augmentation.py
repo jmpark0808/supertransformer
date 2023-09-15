@@ -118,7 +118,7 @@ def image_stdev(region, intensities):
     # note the ddof arg to get the sample var if you so desire!
     return np.std(intensities[region])
 
-data_dir = '/mnt/hdd/Datasets/DUTS/Dog/Image/ILSVRC2012_test_00000004.jpg'
+data_dir = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Image/ILSVRC2012_test_00000004.jpg'
 all_distances = []
 heights = []
 widths = []

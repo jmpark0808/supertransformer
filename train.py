@@ -31,10 +31,12 @@ from Wrappers.SP_Baseline import SP_Baseline_Wrapper
 from Wrappers.SP_Baseline_DPE import SP_Baseline_DPE_Wrapper
 from Wrappers.SP_Baseline_LAP import SP_Baseline_LAP_Wrapper
 from Wrappers.image_transformer import ImageTransformer
+from Wrappers.SP_GAT_PyG import SP_GAT_PyG_Wrapper
 
 
 # Import dataset modules
 from dataset.superpixel import DUTSDataModule,  SPDataModule
+from dataset.superpixel_pyg import SPGDataModule
 
 
 # Metric logging
@@ -74,6 +76,7 @@ MODEL_DIRECTORY = {
     'SP_Baseline': SP_Baseline_Wrapper,
     'SP_Baseline_DPE': SP_Baseline_DPE_Wrapper,
     'SP_Baseline_LAP': SP_Baseline_LAP_Wrapper,
+    'SP_GAT_PyG': SP_GAT_PyG_Wrapper
 }
 DATALOADER_DIRECTORY = {
     'SP': SPDataModule,
@@ -81,7 +84,8 @@ DATALOADER_DIRECTORY = {
     'SPCNN': SPDataModule,
     'SPLAP': SPDataModule,
     "SPFFT": SPDataModule,
-    'SPContour': SPDataModule
+    'SPContour': SPDataModule,
+    'SPGFFT': SPGDataModule,
 
 } 
 
@@ -98,7 +102,6 @@ if __name__ == "__main__":
                         help="Directory of pre-trained model,  \n"
                              "None --> Do not use pre-trained model. Training will start from random initialized model")
     parser.add_argument('--dataset_tr', help='Directory of your train Dataset', required=True, default=None)
-    parser.add_argument('--dataset_val', help='Directory of your validation Dataset', required=True, default=None)
     parser.add_argument('--dataset_test', help='Directory of your test Dataset', default=None)
     parser.add_argument('--cuda', help="'cuda' for cuda, 'cpu' for cpu, default = cuda",
                         default='cuda', choices=['cuda', 'cpu'])

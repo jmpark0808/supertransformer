@@ -501,17 +501,9 @@ class ToTensorRaw(object):
         return {'image': img, 'mask': mask}
 
 class SPDataset(data.Dataset):
-    def __init__(self, root_dir, num_seg, size, compactness, data_augmentation=True, dataloader=None, coeff=None, ignore_phase=False):
-        self.root_dir = root_dir
-        self.image_list = sorted(os.listdir('{}/Image'.format(root_dir)))
-        self.mask_list = sorted(os.listdir('{}/Mask'.format(root_dir)))
-
-        if not data_augmentation and 'TR' in root_dir: # Validating
-            self.image_list = self.image_list[int(len(self.image_list)*0.85):]
-            self.mask_list = self.mask_list[int(len(self.mask_list)*0.85):]
-        else: # Training
-            self.image_list = self.image_list[:int(len(self.image_list)*0.85)]
-            self.mask_list = self.mask_list[:int(len(self.mask_list)*0.85)]
+    def __init__(self, image_list, mask_list, num_seg, size, compactness, data_augmentation=True, dataloader=None, coeff=None, ignore_phase=False):
+        self.image_list = image_list
+        self.mask_list = mask_list
             
         if dataloader == 'SP':
             totensor = ToTensorSP(num_seg, compactness)
@@ -535,7 +527,6 @@ class SPDataset(data.Dataset):
         if not data_augmentation:
             self.transform = transforms.Compose([Resize(size), totensor])
 
-        self.root_dir = root_dir
         self.data_augmentation = data_augmentation
 
     def __len__(self):
@@ -590,7 +581,6 @@ class SPDataModule(pl.LightningDataModule):
         super().__init__()
 
         self.train_dir = kwargs.get('dataset_tr')
-        self.val_dir = kwargs.get('dataset_val')
         self.test_dir = kwargs.get('dataset_test')
         self.batch_size = kwargs.get('batch_size')
         self.num_workers = kwargs.get('num_workers', 0)
@@ -601,21 +591,37 @@ class SPDataModule(pl.LightningDataModule):
         self.compactness = kwargs.get('compactness')
         self.ignore_phase = kwargs.get('ignore_phase')
 
+        self.image_list = np.array(sorted([os.path.join('{}/Image'.format(self.train_dir), f) for f in os.listdir('{}/Image'.format(self.train_dir))]))
+        self.mask_list = np.array(sorted([os.path.join('{}/Mask'.format(self.train_dir), f) for f in os.listdir('{}/Mask'.format(self.train_dir))]))
+
+
+        indices = np.array(list(range(len(self.image_list))))
+        np.random.shuffle(indices)
+        
+        self.val_image_list = self.image_list[indices[int(len(self.image_list)*0.85):]]
+        self.val_mask_list = self.mask_list[indices[int(len(self.mask_list)*0.85):]]
+    
+        self.tr_image_list = self.image_list[indices[:int(len(self.image_list)*0.85)]]
+        self.tr_mask_list = self.mask_list[indices[:int(len(self.mask_list)*0.85)]]
+
+        self.test_image_list = sorted([os.path.join('{}/Image'.format(self.test_dir), f) for f in os.listdir('{}/Image'.format(self.test_dir))])
+        self.test_mask_list = sorted([os.path.join('{}/Mask'.format(self.test_dir), f) for f in os.listdir('{}/Mask'.format(self.test_dir))])
+
         
     def train_dataloader(self):
-        data_train = SPDataset(self.train_dir, self.num_seg, self.res, self.compactness, True, self.dataloader, self.coeff, self.ignore_phase)
+        data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg, self.res, self.compactness, True, self.dataloader, self.coeff, self.ignore_phase)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=False)
 
     def val_dataloader(self):
-        data_val = SPDataset(self.val_dir, self.num_seg, self.res, self.compactness, False, self.dataloader, self.coeff, self.ignore_phase)
+        data_val = SPDataset(self.val_image_list, self.val_mask_list,self.num_seg, self.res, self.compactness, False, self.dataloader, self.coeff, self.ignore_phase)
         return DataLoader(
                 data_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
 
     def test_dataloader(self):
-        data_test = SPDataset(self.test_dir, self.num_seg, self.res,  self.compactness, False, self.dataloader, self.coeff, self.ignore_phase)
+        data_test = SPDataset(self.test_image_list, self.test_mask_list,  self.num_seg, self.res,  self.compactness, False, self.dataloader, self.coeff, self.ignore_phase)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
