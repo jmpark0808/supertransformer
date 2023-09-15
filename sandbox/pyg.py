@@ -2,7 +2,9 @@ import torch
 from torch_geometric.nn.conv import GATv2Conv
 import torch.functional as F
 import torch.nn as nn
+import sys
 
+sys.path.insert(0, '/home/eddie/waterloo/supertransformer')
 class BaselineGDPModel(torch.nn.Module):
     def __init__(self, num_features=3, hidden_size=32, target_size=1):
         super().__init__()
@@ -81,17 +83,25 @@ class SPDataset(datatorch.Dataset):
         return 100
 
     def __getitem__(self, idx):
-        random_int = np.random.randint(30, 50)
-        t = torch.randn(random_int, 3)
+        random_int = np.random.randint(30, 40)
+        t = torch.randn(40, 3)
         adj = torch.ones(random_int, random_int)
 
         edge_index = adj.nonzero().t().contiguous()
-        edge_features = torch.ones(random_int, random_int, 3)
 
-        d = {'features': Data(x=t, edge_index=edge_index, edge_attr=edge_features)
+        edge_features = torch.ones(random_int, random_int, 3)
+        edge_features = edge_features[adj_s.nonzero().t().numpy()]
+        print(edge_features.size())
+
+        d = {
+             'seq_mask': torch.ones(random_int, random_int),
+             'mask': torch.ones(random_int, random_int)
+
 
         }
-        return d
+        return Data(x=t, edge_index=edge_index, edge_attr=edge_features), torch.ones(30, 30)
+
+# from dataset.superpixel_pyg import SPDataset
 
 adj_s = torch.ones(30, 30)  
 
@@ -100,14 +110,18 @@ edge_features_s = torch.ones(30, 30, 3)
 edge_features_s = edge_features_s[adj_s.nonzero().t().numpy()]
 s = torch.randn(30, 3)
 
-data = Data(x=t, edge_index=edge_index, edge_attr=edge_features)
-data_s = Data(x=t, edge_index=edge_index_s, edge_attr=edge_features_s)
-data_list = [data, data_s]
-
-# data_list = SPDataset()
-
+# data = Data(x=t, edge_index=edge_index, edge_attr=edge_features)
+# data_s = Data(x=t, edge_index=edge_index_s, edge_attr=edge_features_s)
+# data_list = [data, data_s]
+import os
+# train_dir = '/mnt/hdd/Datasets/DUTS/DUTS-TR/'
+# image_list = np.array(sorted([os.path.join('{}/Image'.format(train_dir), f) for f in os.listdir('{}/Image'.format(train_dir))]))
+# mask_list = np.array(sorted([os.path.join('{}/Mask'.format(train_dir), f) for f in os.listdir('{}/Mask'.format(train_dir))]))
+# data_list = SPDataset(image_list, mask_list, 400, 224, 10, True, 10, False )
+data_list = SPDataset()
 loader = DataLoader(data_list, batch_size=2, shuffle=True)
 model = BaselineGDPModel(3, 32, 1)
 for d in loader:
-    out = model(d)
-    print(out.size())
+    # out = model(d[0])
+    # print(out.size())
+    pass

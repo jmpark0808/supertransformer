@@ -196,15 +196,16 @@ class ToTensorSPFFT(object):
 
 
         spatial_distances = euclidean_distances(features_centroids, features_centroids)
-        spatial_distances = spatial_distances[neighbor_array.nonzero().t().numpy()]
+        spatial_distances = spatial_distances[np.nonzero(neighbor_array.numpy())]
         
       
-        edge_features = torch.from_numpy(spatial_distances).float().unsqueeze(2)
+        edge_features = torch.from_numpy(spatial_distances).float().unsqueeze(1)
+        
 
         d = Data(x=torch.tensor(features).float(), edge_index=edge_index, edge_attr=edge_features)
         seq_mask, segments, mask, img = torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
 
-        return {'features': d, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask, 'img': img}
+        return d, seq_mask, segments, mask, img
     
 
 
@@ -218,7 +219,7 @@ class ToTensorRaw(object):
         return {'image': img, 'mask': mask}
 
 class SPDataset(data.Dataset):
-    def __init__(self, image_list, mask_list, num_seg, size, compactness, data_augmentation=True, dataloader=None, coeff=None, ignore_phase=False):
+    def __init__(self, image_list, mask_list, num_seg, size, compactness, data_augmentation=True, coeff=None, ignore_phase=False):
         self.image_list = image_list
         self.mask_list = mask_list
         
@@ -248,17 +249,10 @@ class SPDataset(data.Dataset):
         sample = {'image': img, 'mask': mask}
 
         sample = self.transform(sample)
-        sample['file_name'] = self.image_list[item]
+        sample = sample+(self.image_list[item],)
         return sample
 
-def collate_fn(batch):
-    return {
-      'features': [x['features'] for x in batch],
-      'seq_mask': torch.tensor([x['seq_mask'] for x in batch]),
-        'segments': torch.tensor([x['segments'] for x in batch]),
-          'mask': torch.tensor([x['mask'] for x in batch]),
-            'img': torch.tensor([x['img'] for x in batch])
-}
+
 
 class SPGDataModule(pl.LightningDataModule):
 
@@ -293,22 +287,22 @@ class SPGDataModule(pl.LightningDataModule):
 
         
     def train_dataloader(self):
-        data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg, self.res, self.compactness, True, self.dataloader, self.coeff, self.ignore_phase)
+        data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg, self.res, self.compactness, True, self.coeff, self.ignore_phase)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
-                num_workers=self.num_workers, shuffle=True, pin_memory=False, collate_fn=collate_fn)
+                num_workers=self.num_workers, shuffle=True, pin_memory=False)
 
     def val_dataloader(self):
-        data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg, self.res, self.compactness, False, self.dataloader, self.coeff, self.ignore_phase)
+        data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg, self.res, self.compactness, False, self.coeff, self.ignore_phase)
         return DataLoader(
                 data_val, batch_size=self.batch_size, 
-                num_workers=self.num_workers, pin_memory=False, collate_fn=collate_fn)
+                num_workers=self.num_workers, pin_memory=False)
 
     def test_dataloader(self):
-        data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg, self.res,  self.compactness, False, self.dataloader, self.coeff, self.ignore_phase)
+        data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg, self.res,  self.compactness, False, self.coeff, self.ignore_phase)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
-                num_workers=self.num_workers, pin_memory=False, collate_fn=collate_fn)
+                num_workers=self.num_workers, pin_memory=False)
 
 
 

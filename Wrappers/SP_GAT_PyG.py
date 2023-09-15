@@ -90,11 +90,11 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         logging resources:
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
-        features = batch['features']
-        seq_mask = batch['seq_mask']
-        segments = batch['segments']
-        mask = batch['mask']
-        img = batch['img']
+        features = batch[0]
+        seq_mask = batch[1]
+        segments = batch[2]
+        mask = batch[3]
+        img = batch[4]
 
 
         features = features.cuda()
@@ -147,11 +147,11 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         Compute the metrics for validation batch
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
-        features = batch['features']
-        seq_mask = batch['seq_mask']
-        segments = batch['segments']
-        mask = batch['mask']
-        img = batch['img']
+        features = batch[0]
+        seq_mask = batch[1]
+        segments = batch[2]
+        mask = batch[3]
+        img = batch[4]
 
 
         features = features.cuda()
@@ -232,11 +232,11 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         Compute the metrics for validation batch
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
-        features = batch['features']
-        seq_mask = batch['seq_mask']
-        segments = batch['segments']
-        mask = batch['mask']
-        img = batch['img']
+        features = batch[0]
+        seq_mask = batch[1]
+        segments = batch[2]
+        mask = batch[3]
+        img = batch[4]
 
 
         features = features.cuda()
