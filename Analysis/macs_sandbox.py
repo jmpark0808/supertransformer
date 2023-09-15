@@ -105,13 +105,13 @@ model = PruneTokens()
 dummy_input = torch.randn(1, 8, 625, 128)
 macs, params = get_model_complexity_info(model, input_res=(8, 625, 128), as_strings=True,
                                            print_per_layer_stat=False, verbose=True)
-print(macs, params)
+# print(macs, params)
 
 flops = FlopCountAnalysis(model, dummy_input)
-print(flop_count_table(flops))
+# print(flop_count_table(flops))
 
 
-model = SP_TFM_FFT(146, 16, 8, 6, 0)
+model = SP_TFM_FFT(146, 32, 8, 6, 0)
 flops = FlopCountAnalysis(model, inp)
 print(flop_count_table(flops))
 
@@ -122,4 +122,52 @@ adj = torch.ones([1,625, 625])
 inp = torch.ones([1,625, 11])
 
 flops = FlopCountAnalysis(model, [inp, adj])
+# print(flop_count_table(flops))
+
+from torch_geometric.nn.conv import GATv2Conv
+class SP_GAT_PyG(nn.Module):
+    '''
+    Pure Global aggregation using transformers
+    Deterministic Positional Encoding 
+    '''
+    def __init__(self, nfeat, nhid, edge_dim, dropout, nheads, ntfm):
+        """Dense version of GAT."""
+        super(SP_GAT_PyG, self).__init__()
+        self.linear1 = nn.Linear(nfeat, nhid)
+        self.elu = nn.ELU()
+    
+        self.first_conv = GATv2Conv(in_channels=nhid, out_channels=nhid, heads=nheads, dropout=dropout, edge_dim=edge_dim)
+        self.convs = nn.ModuleList([GATv2Conv(in_channels=nhid*nheads, out_channels=nhid, heads=nheads, dropout=dropout, edge_dim=edge_dim) for _ in range(ntfm)])
+        self.classifier = nn.Linear(nhid*nheads, 1)
+
+
+        
+    def forward(self, data):
+        x, edge_index, edge_attr = data
+
+        x = self.linear1(x)
+        x = self.elu(x)
+
+        x = self.first_conv(x, edge_index, edge_attr=edge_attr)
+        x = self.elu(x)
+
+        for conv in self.convs[:-1]:
+            x = conv(x, edge_index, edge_attr=edge_attr) # adding edge features here!
+            x = self.elu(x)
+      
+        x = self.convs[-1](x, edge_index, edge_attr=edge_attr)
+        x = self.classifier(x)
+        return x
+    
+adj = torch.ones(400, 400)
+x = torch.ones(400, 16)
+edge_index = adj.nonzero().t().contiguous()
+
+edge_features = torch.ones(400, 400, 1)
+edge_features = edge_features[adj.nonzero().t().numpy()]
+
+model = SP_GAT_PyG(16, 16, 1, 0, 8, 6).eval()
+for para in model.parameters():
+    para.requires_grad = False
+flops = FlopCountAnalysis(model, [x, edge_index, edge_features])
 print(flop_count_table(flops))
