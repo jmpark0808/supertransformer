@@ -187,10 +187,10 @@ class ToTensorSPFFT(object):
         for ind, coord in zip(regions['label'], regions['coords']):
             seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
 
-        neighbor_array = torch.zeros([self.num_seg, self.num_seg])
+        neighbor_array = torch.ones([self.num_seg, self.num_seg])
         # eye = np.eye(self.num_seg)
-        neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
-        neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+        # neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+        # neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
         edge_index = neighbor_array.nonzero().t().contiguous()
 
 
