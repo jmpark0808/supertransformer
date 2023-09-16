@@ -17,9 +17,8 @@ class SP_GAT_PyG(nn.Module):
         self.linear1 = nn.Linear(nfeat, nhid)
         self.elu = nn.ELU()
     
-        self.first_conv = GATv2Conv(in_channels=nhid, out_channels=nhid, heads=nheads, dropout=dropout, edge_dim=edge_dim)
-        self.convs = nn.ModuleList([GATv2Conv(in_channels=nhid*nheads, out_channels=nhid, heads=nheads, dropout=dropout, edge_dim=edge_dim) for _ in range(ntfm)])
-        self.classifier = nn.Linear(nhid*nheads, 1)
+        self.convs = nn.ModuleList([GATv2Conv(in_channels=nhid, out_channels=nhid, heads=nheads, dropout=dropout, edge_dim=edge_dim, concat=False) for _ in range(ntfm)])
+        self.classifier = nn.Linear(nhid, 1)
 
 
         
@@ -27,9 +26,6 @@ class SP_GAT_PyG(nn.Module):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
 
         x = self.linear1(x)
-        x = self.elu(x)
-
-        x = self.first_conv(x, edge_index, edge_attr=edge_attr)
         x = self.elu(x)
 
         for conv in self.convs[:-1]:
