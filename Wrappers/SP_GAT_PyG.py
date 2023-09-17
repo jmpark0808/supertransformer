@@ -137,7 +137,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
         f_score = f_score.sum(dim=0)
         self.train_fscores += f_score
-        self.num_samples += features.size(0)
+        self.num_samples += img.size(0)
         self.log('loss', loss.item())
         self.iteration += 1
         return loss
