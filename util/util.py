@@ -151,11 +151,13 @@ def resample_2d(points, N):
 def get_input_dim(args):
     if args.get('dataloader') == 'SP' or args.get('dataloader') == 'SPLAP':
         return 13
-    elif args.get('dataloader') == 'SPFFT' or args.get('dataloader') == 'ImageNet' or 'SPGFFT':
+    elif args.get('dataloader') == 'SPFFT' or args.get('dataloader') == 'ImageNet' or args.get('dataloader')== 'SPGFFT':
         if args.get('ignore_phase'):
             return 6+(args.get('coeff'))
         else:
             return 6+(args.get('coeff')*2)
+    elif args.get('dataloader') == 'SPG':
+        return 3
     else:
         raise 'Unrecognized dataloader'
     

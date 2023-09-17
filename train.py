@@ -86,6 +86,7 @@ DATALOADER_DIRECTORY = {
     "SPFFT": SPDataModule,
     'SPContour': SPDataModule,
     'SPGFFT': SPGDataModule,
+    'SPG': SPGDataModule
 
 } 
 

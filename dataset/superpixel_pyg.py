@@ -207,7 +207,72 @@ class ToTensorSPFFT(object):
 
         return d, seq_mask, segments, mask, img
     
+class ToTensorSP(object):
+    def __init__(self, num_seg, compactness):
+        self.tensor = transforms.ToTensor()
+        self.num_seg = num_seg
+        self.compactness = compactness
+        
 
+
+    def __call__(self, sample):
+        img, mask = sample['image'], sample['mask']
+        img_np = np.array(img)
+        mask_np = np.array(mask)/255.
+        img_size = img_np.shape
+
+        # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
+            
+        slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
+        segments = slic.iterate(img_np)
+        # segments = slic(img_np, n_segments=self.num_seg,
+        #     compactness=self.compactness,
+        #     max_num_iter=3,
+        #     convert2lab=True,
+        #     enforce_connectivity=False,
+        #     slic_zero=False)
+
+        # plt.imshow(mark_boundaries(img_np, segments))
+        # plt.show()
+    
+
+        regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
+                                                                                    'coords'))#, polarize])
+
+        seq_len = len(regions['label'])
+        seq_mask = np.zeros([self.num_seg])
+        label = regions['label']
+        features = np.zeros([self.num_seg, 3])
+
+
+        features_centroids = np.zeros([self.num_seg, 2])
+        features_centroids[label-1, 0] = regions['centroid-0']
+        features_centroids[label-1, 1] = regions['centroid-1']
+        
+        features[label-1, 0] = regions['intensity_mean-0']/255.
+        features[label-1, 1] = regions['intensity_mean-1']/255.
+        features[label-1, 2] = regions['intensity_mean-2']/255.      
+
+
+        for ind, coord in zip(regions['label'], regions['coords']):
+            seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
+
+        neighbor_array = torch.ones([self.num_seg, self.num_seg])
+        edge_index = neighbor_array.nonzero().t().contiguous()
+
+
+
+        spatial_distances = euclidean_distances(features_centroids, features_centroids)
+        spatial_distances = spatial_distances[np.nonzero(neighbor_array.numpy())]
+        
+      
+        edge_features = torch.from_numpy(spatial_distances).float().unsqueeze(1)
+        
+
+        d = Data(x=torch.tensor(features).float(), edge_index=edge_index, edge_attr=edge_features)
+        seq_mask, segments, mask, img = torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
+
+        return d, seq_mask, segments, mask, img
 
 class ToTensorRaw(object):
     def __init__(self):
@@ -219,11 +284,14 @@ class ToTensorRaw(object):
         return {'image': img, 'mask': mask}
 
 class SPDataset(data.Dataset):
-    def __init__(self, image_list, mask_list, num_seg, size, compactness, data_augmentation=True, coeff=None, ignore_phase=False):
+    def __init__(self, image_list, mask_list, num_seg, size, compactness, dataloader, data_augmentation=True, coeff=None, ignore_phase=False):
         self.image_list = image_list
         self.mask_list = mask_list
         
-        totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase)
+        if dataloader == 'SPGFFT':
+            totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase)
+        else:
+            totensor = ToTensorSP(num_seg, compactness)
         
 
         self.transform = transforms.Compose(
@@ -287,19 +355,19 @@ class SPGDataModule(pl.LightningDataModule):
 
         
     def train_dataloader(self):
-        data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg, self.res, self.compactness, True, self.coeff, self.ignore_phase)
+        data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg, self.res, self.compactness, self.dataloader, True, self.coeff, self.ignore_phase)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=False)
 
     def val_dataloader(self):
-        data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg, self.res, self.compactness, False, self.coeff, self.ignore_phase)
+        data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg, self.res, self.compactness, self.dataloader,False, self.coeff, self.ignore_phase)
         return DataLoader(
                 data_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
 
     def test_dataloader(self):
-        data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg, self.res,  self.compactness, False, self.coeff, self.ignore_phase)
+        data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg, self.res,  self.compactness, self.dataloader,False, self.coeff, self.ignore_phase)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
