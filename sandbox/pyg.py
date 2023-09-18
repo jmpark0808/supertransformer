@@ -114,12 +114,12 @@ s = torch.randn(30, 3)
 # data_s = Data(x=t, edge_index=edge_index_s, edge_attr=edge_features_s)
 # data_list = [data, data_s]
 import os
-train_dir = '/mnt/hdd/Datasets/DUTS/DUTS-TE/'
+train_dir = '/mnt/hdd/Datasets/DUTS/DUTS-TR/'
 image_list = np.array(sorted([os.path.join('{}/Image'.format(train_dir), f) for f in os.listdir('{}/Image'.format(train_dir))]))
 mask_list = np.array(sorted([os.path.join('{}/Mask'.format(train_dir), f) for f in os.listdir('{}/Mask'.format(train_dir))]))
 data_list = SPDataset(image_list, mask_list, 400, 224, 10,  'SPGFFT', True,10, False, True )
 # data_list = SPDataset()
-loader = DataLoader(data_list, batch_size=1, shuffle=False, num_workers=4)
+loader = DataLoader(data_list, batch_size=16, shuffle=False, num_workers=4)
 model = BaselineGDPModel(3, 32, 1)
 from tqdm import tqdm
 for d in tqdm(loader):
