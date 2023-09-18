@@ -191,26 +191,26 @@ class ToTensorSPFFT(object):
 
 
         if self.fully_connected:
-            neighbor_array = torch.ones([self.num_seg, self.num_seg])
+            neighbor_array = np.ones([self.num_seg, self.num_seg])
         else:
-            neighbor_array = torch.zeros([self.num_seg, self.num_seg])
+            neighbor_array = np.zeros([self.num_seg, self.num_seg])
             neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
             neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
-        edge_index = neighbor_array.nonzero().t().contiguous()
+        edge_index = np.nonzero(neighbor_array)
 
 
 
         spatial_distances = euclidean_distances(features_centroids, features_centroids)
-        spatial_distances = spatial_distances[np.nonzero(neighbor_array.numpy())]
+        spatial_distances = spatial_distances[edge_index]
         
       
-        edge_features = torch.from_numpy(spatial_distances).float().unsqueeze(1)
+        edge_features = np.expand_dims(spatial_distances, axis=1)
         
 
-        d = Data(x=torch.tensor(features).float(), edge_index=edge_index, edge_attr=edge_features)
-        seq_mask, segments, mask = torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask)
+        # d = Data(x=torch.tensor(features).float(), edge_index=edge_index, edge_attr=edge_features)
+        # seq_mask, segments, mask = torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask)
 
-        return d, seq_mask, segments, mask
+        return features, edge_index, edge_features, seq_mask, segments, self.tensor(mask).numpy()
     
 class ToTensorSP(object):
     def __init__(self, num_seg, compactness, fully_connected):
@@ -269,26 +269,26 @@ class ToTensorSP(object):
 
 
         if self.fully_connected:
-            neighbor_array = torch.ones([self.num_seg, self.num_seg])
+            neighbor_array = np.ones([self.num_seg, self.num_seg])
         else:
-            neighbor_array = torch.zeros([self.num_seg, self.num_seg])
+            neighbor_array = np.zeros([self.num_seg, self.num_seg])
             neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
             neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
-        edge_index = neighbor_array.nonzero().t().contiguous()
+        edge_index = np.nonzero(neighbor_array)
 
 
 
         spatial_distances = euclidean_distances(features_centroids, features_centroids)
-        spatial_distances = spatial_distances[np.nonzero(neighbor_array.numpy())]
+        spatial_distances = spatial_distances[edge_index]
         
       
-        edge_features = torch.from_numpy(spatial_distances).float().unsqueeze(1)
+        edge_features = np.expand_dims(spatial_distances, axis=1)
         
 
-        d = Data(x=torch.tensor(features).float(), edge_index=edge_index, edge_attr=edge_features)
-        seq_mask, segments, mask = torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask)
+        # d = Data(x=torch.tensor(features).float(), edge_index=edge_index, edge_attr=edge_features)
+        # seq_mask, segments, mask = torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask)
 
-        return d, seq_mask, segments, mask
+        return features, edge_index, edge_features, seq_mask, segments, self.tensor(mask).numpy()
 
 
 
@@ -323,26 +323,33 @@ class SPDataset(data.Dataset):
         img_name = self.image_list[item]
         mask_name = self.mask_list[item]
 
-        sp_file_name_d = self.image_list[item].split('.')[0].split('/')[-1]+'_d.pth'
-        sp_file_name_seq_mask = self.image_list[item].split('.')[0].split('/')[-1]+'_seq_mask.pth'
-        sp_file_name_segments = self.image_list[item].split('.')[0].split('/')[-1]+'_segments.pth'
-        sp_file_name_mask = self.image_list[item].split('.')[0].split('/')[-1]+'_mask.pth'
+        sp_file_name_features = self.image_list[item].split('.')[0].split('/')[-1]+'_features.npy'
+        sp_file_name_edge_index = self.image_list[item].split('.')[0].split('/')[-1]+'_edge_index.npy'
+        sp_file_name_edge_features = self.image_list[item].split('.')[0].split('/')[-1]+'_edge_features.npy'
+        sp_file_name_seq_mask = self.image_list[item].split('.')[0].split('/')[-1]+'_seq_mask.npy'
+        sp_file_name_segments = self.image_list[item].split('.')[0].split('/')[-1]+'_segments.npy'
+        sp_file_name_mask = self.image_list[item].split('.')[0].split('/')[-1]+'_mask.npy'
 
 
 
-        sp_file_path_d = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_d )
+        sp_file_path_features = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_features )
+        sp_file_path_edge_index = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_edge_index )
+        sp_file_path_edge_features = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_edge_features )
         sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_seq_mask )
         sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_segments )
         sp_file_path_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_mask )
 
         mask = Image.open(mask_name)
         mask = mask.convert('L')
-        if os.path.exists(sp_file_path_d):
-            d = torch.load(sp_file_path_d)
-            seq_mask = torch.load(sp_file_path_seq_mask)
-            segments = torch.load(sp_file_path_segments)
-            mask = torch.load(sp_file_path_mask)
-            sample = (d, seq_mask, segments, mask, self.image_list[item])
+        if os.path.exists(sp_file_path_features):
+            features = np.load(sp_file_path_features)
+            edge_index = np.load(sp_file_path_edge_index)
+            edge_features = np.load(sp_file_path_edge_features)
+            seq_mask = np.load(sp_file_path_seq_mask)
+            segments = np.load(sp_file_path_segments)
+            mask = np.load(sp_file_path_mask)
+            sample = (Data(x=torch.tensor(features).float(), edge_index=torch.tensor(edge_index), edge_attr=torch.tensor(edge_features)),
+                       torch.tensor(seq_mask), torch.tensor(segments), torch.tensor(mask), self.image_list[item])
 
         else:
             os.makedirs(os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH'), exist_ok=True)
@@ -352,11 +359,16 @@ class SPDataset(data.Dataset):
             sample = {'image': img, 'mask': mask}
 
             sample = self.transform(sample)
-            sample = sample+(self.image_list[item],)
-            torch.save(sample[0], sp_file_path_d)
-            torch.save(sample[1], sp_file_path_seq_mask)
-            torch.save(sample[2], sp_file_path_segments)
-            torch.save(sample[3], sp_file_path_mask)
+            np.save(sp_file_path_features, sample[0])
+            np.save(sp_file_path_edge_index, sample[1] )
+            np.save(sp_file_path_edge_features, sample[2])
+            np.save(sp_file_path_seq_mask, sample[3])
+            np.save(sp_file_path_segments, sample[4])
+            np.save(sp_file_path_mask, sample[5])
+            sample = (Data(x=torch.tensor(sample[0]).float(), edge_index=torch.tensor(sample[1]), edge_attr=torch.tensor(sample[2])),
+                       torch.tensor(sample[3]), torch.tensor(sample[4]), torch.tensor(sample[5]), self.image_list[item])
+
+            
         return sample
 
 
