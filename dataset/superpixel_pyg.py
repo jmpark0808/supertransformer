@@ -12,7 +12,7 @@ from sklearn.metrics.pairwise import euclidean_distances
 from torch_geometric.data import Data
 from skimage import color
 import pytorch_lightning as pl
-from fast_slic.avx2 import SlicAvx2
+# from fast_slic.avx2 import SlicAvx2
 from dataset.constants import *
 import matplotlib.pyplot as plt
 from scipy import sparse as sp
@@ -96,12 +96,13 @@ class RandomColorJitter(object):
 
 
 class ToTensorSPFFT(object):
-    def __init__(self, num_seg, compactness, coeff, ignore_phase):
+    def __init__(self, num_seg, compactness, coeff, ignore_phase, fully_connected):
         self.tensor = transforms.ToTensor()
         self.num_seg = num_seg
         self.coeff = coeff
         self.compactness = compactness
         self.ignore_phase = ignore_phase
+        self.fully_connected = fully_connected
         
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
@@ -137,14 +138,14 @@ class ToTensorSPFFT(object):
 
         # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
             
-        slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
-        segments = slic.iterate(img_np)
-        # segments = slic(img_np, n_segments=self.num_seg,
-        #     compactness=self.compactness,
-        #     max_num_iter=3,
-        #     convert2lab=True,
-        #     enforce_connectivity=False,
-        #     slic_zero=False)
+        # slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
+        # segments = slic.iterate(img_np)
+        segments = slic(img_np, n_segments=self.num_seg,
+            compactness=self.compactness,
+            max_num_iter=3,
+            convert2lab=True,
+            enforce_connectivity=False,
+            slic_zero=False)
 
         # plt.imshow(mark_boundaries(img_np, segments))
         # plt.show()
@@ -187,10 +188,13 @@ class ToTensorSPFFT(object):
         for ind, coord in zip(regions['label'], regions['coords']):
             seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
 
-        neighbor_array = torch.ones([self.num_seg, self.num_seg])
-        # eye = np.eye(self.num_seg)
-        # neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
-        # neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+
+        if self.fully_connected:
+            neighbor_array = torch.ones([self.num_seg, self.num_seg])
+        else:
+            neighbor_array = torch.zeros([self.num_seg, self.num_seg])
+            neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+            neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
         edge_index = neighbor_array.nonzero().t().contiguous()
 
 
@@ -208,10 +212,11 @@ class ToTensorSPFFT(object):
         return d, seq_mask, segments, mask, img
     
 class ToTensorSP(object):
-    def __init__(self, num_seg, compactness):
+    def __init__(self, num_seg, compactness, fully_connected):
         self.tensor = transforms.ToTensor()
         self.num_seg = num_seg
         self.compactness = compactness
+        self.fully_connected =fully_connected
         
 
 
@@ -234,7 +239,11 @@ class ToTensorSP(object):
 
         # plt.imshow(mark_boundaries(img_np, segments))
         # plt.show()
-    
+        vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
+        vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
+        vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
+        vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
+        bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
 
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
                                                                                     'coords'))#, polarize])
@@ -257,7 +266,13 @@ class ToTensorSP(object):
         for ind, coord in zip(regions['label'], regions['coords']):
             seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
 
-        neighbor_array = torch.ones([self.num_seg, self.num_seg])
+
+        if self.fully_connected:
+            neighbor_array = torch.ones([self.num_seg, self.num_seg])
+        else:
+            neighbor_array = torch.zeros([self.num_seg, self.num_seg])
+            neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+            neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
         edge_index = neighbor_array.nonzero().t().contiguous()
 
 
@@ -284,14 +299,17 @@ class ToTensorRaw(object):
         return {'image': img, 'mask': mask}
 
 class SPDataset(data.Dataset):
-    def __init__(self, image_list, mask_list, num_seg, size, compactness, dataloader, data_augmentation=True, coeff=None, ignore_phase=False):
+    def __init__(self, image_list, mask_list, num_seg, size, compactness,
+                  dataloader, data_augmentation=True, coeff=None,
+                    ignore_phase=False, fully_conneted=False):
         self.image_list = image_list
         self.mask_list = mask_list
         
+        
         if dataloader == 'SPGFFT':
-            totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase)
+            totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
         else:
-            totensor = ToTensorSP(num_seg, compactness)
+            totensor = ToTensorSP(num_seg, compactness, fully_conneted)
         
 
         self.transform = transforms.Compose(
@@ -337,6 +355,7 @@ class SPGDataModule(pl.LightningDataModule):
         self.coeff = kwargs.get('coeff')
         self.compactness = kwargs.get('compactness')
         self.ignore_phase = kwargs.get('ignore_phase')
+        self.fully_connected = kwargs.get('fully_connected', False)
         
         self.image_list = np.array(sorted([os.path.join('{}/Image'.format(self.train_dir), f) for f in os.listdir('{}/Image'.format(self.train_dir))]))
         self.mask_list = np.array(sorted([os.path.join('{}/Mask'.format(self.train_dir), f) for f in os.listdir('{}/Mask'.format(self.train_dir))]))
@@ -355,19 +374,32 @@ class SPGDataModule(pl.LightningDataModule):
 
         
     def train_dataloader(self):
-        data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg, self.res, self.compactness, self.dataloader, True, self.coeff, self.ignore_phase)
+        data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg,
+                                self.res, self.compactness, self.dataloader, True,
+                                  self.coeff, self.ignore_phase, self.fully_connected)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=False)
 
     def val_dataloader(self):
-        data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg, self.res, self.compactness, self.dataloader,False, self.coeff, self.ignore_phase)
-        return DataLoader(
+        data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg,
+                              self.res, self.compactness, self.dataloader,False,
+                                self.coeff, self.ignore_phase, self.fully_connected)
+        data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
+                               self.res,  self.compactness, self.dataloader,False, 
+                               self.coeff, self.ignore_phase, self.fully_connected)
+        val_dataloader = DataLoader(
                 data_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
+        test_dataloader = DataLoader(
+                data_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=False)
+        return [val_dataloader, test_dataloader]
 
     def test_dataloader(self):
-        data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg, self.res,  self.compactness, self.dataloader,False, self.coeff, self.ignore_phase)
+        data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
+                               self.res,  self.compactness, self.dataloader, False,
+                                 self.coeff, self.ignore_phase, self.fully_connected)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)

@@ -130,6 +130,8 @@ if __name__ == "__main__":
                     type=int, help='Hyperparameters for Transformer')
     parser.add_argument('--ignore_phase', help='Whether or not to use phase of FFT'
                         , default=False, action="store_true")
+    parser.add_argument('--fully_connected', help='Whether or not to use fully connected graphs'
+                        , default=False, action="store_true")
 
 
 

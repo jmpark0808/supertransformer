@@ -142,7 +142,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         self.iteration += 1
         return loss
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx, dataloader_idx):
         """
         Compute the metrics for validation batch
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
@@ -183,8 +183,12 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         # tensorboard.add_images('Test Image', img, self.test_iteration)
 
         mae = torch.mean(torch.abs(samples - samples_mask))
-        self.preds.append(samples)
-        self.masks.append(samples_mask)
+        if dataloader_idx == 0:
+            self.preds.append(samples)
+            self.masks.append(samples_mask)
+        elif dataloader_idx == 1:
+            self.preds_test.append(samples)
+            self.masks_test.append(samples_mask)
         prec, recall = torch.zeros(samples_mask.shape[0], 256), torch.zeros(samples_mask.shape[0], 256)
         pred = samples.reshape(samples.shape[0], -1)
         mask = samples_mask.reshape(samples_mask.shape[0], -1)
@@ -195,9 +199,13 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
             # avoid prec becomes 0
             prec[:, j], recall[:, j] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
         # (batch, threshold)
-        self.precs.append(prec)
-        self.recalls.append(recall)
-        self.test_iteration += 1
+        if dataloader_idx == 0:
+            self.precs.append(prec)
+            self.recalls.append(recall)
+            self.test_iteration += 1
+        elif dataloader_idx == 1:
+            self.precs_test.append(prec)
+            self.recalls_test.append(recall)
         return mae
 
 
@@ -213,13 +221,31 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         pred = torch.cat(self.preds, 0)
         mask = torch.cat(self.masks, 0).round().float()
         self.log('Validation MAE', torch.mean(torch.abs(pred-mask)))
-        self.scheduler.step(torch.mean(torch.stack(validation_step_outputs)))
+
+
+        prec = torch.cat(self.precs_test, dim=0).mean(dim=0)
+        recall = torch.cat(self.recalls_test, dim=0).mean(dim=0)
+        beta_square = 0.3
+        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
+        thlist = torch.linspace(0, 1 - 1e-10, 256)
+        self.log('Test Max F Score', torch.max(f_score))
+        self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
+
+        pred = torch.cat(self.preds_test, 0)
+        mask = torch.cat(self.masks_test, 0).round().float()
+        self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
+        self.scheduler.step(torch.mean(torch.stack(validation_step_outputs[0])))
 
     def on_validation_start(self):
         self.preds = []
         self.masks = []
         self.precs = []
         self.recalls = []
+
+        self.preds_test = []
+        self.masks_test = []
+        self.precs_test = []
+        self.recalls_test = []
 
     def on_test_start(self):
         self.preds = []
