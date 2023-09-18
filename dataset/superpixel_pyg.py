@@ -19,6 +19,7 @@ from scipy import sparse as sp
 from scipy.spatial.distance import pdist, squareform
 from dataset.attributes import *
 from torch_geometric.loader import DataLoader
+from pathlib import Path
 
 class Resize(object):
     def __init__(self, size):
@@ -207,9 +208,9 @@ class ToTensorSPFFT(object):
         
 
         d = Data(x=torch.tensor(features).float(), edge_index=edge_index, edge_attr=edge_features)
-        seq_mask, segments, mask, img = torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
+        seq_mask, segments, mask = torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask)
 
-        return d, seq_mask, segments, mask, img
+        return d, seq_mask, segments, mask
     
 class ToTensorSP(object):
     def __init__(self, num_seg, compactness, fully_connected):
@@ -285,18 +286,11 @@ class ToTensorSP(object):
         
 
         d = Data(x=torch.tensor(features).float(), edge_index=edge_index, edge_attr=edge_features)
-        seq_mask, segments, mask, img = torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
+        seq_mask, segments, mask = torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask)
 
-        return d, seq_mask, segments, mask, img
+        return d, seq_mask, segments, mask
 
-class ToTensorRaw(object):
-    def __init__(self):
-        self.tensor = transforms.ToTensor()
 
-    def __call__(self, sample):
-        img, mask = sample['image'], sample['mask']
-        img, mask = self.tensor(img), self.tensor(mask)
-        return {'image': img, 'mask': mask}
 
 class SPDataset(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, compactness,
@@ -312,9 +306,9 @@ class SPDataset(data.Dataset):
             totensor = ToTensorSP(num_seg, compactness, fully_conneted)
         
 
-        self.transform = transforms.Compose(
-            [RandomFlip(0.5),
-             RandomCrop(size, int(size*1.14)),
+        self.transform = transforms.Compose([Resize(size),
+            # [RandomFlip(0.5),
+            #  RandomCrop(size, int(size*1.14)),
              totensor])
         if not data_augmentation:
             self.transform = transforms.Compose([Resize(size), totensor])
@@ -328,14 +322,41 @@ class SPDataset(data.Dataset):
     def __getitem__(self, item):
         img_name = self.image_list[item]
         mask_name = self.mask_list[item]
-        img = Image.open(img_name)
-        mask = Image.open(mask_name)
-        img = img.convert('RGB')
-        mask = mask.convert('L')
-        sample = {'image': img, 'mask': mask}
 
-        sample = self.transform(sample)
-        sample = sample+(self.image_list[item],)
+        sp_file_name_d = self.image_list[item].split('.')[0].split('/')[-1]+'_d.pth'
+        sp_file_name_seq_mask = self.image_list[item].split('.')[0].split('/')[-1]+'_seq_mask.pth'
+        sp_file_name_segments = self.image_list[item].split('.')[0].split('/')[-1]+'_segments.pth'
+        sp_file_name_mask = self.image_list[item].split('.')[0].split('/')[-1]+'_mask.pth'
+
+
+
+        sp_file_path_d = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_d )
+        sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_seq_mask )
+        sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_segments )
+        sp_file_path_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_mask )
+
+        mask = Image.open(mask_name)
+        mask = mask.convert('L')
+        if os.path.exists(sp_file_path_d):
+            d = torch.load(sp_file_path_d)
+            seq_mask = torch.load(sp_file_path_seq_mask)
+            segments = torch.load(sp_file_path_segments)
+            mask = torch.load(sp_file_path_mask)
+            sample = (d, seq_mask, segments, mask, self.image_list[item])
+
+        else:
+            os.makedirs(os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH'), exist_ok=True)
+            img = Image.open(img_name)
+            img = img.convert('RGB')
+
+            sample = {'image': img, 'mask': mask}
+
+            sample = self.transform(sample)
+            sample = sample+(self.image_list[item],)
+            torch.save(sample[0], sp_file_path_d)
+            torch.save(sample[1], sp_file_path_seq_mask)
+            torch.save(sample[2], sp_file_path_segments)
+            torch.save(sample[3], sp_file_path_mask)
         return sample
 
 

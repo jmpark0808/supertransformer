@@ -93,8 +93,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         features = batch[0]
         seq_mask = batch[1]
         segments = batch[2]
-        mask = batch[3]
-        img = batch[4]
+        mask = batch[3].cpu()
 
 
         features = features.cuda()
@@ -107,8 +106,8 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
-        batch_size = img.shape[0]
-        img_size = img.shape[2]
+        batch_size = mask.size(0)
+        img_size = mask.size(2)
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
         samples = []
@@ -117,16 +116,11 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
             samples.append(plt_image)
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1))
-        samples_mask = []
-        for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
-            samples_mask.append(plt_image)
 
-        samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
 
-        prec, recall = torch.zeros(samples_mask.shape[0], 1), torch.zeros(samples_mask.shape[0], 1)
-        pred = samples.reshape(samples.shape[0], -1)
-        mask = samples_mask.reshape(samples_mask.shape[0], -1)
+        prec, recall = torch.zeros(samples.size(0), 1), torch.zeros(samples.size(0), 1)
+        pred = samples.reshape(samples.size(0), -1)
+        mask = mask.reshape(mask.size(0), -1)
         
         y_temp = (pred >= 0.5).float()
         tp = (y_temp * mask).sum(dim=-1)
@@ -137,7 +131,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
         f_score = f_score.sum(dim=0)
         self.train_fscores += f_score
-        self.num_samples += img.size(0)
+        self.num_samples += mask.size(0)
         self.log('loss', loss.item())
         self.iteration += 1
         return loss
@@ -150,9 +144,8 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         features = batch[0]
         seq_mask = batch[1]
         segments = batch[2]
-        mask = batch[3]
-        img = batch[4]
-
+        mask = batch[3].cpu()
+  
 
         features = features.cuda()
 
@@ -162,8 +155,8 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
-        batch_size = img.shape[0]
-        img_size = img.shape[2]
+        batch_size = mask.size(0)
+        img_size = mask.size(2)
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
         samples = []
@@ -173,25 +166,19 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1))
         # tensorboard.add_images('Test Pred', samples, self.test_iteration)
-        samples_mask = []
-        for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
-            samples_mask.append(plt_image)
-
-        samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
         # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
         # tensorboard.add_images('Test Image', img, self.test_iteration)
 
-        mae = torch.mean(torch.abs(samples - samples_mask))
+        mae = torch.mean(torch.abs(samples - mask))
         if dataloader_idx == 0:
             self.preds.append(samples)
-            self.masks.append(samples_mask)
+            self.masks.append(mask)
         elif dataloader_idx == 1:
             self.preds_test.append(samples)
-            self.masks_test.append(samples_mask)
-        prec, recall = torch.zeros(samples_mask.shape[0], 256), torch.zeros(samples_mask.shape[0], 256)
-        pred = samples.reshape(samples.shape[0], -1)
-        mask = samples_mask.reshape(samples_mask.shape[0], -1)
+            self.masks_test.append(mask)
+        prec, recall = torch.zeros(samples.size(0), 256), torch.zeros(samples.size(0), 256)
+        pred = samples.reshape(samples.size(0), -1)
+        mask = mask.reshape(mask.size(0), -1)
         thlist = torch.linspace(0, 1 - 1e-10, 256)
         for j in range(256):
             y_temp = (pred >= thlist[j]).float()
@@ -261,8 +248,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         features = batch[0]
         seq_mask = batch[1]
         segments = batch[2]
-        mask = batch[3]
-        img = batch[4]
+        mask = batch[3].cpu()
 
 
         features = features.cuda()
@@ -273,8 +259,8 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
-        batch_size = img.shape[0]
-        img_size = img.shape[2]
+        batch_size = mask.size(0)
+        img_size = mask.size(2)
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
         samples = []
@@ -284,21 +270,16 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1))
         # tensorboard.add_images('Test Pred', samples, self.test_iteration)
-        samples_mask = []
-        for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
-            samples_mask.append(plt_image)
 
-        samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
         # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
         # tensorboard.add_images('Test Image', img, self.test_iteration)
 
-        mae = torch.mean(torch.abs(samples - samples_mask))
+        mae = torch.mean(torch.abs(samples - mask))
         self.preds.append(samples)
-        self.masks.append(samples_mask)
-        prec, recall = torch.zeros(samples_mask.shape[0], 256), torch.zeros(samples_mask.shape[0], 256)
-        pred = samples.reshape(samples.shape[0], -1)
-        mask = samples_mask.reshape(samples_mask.shape[0], -1)
+        self.masks.append(mask)
+        prec, recall = torch.zeros(samples.size(0), 256), torch.zeros(samples.size(0), 256)
+        pred = samples.reshape(samples.size(0), -1)
+        mask = mask.reshape(mask.size(0), -1)
         thlist = torch.linspace(0, 1 - 1e-10, 256)
         for j in range(256):
             y_temp = (pred >= thlist[j]).float()
@@ -317,12 +298,12 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
         thlist = torch.linspace(0, 1 - 1e-10, 256)
-        self.log('Test Max F Score', torch.max(f_score))
-        self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
+        self.log('Final Test Max F Score', torch.max(f_score))
+        self.log('Final Test Max F Threshold', thlist[torch.argmax(f_score)])
 
         pred = torch.cat(self.preds, 0)
         mask = torch.cat(self.masks, 0).round().float()
-        self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
+        self.log('Final Test MAE', torch.mean(torch.abs(pred-mask)))
         self.scheduler.step(torch.mean(torch.stack(test_step_outputs)))
                     
     
