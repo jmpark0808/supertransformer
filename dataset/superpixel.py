@@ -12,7 +12,7 @@ from sklearn.metrics.pairwise import euclidean_distances
 from skimage import color
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
-# from fast_slic.avx2 import SlicAvx2
+from fast_slic.avx2 import SlicAvx2
 from dataset.constants import *
 import matplotlib.pyplot as plt
 from scipy import sparse as sp

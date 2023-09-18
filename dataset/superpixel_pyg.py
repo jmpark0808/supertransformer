@@ -12,7 +12,7 @@ from sklearn.metrics.pairwise import euclidean_distances
 from torch_geometric.data import Data
 from skimage import color
 import pytorch_lightning as pl
-# from fast_slic.avx2 import SlicAvx2
+from fast_slic.avx2 import SlicAvx2
 from dataset.constants import *
 import matplotlib.pyplot as plt
 from scipy import sparse as sp
@@ -138,14 +138,14 @@ class ToTensorSPFFT(object):
 
         # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
             
-        # slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
-        # segments = slic.iterate(img_np)
-        segments = slic(img_np, n_segments=self.num_seg,
-            compactness=self.compactness,
-            max_num_iter=3,
-            convert2lab=True,
-            enforce_connectivity=False,
-            slic_zero=False)
+        slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
+        segments = slic.iterate(img_np)
+        # segments = slic(img_np, n_segments=self.num_seg,
+        #     compactness=self.compactness,
+        #     max_num_iter=3,
+        #     convert2lab=True,
+        #     enforce_connectivity=False,
+        #     slic_zero=False)
 
         # plt.imshow(mark_boundaries(img_np, segments))
         # plt.show()
