@@ -20,6 +20,7 @@ from scipy.spatial.distance import pdist, squareform
 from dataset.attributes import *
 from torch_geometric.loader import DataLoader
 from pathlib import Path
+import time
 
 class Resize(object):
     def __init__(self, size):
@@ -310,7 +311,7 @@ class SPDataset(data.Dataset):
         self.resize_mask = ResizeMask(size)
         self.num_seg = num_seg
         
-        if dataloader == 'SPGFFT':
+        if dataloader == 'SPGFastFFT':
             totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
         else:
             totensor = ToTensorSP(num_seg, compactness, fully_conneted)
@@ -334,8 +335,7 @@ class SPDataset(data.Dataset):
         mask_name = self.mask_list[item]
 
         sp_file_name_features = self.image_list[item].split('.')[0].split('/')[-1]+'_features.npy'
-        sp_file_name_edge_index = self.image_list[item].split('.')[0].split('/')[-1]+'_edge_index.npy'
-        sp_file_name_edge_features = self.image_list[item].split('.')[0].split('/')[-1]+'_edge_features.npy'
+
         sp_file_name_seq_mask = self.image_list[item].split('.')[0].split('/')[-1]+'_seq_mask.npy'
         sp_file_name_segments = self.image_list[item].split('.')[0].split('/')[-1]+'_segments.npy'
 
@@ -343,8 +343,6 @@ class SPDataset(data.Dataset):
 
 
         sp_file_path_features = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_features )
-        sp_file_path_edge_index = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_edge_index )
-        sp_file_path_edge_features = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_edge_features )
         sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_seq_mask )
         sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_segments )
 
@@ -353,27 +351,36 @@ class SPDataset(data.Dataset):
         mask = mask.convert('L')
         
         if os.path.exists(sp_file_path_features):
+            a = time.time()
             features = np.load(sp_file_path_features)
             seq_mask = np.load(sp_file_path_seq_mask)
             segments = np.load(sp_file_path_segments)
+            
             mask = self.resize_mask(mask)
             
             if self.fully_connected:
                 neighbor_array = np.ones([self.num_seg, self.num_seg])
-                edge_index = np.array(np.nonzero(neighbor_array))
             else:
-                edge_index = np.load(sp_file_path_edge_index)
+                vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
+                vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
+                vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
+                vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
+                bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
+                neighbor_array = np.zeros([self.num_seg, self.num_seg])
+                neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+                neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+            
+            b= time.time()
             
 
-            
-            
-            
-            edge_features = np.load(sp_file_path_edge_features)
+            features_centroids = features[:, :2]
+            a = time.time()
+            spatial_distances = euclidean_distances(features_centroids, features_centroids)
+            b = time.time()
           
             
-            sample = (Data(x=torch.tensor(features[:, 2:]).float(),
-                            edge_index=torch.tensor(edge_index),
-                              edge_attr=torch.tensor(edge_features).float()),
+            
+            sample = (torch.tensor(features[:, 2:]).float(), torch.tensor(neighbor_array).float(), torch.tensor(spatial_distances).float().unsqueeze(2), 
                        torch.tensor(seq_mask), torch.tensor(segments), mask, self.image_list[item])
 
         else:
@@ -403,28 +410,25 @@ class SPDataset(data.Dataset):
                 neighbor_array = np.zeros([self.num_seg, self.num_seg])
                 neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
                 neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
-                
             edge_index = np.array(np.nonzero(neighbor_array))
-            np.save(sp_file_path_edge_index, edge_index)
+
 
             features_centroids = features[:, :2]
             spatial_distances = euclidean_distances(features_centroids, features_centroids)
-            spatial_distances = spatial_distances[edge_index[0], edge_index[1]]
+            spatial_distances = spatial_distances[edge_index]
             
         
             edge_features = np.expand_dims(spatial_distances, axis=1)
-            np.save(sp_file_path_edge_features, edge_features)
 
-            sample = (Data(x=torch.tensor(features[:, 2:]).float(), 
-                           edge_index=torch.tensor(edge_index),
-                             edge_attr=torch.tensor(edge_features).float()),
+            sample = (torch.tensor(features[:, 2:]).float(), torch.tensor(neighbor_array).float(), torch.tensor(spatial_distances).float().unsqueeze(2), 
                        torch.tensor(sample[1]), torch.tensor(sample[2]), sample[3], self.image_list[item])
 
+            
         return sample
 
 
 
-class SPGDataModule(pl.LightningDataModule):
+class SPGFastDataModule(pl.LightningDataModule):
 
     def __init__(self, **kwargs):
         super().__init__()
