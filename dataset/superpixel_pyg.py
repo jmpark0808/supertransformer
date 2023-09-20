@@ -310,6 +310,7 @@ class SPDataset(data.Dataset):
         self.fully_connected = fully_conneted
         self.resize_mask = ResizeMask(size)
         self.num_seg = num_seg
+        self.dataloader = dataloader
         
         if dataloader == 'SPGFFT':
             totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
@@ -328,15 +329,8 @@ class SPDataset(data.Dataset):
         self.data_augmentation = data_augmentation
 
         for image, mask in tqdm(zip(self.image_list, self.mask_list)):
-            os.makedirs(os.path.join(str(Path(image).parents[1]),'PTH'), exist_ok=True)
-            img = Image.open(image)
-            img = img.convert('RGB')
-            mask = Image.open(mask)
-            mask = mask.convert('L')
-
-            sample = {'image': img, 'mask': mask}
-
-            sample = self.transform(sample)
+            os.makedirs(os.path.join(str(Path(image).parents[1]),dataloader), exist_ok=True)
+            
 
             sp_file_name_features = image.split('.')[0].split('/')[-1]+'_features.npy'
             sp_file_name_edge_index = image.split('.')[0].split('/')[-1]+'_edge_index.npy'
@@ -347,11 +341,21 @@ class SPDataset(data.Dataset):
 
 
 
-            sp_file_path_features = os.path.join(str(Path(image).parents[1]),'PTH',sp_file_name_features )
-            sp_file_path_edge_index = os.path.join(str(Path(image).parents[1]),'PTH',sp_file_name_edge_index )
-            sp_file_path_edge_features = os.path.join(str(Path(image).parents[1]),'PTH',sp_file_name_edge_features )
-            sp_file_path_seq_mask = os.path.join(str(Path(image).parents[1]),'PTH',sp_file_name_seq_mask )
-            sp_file_path_segments = os.path.join(str(Path(image).parents[1]),'PTH',sp_file_name_segments )
+            sp_file_path_features = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_features )
+            sp_file_path_edge_index = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_edge_index )
+            sp_file_path_edge_features = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_edge_features )
+            sp_file_path_seq_mask = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_seq_mask )
+            sp_file_path_segments = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_segments )
+            if os.path.exists(sp_file_path_features):
+                continue
+            img = Image.open(image)
+            img = img.convert('RGB')
+            mask = Image.open(mask)
+            mask = mask.convert('L')
+
+            sample = {'image': img, 'mask': mask}
+
+            sample = self.transform(sample)
             np.save(sp_file_path_features, sample[0])
             np.save(sp_file_path_seq_mask, sample[1])
             np.save(sp_file_path_segments, sample[2])
@@ -399,11 +403,11 @@ class SPDataset(data.Dataset):
 
 
 
-        sp_file_path_features = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_features )
-        sp_file_path_edge_index = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_edge_index )
-        sp_file_path_edge_features = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_edge_features )
-        sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_seq_mask )
-        sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),'PTH',sp_file_name_segments )
+        sp_file_path_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_features )
+        sp_file_path_edge_index = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_index )
+        sp_file_path_edge_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_features )
+        sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_seq_mask )
+        sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_segments )
 
 
         mask = Image.open(mask_name)

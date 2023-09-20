@@ -88,7 +88,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         features = batch['features']
         seq_mask = batch['seq_mask']
         segments = batch['segments']
-        mask = batch['mask']
+        mask = batch['mask'].cpu()
         img = batch['img']
         adj = batch['neighbor_array']
         distances = batch['edge_features']
@@ -119,16 +119,11 @@ class SP_TFM_Wrapper(pl.LightningModule):
             samples.append(plt_image)
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1))
-        samples_mask = []
-        for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
-            samples_mask.append(plt_image)
+     
 
-        samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
-
-        prec, recall = torch.zeros(samples_mask.shape[0], 1), torch.zeros(samples_mask.shape[0], 1)
+        prec, recall = torch.zeros(samples.shape[0], 1), torch.zeros(samples.shape[0], 1)
         pred = samples.reshape(samples.shape[0], -1)
-        mask = samples_mask.reshape(samples_mask.shape[0], -1)
+        mask = mask.reshape(mask.shape[0], -1)
         
         y_temp = (pred >= 0.5).float()
         tp = (y_temp * mask).sum(dim=-1)
@@ -152,7 +147,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         features = batch['features']
         seq_mask = batch['seq_mask']
         segments = batch['segments']
-        mask = batch['mask']
+        mask = batch['mask'].cpu()
         img = batch['img']
         adj = batch['neighbor_array']
         distances = batch['edge_features']
@@ -180,21 +175,16 @@ class SP_TFM_Wrapper(pl.LightningModule):
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1))
         # tensorboard.add_images('Test Pred', samples, self.test_iteration)
-        samples_mask = []
-        for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
-            samples_mask.append(plt_image)
-
-        samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
+      
         # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
         # tensorboard.add_images('Test Image', img, self.test_iteration)
 
-        mae = torch.mean(torch.abs(samples - samples_mask))
+        mae = torch.mean(torch.abs(samples - mask))
         self.preds.append(samples)
-        self.masks.append(samples_mask)
-        prec, recall = torch.zeros(samples_mask.shape[0], 256), torch.zeros(samples_mask.shape[0], 256)
+        self.masks.append(mask)
+        prec, recall = torch.zeros(mask.shape[0], 256), torch.zeros(mask.shape[0], 256)
         pred = samples.reshape(samples.shape[0], -1)
-        mask = samples_mask.reshape(samples_mask.shape[0], -1)
+        mask = mask.reshape(mask.shape[0], -1)
         thlist = torch.linspace(0, 1 - 1e-10, 256)
         for j in range(256):
             y_temp = (pred >= thlist[j]).float()
@@ -242,7 +232,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         features = batch['features']
         seq_mask = batch['seq_mask']
         segments = batch['segments']
-        mask = batch['mask']
+        mask = batch['mask'].cpu()
         img = batch['img']
         adj = batch['neighbor_array']
         distances = batch['edge_features']
@@ -270,21 +260,16 @@ class SP_TFM_Wrapper(pl.LightningModule):
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1))
         # tensorboard.add_images('Test Pred', samples, self.test_iteration)
-        samples_mask = []
-        for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
-            samples_mask.append(plt_image)
 
-        samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
         # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
         # tensorboard.add_images('Test Image', img, self.test_iteration)
 
-        mae = torch.mean(torch.abs(samples - samples_mask))
+        mae = torch.mean(torch.abs(samples - mask))
         self.preds.append(samples)
-        self.masks.append(samples_mask)
-        prec, recall = torch.zeros(samples_mask.shape[0], 256), torch.zeros(samples_mask.shape[0], 256)
+        self.masks.append(mask)
+        prec, recall = torch.zeros(mask.shape[0], 256), torch.zeros(mask.shape[0], 256)
         pred = samples.reshape(samples.shape[0], -1)
-        mask = samples_mask.reshape(samples_mask.shape[0], -1)
+        mask = mask.reshape(mask.shape[0], -1)
         thlist = torch.linspace(0, 1 - 1e-10, 256)
         for j in range(256):
             y_temp = (pred >= thlist[j]).float()

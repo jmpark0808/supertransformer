@@ -543,6 +543,7 @@ class SPDataset(data.Dataset):
 
         sample = self.transform(sample)
         sample['file_name'] = self.image_list[item]
+        sample['mask'] = (sample['mask']>0.5).float()
         return sample
 
 
