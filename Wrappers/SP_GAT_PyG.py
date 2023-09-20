@@ -32,6 +32,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         # flops = FlopCountAnalysis(self.model, data)
         # print(flop_count_table(flops))
         self.iteration = 0
+        self.num_thresholds = 10
         self.test_iteration = 0
         self.save_hyperparameters()
         
@@ -177,11 +178,13 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         elif dataloader_idx == 1:
             self.preds_test.append(samples)
             self.masks_test.append(mask)
-        prec, recall = torch.zeros(samples.size(0), 256), torch.zeros(samples.size(0), 256)
+
+        
+        prec, recall = torch.zeros(samples.size(0), self.num_thresholds), torch.zeros(samples.size(0), self.num_thresholds)
         pred = samples.reshape(samples.size(0), -1)
         mask = mask.reshape(mask.size(0), -1)
-        thlist = torch.linspace(0, 1 - 1e-10, 256)
-        for j in range(256):
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
+        for j in range(self.num_thresholds):
             y_temp = (pred >= thlist[j]).float()
             tp = (y_temp * mask).sum(dim=-1)
             # avoid prec becomes 0
@@ -202,7 +205,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         recall = torch.cat(self.recalls, dim=0).mean(dim=0)
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
-        thlist = torch.linspace(0, 1 - 1e-10, 256)
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
         self.log('Validation Max F Score', torch.max(f_score))
         self.log('Validation Max F Threshold', thlist[torch.argmax(f_score)])
 
@@ -215,7 +218,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         recall = torch.cat(self.recalls_test, dim=0).mean(dim=0)
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
-        thlist = torch.linspace(0, 1 - 1e-10, 256)
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
         self.log('Test Max F Score', torch.max(f_score))
         self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
 
