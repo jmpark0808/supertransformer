@@ -304,13 +304,16 @@ class ToTensorSP(object):
 class SPDataset(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, compactness,
                   dataloader, data_augmentation=True, coeff=None,
-                    ignore_phase=False, fully_conneted=False):
+                    ignore_phase=False, fully_conneted=False, sigma_agen=None, sigma_agnn=None):
         self.image_list = image_list
         self.mask_list = mask_list
         self.fully_connected = fully_conneted
         self.resize_mask = ResizeMask(size)
         self.num_seg = num_seg
         self.dataloader = dataloader
+        self.sigma_agen = sigma_agen
+        self.sigma_agnn = sigma_agnn
+        self.size = size
         
         if dataloader == 'SPGFFT':
             totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
@@ -418,18 +421,23 @@ class SPDataset(data.Dataset):
         seq_mask = np.load(sp_file_path_seq_mask)
         segments = np.load(sp_file_path_segments)
         mask = self.resize_mask(mask)
-        
+        mask = (mask > 0.5).float()
         if self.fully_connected:
             neighbor_array = np.ones([self.num_seg, self.num_seg])
             edge_index = np.array(np.nonzero(neighbor_array))
         else:
             edge_index = np.load(sp_file_path_edge_index)
         
+        if self.sigma_agen is not None:
+            agen_noise = np.random.normal(0, self.sigma_agen, edge_index.shape)
+            edge_index += agen_noise
+        
+        edge_features = np.load(sp_file_path_edge_features)/self.size
 
-        
-        
-        
-        edge_features = np.load(sp_file_path_edge_features)
+        if self.sigma_agnn is not None:
+            agnn_noise = np.random.normal(0, self.sigma_agnn, features[:, 2:5].shape)
+            features[:, 2:5] += agnn_noise
+            features[:, 2:5] = np.clip(features[:, 2:5], 0, 1)
         
         
         sample = (Data(x=torch.tensor(features[:, 2:]).float(),
@@ -458,6 +466,8 @@ class SPGDataModule(pl.LightningDataModule):
         self.compactness = kwargs.get('compactness')
         self.ignore_phase = kwargs.get('ignore_phase')
         self.fully_connected = kwargs.get('fully_connected', False)
+        self.sigma_agen = kwargs.get('sigma_agen', None)
+        self.sigma_agnn = kwargs.get('sigma_agnn', None)
         
         self.image_list = np.array(sorted([os.path.join('{}/Image'.format(self.train_dir), f) for f in os.listdir('{}/Image'.format(self.train_dir))]))
         self.mask_list = np.array(sorted([os.path.join('{}/Mask'.format(self.train_dir), f) for f in os.listdir('{}/Mask'.format(self.train_dir))]))

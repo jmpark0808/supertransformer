@@ -141,6 +141,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         Compute the metrics for validation batch
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
+        tensorboard = self.logger.experiment
         features = batch[0]
         seq_mask = batch[1]
         segments = batch[2]
@@ -165,9 +166,9 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
             samples.append(plt_image)
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1))
-        # tensorboard.add_images('Test Pred', samples, self.test_iteration)
-        # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
-        # tensorboard.add_images('Test Image', img, self.test_iteration)
+        if batch_idx == 0:
+            tensorboard.add_images('Validation Pred', samples, self.test_iteration)
+            tensorboard.add_images('Validation GT', mask, self.test_iteration)
 
         mae = torch.mean(torch.abs(samples - mask))
         if dataloader_idx == 0:
