@@ -335,11 +335,11 @@ class SPDataset(data.Dataset):
             os.makedirs(os.path.join(str(Path(image).parents[1]),dataloader), exist_ok=True)
             
 
-            sp_file_name_features = image.split('.')[0].split('/')[-1]+'_features.npy'
-            sp_file_name_edge_index = image.split('.')[0].split('/')[-1]+'_edge_index.npy'
-            sp_file_name_edge_features = image.split('.')[0].split('/')[-1]+'_edge_features.npy'
-            sp_file_name_seq_mask = image.split('.')[0].split('/')[-1]+'_seq_mask.npy'
-            sp_file_name_segments = image.split('.')[0].split('/')[-1]+'_segments.npy'
+            sp_file_name_features = image.split('/')[-1].split('.')[0]+'_features.npy'
+            sp_file_name_edge_index = image.split('/')[-1].split('.')[0]+'_edge_index.npy'
+            sp_file_name_edge_features = image.split('/')[-1].split('.')[0]+'_edge_features.npy'
+            sp_file_name_seq_mask = image.split('/')[-1].split('.')[0]+'_seq_mask.npy'
+            sp_file_name_segments = image.split('/')[-1].split('.')[0]+'_segments.npy'
 
 
 
@@ -397,11 +397,11 @@ class SPDataset(data.Dataset):
         img_name = self.image_list[item]
         mask_name = self.mask_list[item]
 
-        sp_file_name_features = self.image_list[item].split('.')[0].split('/')[-1]+'_features.npy'
-        sp_file_name_edge_index = self.image_list[item].split('.')[0].split('/')[-1]+'_edge_index.npy'
-        sp_file_name_edge_features = self.image_list[item].split('.')[0].split('/')[-1]+'_edge_features.npy'
-        sp_file_name_seq_mask = self.image_list[item].split('.')[0].split('/')[-1]+'_seq_mask.npy'
-        sp_file_name_segments = self.image_list[item].split('.')[0].split('/')[-1]+'_segments.npy'
+        sp_file_name_features = self.image_list[item].split('/')[-1].split('.')[0]+'_features.npy'
+        sp_file_name_edge_index = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_index.npy'
+        sp_file_name_edge_features = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_features.npy'
+        sp_file_name_seq_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_seq_mask.npy'
+        sp_file_name_segments = self.image_list[item].split('/')[-1].split('.')[0]+'_segments.npy'
 
 
 
@@ -469,8 +469,8 @@ class SPGDataModule(pl.LightningDataModule):
         self.sigma_agen = kwargs.get('sigma_agen', None)
         self.sigma_agnn = kwargs.get('sigma_agnn', None)
         
-        self.image_list = np.array(sorted([os.path.join('{}/Image'.format(self.train_dir), f) for f in os.listdir('{}/Image'.format(self.train_dir))]))
-        self.mask_list = np.array(sorted([os.path.join('{}/Mask'.format(self.train_dir), f) for f in os.listdir('{}/Mask'.format(self.train_dir))]))
+        self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
+        self.mask_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Mask'), f) for f in os.listdir('{}/Mask'.format(self.train_dir))]))
 
         indices = np.array(list(range(len(self.image_list))))
         np.random.shuffle(indices)
@@ -481,8 +481,8 @@ class SPGDataModule(pl.LightningDataModule):
         self.tr_image_list = self.image_list[indices[:int(len(self.image_list)*0.85)]]
         self.tr_mask_list = self.mask_list[indices[:int(len(self.mask_list)*0.85)]]
 
-        self.test_image_list = sorted([os.path.join('{}/Image'.format(self.test_dir), f) for f in os.listdir('{}/Image'.format(self.test_dir))])
-        self.test_mask_list = sorted([os.path.join('{}/Mask'.format(self.test_dir), f) for f in os.listdir('{}/Mask'.format(self.test_dir))])
+        self.test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'Image'))])
+        self.test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'Mask'))])
 
         
     def train_dataloader(self):
