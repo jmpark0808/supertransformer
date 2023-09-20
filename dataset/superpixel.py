@@ -533,8 +533,8 @@ class SPDataset(data.Dataset):
         return len(self.image_list)
 
     def __getitem__(self, item):
-        img_name = '{}/Image/{}'.format(self.root_dir, self.image_list[item])
-        mask_name = '{}/Mask/{}'.format(self.root_dir, self.mask_list[item])
+        img_name = self.image_list[item]
+        mask_name = self.mask_list[item]
         img = Image.open(img_name)
         mask = Image.open(mask_name)
         img = img.convert('RGB')
