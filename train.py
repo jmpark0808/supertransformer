@@ -37,7 +37,7 @@ from Wrappers.SP_GAT_PyG import SP_GAT_PyG_Wrapper
 # Import dataset modules
 from dataset.superpixel import DUTSDataModule,  SPDataModule
 from dataset.superpixel_pyg import SPGDataModule
-from dataset.superpixel_pyg_fast import SPGFastDataModule
+from dataset.superpixel_pyg_image import SPGIDataModule
 
 
 # Metric logging
@@ -88,8 +88,8 @@ DATALOADER_DIRECTORY = {
     'SPContour': SPDataModule,
     'SPGFFT': SPGDataModule,
     'SPG': SPGDataModule,
-    'SPGFast': SPGFastDataModule,
-    'SPGFastFFT': SPGFastDataModule,
+    'SPGIFFT': SPGIDataModule,
+    'SPGI': SPGIDataModule,
 
 } 
 
