@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 from scipy import sparse as sp
 from scipy.spatial.distance import pdist, squareform
 from dataset.attributes import *
+from pathlib import Path
 
 class Resize(object):
     def __init__(self, size):
@@ -105,12 +106,16 @@ class ToTensorSP(object):
         img_np = np.array(img)
         img_size = img_np.shape[1]
         mask_np = np.array(mask)/255.
-        segments = slic(img_np, n_segments=self.num_seg,
-            compactness=self.compactness,
-            max_num_iter=3,
-            convert2lab=True,
-            enforce_connectivity=True,
-            slic_zero=False)
+
+
+        slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
+        segments = slic.iterate(img_np)
+        # segments = slic(img_np, n_segments=self.num_seg,
+        #     compactness=self.compactness,
+        #     max_num_iter=3,
+        #     convert2lab=True,
+        #     enforce_connectivity=True,
+        #     slic_zero=False)
    
         vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
         vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
@@ -118,29 +123,18 @@ class ToTensorSP(object):
         vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
         bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
 
-        regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean',
-                                                                                     'coords'), extra_properties=[image_stdev, eccen])#, polarize])
+        regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
+                                                                                     'coords'))#, polarize])
                     
         seq_len = len(regions['label'])
-        features = np.zeros([self.num_seg, 15])
+        features = np.zeros([self.num_seg, 5])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
         features[label-1, 0] = regions['centroid-0']
         features[label-1, 1] = regions['centroid-1']
-        features[label-1, 2] = regions['area'] / (img_size**2)
-        features[label-1, 3] = regions['intensity_mean-0']/255.
-        features[label-1, 4] = regions['intensity_mean-1']/255.
-        features[label-1, 5] = regions['intensity_mean-2']/255.
-        features[label-1, 6] = regions['image_stdev-0']/255.
-        features[label-1, 7] = regions['image_stdev-1']/255.
-        features[label-1, 8] = regions['image_stdev-2']/255.
-        features[label-1, 9] = regions['eccen-0']
-        features[label-1, 10] = regions['eccen-1']
-        features[label-1, 11] = regions['eccen-2']
-        features[label-1, 12] = regions['eccen-3']
-        features[label-1, 13] = regions['eccen-4']
-        features[label-1, 14] = regions['eccen-5']
-    
+        features[label-1, 2] = regions['intensity_mean-0']/255.
+        features[label-1, 3] = regions['intensity_mean-1']/255.
+        features[label-1, 4] = regions['intensity_mean-2']/255.
 
 
         for ind, coord in zip(regions['label'], regions['coords']):
@@ -190,9 +184,8 @@ class ToTensorSP(object):
 
 
         features, neighbor_array, seq_mask, segments, mask, img = torch.tensor(features).float(), torch.tensor(neighbor_array).float(), torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
-        # edge_features = torch.from_numpy(edge_features).float()
-        return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask, 'img': img, 'neighbor_array': neighbor_array, }
-        # 'edge_features':edge_features}
+        edge_features = torch.ones(1)
+        return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask, 'img': img, 'neighbor_array': neighbor_array, 'edge_features':edge_features}
 
 class ToTensorSPLAP(object):
     def __init__(self, num_seg, compactness):
@@ -528,11 +521,21 @@ class SPDataset(data.Dataset):
             self.transform = transforms.Compose([Resize(size), totensor])
 
         self.data_augmentation = data_augmentation
+        if self.data_augmentation is False:
+            os.makedirs(os.path.join(str(Path(self.image_list[0]).parents[1]),'VAL'), exist_ok=True)
+
 
     def __len__(self):
         return len(self.image_list)
 
     def __getitem__(self, item):
+        file_name = self.image_list[item].split('/')[-1].split('.')[0]+'.npy'
+        file_path = os.path.join(str(Path(self.image_list[item]).parents[1]),'VAL', file_name )
+
+        if self.data_augmentation is False and os.path.exists(file_path):
+            sample = np.load(file_path, allow_pickle=True).item()
+            return sample
+
         img_name = self.image_list[item]
         mask_name = self.mask_list[item]
         img = Image.open(img_name)
@@ -544,6 +547,8 @@ class SPDataset(data.Dataset):
         sample = self.transform(sample)
         sample['file_name'] = self.image_list[item]
         sample['mask'] = (sample['mask']>0.5).float()
+        if not os.path.exists(file_path):
+            np.save(file_path, sample)    
         return sample
 
 
@@ -617,9 +622,14 @@ class SPDataModule(pl.LightningDataModule):
 
     def val_dataloader(self):
         data_val = SPDataset(self.val_image_list, self.val_mask_list,self.num_seg, self.res, self.compactness, False, self.dataloader, self.coeff, self.ignore_phase)
-        return DataLoader(
+        data_test = SPDataset(self.test_image_list, self.test_mask_list,  self.num_seg, self.res,  self.compactness, False, self.dataloader, self.coeff, self.ignore_phase)
+        val_dataloader = DataLoader(
                 data_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
+        test_dataloader = DataLoader(
+                data_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=False)
+        return [val_dataloader, test_dataloader]
 
     def test_dataloader(self):
         data_test = SPDataset(self.test_image_list, self.test_mask_list,  self.num_seg, self.res,  self.compactness, False, self.dataloader, self.coeff, self.ignore_phase)

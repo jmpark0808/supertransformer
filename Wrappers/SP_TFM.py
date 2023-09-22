@@ -28,6 +28,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         self.supert = SP_TFM_REL(input_dim, self.dilation, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout)
         self.iteration = 0
         self.test_iteration = 0
+        self.num_thresholds = 10
         self.save_hyperparameters()
         
 
@@ -139,7 +140,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         self.iteration += 1
         return loss
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx, dataloader_idx):
         """
         Compute the metrics for validation batch
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
@@ -147,7 +148,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         features = batch['features']
         seq_mask = batch['seq_mask']
         segments = batch['segments']
-        mask = batch['mask'].cpu()
+        mask = batch['mask']
         img = batch['img']
         adj = batch['neighbor_array']
         distances = batch['edge_features']
@@ -157,6 +158,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         seq_mask = seq_mask.cuda()
         adj = adj.cuda()
         distances = distances.cuda()
+        mask = mask.cuda()
 
 
         # forward pass
@@ -173,44 +175,62 @@ class SP_TFM_Wrapper(pl.LightningModule):
             plt_image = masked[labels-1].reshape([img_size, img_size])
             samples.append(plt_image)
 
-        samples = torch.tensor(np.expand_dims(np.array(samples), 1))
-        # tensorboard.add_images('Test Pred', samples, self.test_iteration)
-      
-        # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
-        # tensorboard.add_images('Test Image', img, self.test_iteration)
+        samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
 
         mae = torch.mean(torch.abs(samples - mask))
-        self.preds.append(samples)
-        self.masks.append(mask)
-        prec, recall = torch.zeros(mask.shape[0], 256), torch.zeros(mask.shape[0], 256)
-        pred = samples.reshape(samples.shape[0], -1)
-        mask = mask.reshape(mask.shape[0], -1)
-        thlist = torch.linspace(0, 1 - 1e-10, 256)
-        for j in range(256):
+        if dataloader_idx == 0:
+            self.preds.append(samples)
+            self.masks.append(mask)
+        elif dataloader_idx == 1:
+            self.preds_test.append(samples)
+            self.masks_test.append(mask)
+
+        
+        prec, recall = torch.zeros(samples.size(0), self.num_thresholds).cuda(), torch.zeros(samples.size(0), self.num_thresholds).cuda()
+        pred = samples.reshape(samples.size(0), -1)
+        mask = mask.reshape(mask.size(0), -1)
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds).cuda()
+        for j in range(self.num_thresholds):
             y_temp = (pred >= thlist[j]).float()
             tp = (y_temp * mask).sum(dim=-1)
             # avoid prec becomes 0
             prec[:, j], recall[:, j] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
         # (batch, threshold)
-        self.precs.append(prec)
-        self.recalls.append(recall)
-        self.test_iteration += 1
+        if dataloader_idx == 0:
+            self.precs.append(prec)
+            self.recalls.append(recall)
+            self.test_iteration += 1
+        elif dataloader_idx == 1:
+            self.precs_test.append(prec)
+            self.recalls_test.append(recall)
         return mae
 
 
     def validation_epoch_end(self, validation_step_outputs):
-        prec = torch.cat(self.precs, dim=0).mean(dim=0)
-        recall = torch.cat(self.recalls, dim=0).mean(dim=0)
+        prec = torch.cat(self.precs, dim=0).cuda().mean(dim=0)
+        recall = torch.cat(self.recalls, dim=0).cuda().mean(dim=0)
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
-        thlist = torch.linspace(0, 1 - 1e-10, 256)
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds).cuda()
         self.log('Validation Max F Score', torch.max(f_score))
         self.log('Validation Max F Threshold', thlist[torch.argmax(f_score)])
 
-        pred = torch.cat(self.preds, 0)
-        mask = torch.cat(self.masks, 0).round().float()
+        pred = torch.cat(self.preds, 0).cuda()
+        mask = torch.cat(self.masks, 0).cuda().round().float()
         self.log('Validation MAE', torch.mean(torch.abs(pred-mask)))
-        self.scheduler.step(torch.mean(torch.stack(validation_step_outputs)))
+
+        prec = torch.cat(self.precs_test, dim=0).cuda().mean(dim=0)
+        recall = torch.cat(self.recalls_test, dim=0).cuda().mean(dim=0)
+        beta_square = 0.3
+        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds).cuda()
+        self.log('Test Max F Score', torch.max(f_score))
+        self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
+
+        pred = torch.cat(self.preds_test, 0)
+        mask = torch.cat(self.masks_test, 0).round().float()
+        self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
+        self.scheduler.step(torch.mean(torch.stack(validation_step_outputs[0])))
 
     def on_validation_start(self):
         self.preds = []
@@ -218,11 +238,17 @@ class SP_TFM_Wrapper(pl.LightningModule):
         self.precs = []
         self.recalls = []
 
+        self.preds_test = []
+        self.masks_test = []
+        self.precs_test = []
+        self.recalls_test = []
+
     def on_test_start(self):
         self.preds = []
         self.masks = []
         self.precs = []
         self.recalls = []
+
 
     def test_step(self, batch, batch_idx):
         """
@@ -232,7 +258,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         features = batch['features']
         seq_mask = batch['seq_mask']
         segments = batch['segments']
-        mask = batch['mask'].cpu()
+        mask = batch['mask']
         img = batch['img']
         adj = batch['neighbor_array']
         distances = batch['edge_features']
@@ -242,7 +268,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         seq_mask = seq_mask.cuda()
         adj = adj.cuda()
         distances = distances.cuda()
-
+        mask = mask.cuda()
 
         # forward pass
         pred = self.forward(features, adj, distances)
@@ -258,7 +284,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
             plt_image = masked[labels-1].reshape([img_size, img_size])
             samples.append(plt_image)
 
-        samples = torch.tensor(np.expand_dims(np.array(samples), 1))
+        samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
         # tensorboard.add_images('Test Pred', samples, self.test_iteration)
 
         # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
@@ -267,9 +293,9 @@ class SP_TFM_Wrapper(pl.LightningModule):
         mae = torch.mean(torch.abs(samples - mask))
         self.preds.append(samples)
         self.masks.append(mask)
-        prec, recall = torch.zeros(mask.shape[0], 256), torch.zeros(mask.shape[0], 256)
-        pred = samples.reshape(samples.shape[0], -1)
-        mask = mask.reshape(mask.shape[0], -1)
+        prec, recall = torch.zeros(samples.size(0), 256).cuda(), torch.zeros(samples.size(0), 256).cuda()
+        pred = samples.reshape(samples.size(0), -1)
+        mask = mask.reshape(mask.size(0), -1)
         thlist = torch.linspace(0, 1 - 1e-10, 256)
         for j in range(256):
             y_temp = (pred >= thlist[j]).float()
@@ -283,21 +309,21 @@ class SP_TFM_Wrapper(pl.LightningModule):
         return mae
     
     def test_epoch_end(self, test_step_outputs):
-        prec = torch.cat(self.precs, dim=0).mean(dim=0)
-        recall = torch.cat(self.recalls, dim=0).mean(dim=0)
+        prec = torch.cat(self.precs, dim=0).cuda().mean(dim=0)
+        recall = torch.cat(self.recalls, dim=0).cuda().mean(dim=0)
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
-        thlist = torch.linspace(0, 1 - 1e-10, 256)
-        self.log('Test Max F Score', torch.max(f_score))
-        self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
+        thlist = torch.linspace(0, 1 - 1e-10, 256).cuda()
+        self.log('Final Test Max F Score', torch.max(f_score))
+        self.log('Final Test Max F Threshold', thlist[torch.argmax(f_score)])
 
-        pred = torch.cat(self.preds, 0)
-        mask = torch.cat(self.masks, 0).round().float()
-        self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
+        pred = torch.cat(self.preds, 0).cuda()
+        mask = torch.cat(self.masks, 0).cuda().round().float()
+        self.log('Final Test MAE', torch.mean(torch.abs(pred-mask)))
         self.scheduler.step(torch.mean(torch.stack(test_step_outputs)))
-
                     
     
+
 
 
 
