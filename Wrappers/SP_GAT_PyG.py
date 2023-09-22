@@ -94,10 +94,11 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         features = batch[0]
         seq_mask = batch[1]
         segments = batch[2]
-        mask = batch[3].cpu()
+        mask = batch[3]
 
 
         features = features.cuda()
+        mask = mask.cuda()
      
         # forward pass
         
@@ -116,10 +117,10 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
             plt_image = masked[labels-1].reshape([img_size, img_size])
             samples.append(plt_image)
 
-        samples = torch.tensor(np.expand_dims(np.array(samples), 1))
+        samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
 
 
-        prec, recall = torch.zeros(samples.size(0), 1), torch.zeros(samples.size(0), 1)
+        prec, recall = torch.zeros(samples.size(0), 1).cuda(), torch.zeros(samples.size(0), 1).cuda()
         pred = samples.reshape(samples.size(0), -1)
         mask = mask.reshape(mask.size(0), -1)
         
@@ -146,10 +147,11 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         features = batch[0]
         seq_mask = batch[1]
         segments = batch[2]
-        mask = batch[3].cpu()
+        mask = batch[3]
   
 
         features = features.cuda()
+        mask = mask.cuda()
 
 
         # forward pass
@@ -166,7 +168,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
             plt_image = masked[labels-1].reshape([img_size, img_size])
             samples.append(plt_image)
 
-        samples = torch.tensor(np.expand_dims(np.array(samples), 1))
+        samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
         if batch_idx == 0:
             tensorboard.add_images('Validation Pred', samples, self.test_iteration)
             tensorboard.add_images('Validation GT', mask, self.test_iteration)
@@ -180,10 +182,10 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
             self.masks_test.append(mask)
 
         
-        prec, recall = torch.zeros(samples.size(0), self.num_thresholds), torch.zeros(samples.size(0), self.num_thresholds)
+        prec, recall = torch.zeros(samples.size(0), self.num_thresholds).cuda(), torch.zeros(samples.size(0), self.num_thresholds).cuda()
         pred = samples.reshape(samples.size(0), -1)
         mask = mask.reshape(mask.size(0), -1)
-        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds).cuda()
         for j in range(self.num_thresholds):
             y_temp = (pred >= thlist[j]).float()
             tp = (y_temp * mask).sum(dim=-1)
@@ -201,29 +203,29 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
 
 
     def validation_epoch_end(self, validation_step_outputs):
-        prec = torch.cat(self.precs, dim=0).mean(dim=0)
-        recall = torch.cat(self.recalls, dim=0).mean(dim=0)
+        prec = torch.cat(self.precs, dim=0).cuda().mean(dim=0)
+        recall = torch.cat(self.recalls, dim=0).cuda().mean(dim=0)
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
-        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds).cuda()
         self.log('Validation Max F Score', torch.max(f_score))
         self.log('Validation Max F Threshold', thlist[torch.argmax(f_score)])
 
-        pred = torch.cat(self.preds, 0)
-        mask = torch.cat(self.masks, 0).round().float()
+        pred = torch.cat(self.preds, 0).cuda()
+        mask = torch.cat(self.masks, 0).cuda().round().float()
         self.log('Validation MAE', torch.mean(torch.abs(pred-mask)))
 
 
-        prec = torch.cat(self.precs_test, dim=0).mean(dim=0)
-        recall = torch.cat(self.recalls_test, dim=0).mean(dim=0)
+        prec = torch.cat(self.precs_test, dim=0).cuda().mean(dim=0)
+        recall = torch.cat(self.recalls_test, dim=0).cuda().mean(dim=0)
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
-        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds).cuda()
         self.log('Test Max F Score', torch.max(f_score))
         self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
 
-        pred = torch.cat(self.preds_test, 0)
-        mask = torch.cat(self.masks_test, 0).round().float()
+        pred = torch.cat(self.preds_test, 0).cuda()
+        mask = torch.cat(self.masks_test, 0).cuda().round().float()
         self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
         self.scheduler.step(torch.mean(torch.stack(validation_step_outputs[0])))
 
@@ -252,10 +254,11 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         features = batch[0]
         seq_mask = batch[1]
         segments = batch[2]
-        mask = batch[3].cpu()
+        mask = batch[3]
 
 
         features = features.cuda()
+        mask = mask.cuda()
 
 
         # forward pass
@@ -272,7 +275,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
             plt_image = masked[labels-1].reshape([img_size, img_size])
             samples.append(plt_image)
 
-        samples = torch.tensor(np.expand_dims(np.array(samples), 1))
+        samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
         # tensorboard.add_images('Test Pred', samples, self.test_iteration)
 
         # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
@@ -281,10 +284,10 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         mae = torch.mean(torch.abs(samples - mask))
         self.preds.append(samples)
         self.masks.append(mask)
-        prec, recall = torch.zeros(samples.size(0), 256), torch.zeros(samples.size(0), 256)
+        prec, recall = torch.zeros(samples.size(0), 256).cuda(), torch.zeros(samples.size(0), 256).cuda()
         pred = samples.reshape(samples.size(0), -1)
         mask = mask.reshape(mask.size(0), -1)
-        thlist = torch.linspace(0, 1 - 1e-10, 256)
+        thlist = torch.linspace(0, 1 - 1e-10, 256).cuda()
         for j in range(256):
             y_temp = (pred >= thlist[j]).float()
             tp = (y_temp * mask).sum(dim=-1)
@@ -297,16 +300,16 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         return mae
     
     def test_epoch_end(self, test_step_outputs):
-        prec = torch.cat(self.precs, dim=0).mean(dim=0)
-        recall = torch.cat(self.recalls, dim=0).mean(dim=0)
+        prec = torch.cat(self.precs, dim=0).cuda().mean(dim=0)
+        recall = torch.cat(self.recalls, dim=0).cuda().mean(dim=0)
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
-        thlist = torch.linspace(0, 1 - 1e-10, 256)
+        thlist = torch.linspace(0, 1 - 1e-10, 256).cuda()
         self.log('Final Test Max F Score', torch.max(f_score))
         self.log('Final Test Max F Threshold', thlist[torch.argmax(f_score)])
 
-        pred = torch.cat(self.preds, 0)
-        mask = torch.cat(self.masks, 0).round().float()
+        pred = torch.cat(self.preds, 0).cuda()
+        mask = torch.cat(self.masks, 0).cuda().round().float()
         self.log('Final Test MAE', torch.mean(torch.abs(pred-mask)))
         self.scheduler.step(torch.mean(torch.stack(test_step_outputs)))
                     
