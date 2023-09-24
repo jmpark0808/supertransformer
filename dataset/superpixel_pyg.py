@@ -434,6 +434,10 @@ class SPDataset(data.Dataset):
         
         edge_features = np.load(sp_file_path_edge_features)/self.size
 
+        if self.sigma_agen is not None:
+            agen_noise = np.random.normal(0, self.sigma_agen, edge_index.shape)
+            edge_features += agen_noise
+
         if self.sigma_agnn is not None:
             agnn_noise = np.random.normal(0, self.sigma_agnn, features[:, 2:5].shape)
             features[:, 2:5] += agnn_noise
