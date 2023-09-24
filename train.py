@@ -32,6 +32,7 @@ from Wrappers.SP_Baseline_DPE import SP_Baseline_DPE_Wrapper
 from Wrappers.SP_Baseline_LAP import SP_Baseline_LAP_Wrapper
 from Wrappers.image_transformer import ImageTransformer
 from Wrappers.SP_GAT_PyG import SP_GAT_PyG_Wrapper
+from Wrappers.SP_TFM_PyG import SP_TFM_PyG_Wrapper
 
 
 # Import dataset modules
@@ -77,7 +78,8 @@ MODEL_DIRECTORY = {
     'SP_Baseline': SP_Baseline_Wrapper,
     'SP_Baseline_DPE': SP_Baseline_DPE_Wrapper,
     'SP_Baseline_LAP': SP_Baseline_LAP_Wrapper,
-    'SP_GAT_PyG': SP_GAT_PyG_Wrapper
+    'SP_GAT_PyG': SP_GAT_PyG_Wrapper,
+    'SP_TFM_PyG': SP_TFM_PyG_Wrapper
 }
 DATALOADER_DIRECTORY = {
     'SP': SPDataModule,
