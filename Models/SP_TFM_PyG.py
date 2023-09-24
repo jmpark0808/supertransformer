@@ -14,12 +14,12 @@ class SP_TFM_PyG(nn.Module):
     def __init__(self, nfeat, nhid, edge_dim, dropout, nheads, ntfm):
         """Dense version of GAT."""
         super(SP_TFM_PyG, self).__init__()
-        self.linear1 = nn.Linear(nfeat, nhid)
+        self.linear1 = nn.Linear(nfeat, nhid*nheads)
         self.elu = nn.ELU()
     
-        self.convs = nn.ModuleList([TransformerConv(in_channels=nhid, out_channels=nhid, heads=nheads, dropout=dropout, edge_dim=edge_dim, concat=True) for _ in range(ntfm)])
-        self.ff = nn.ModuleList([FeedForward(nhid*nheads, nhid*2, dropout, nhid) for _ in range(ntfm)])
-        self.classifier = nn.Linear(nhid, 1)
+        self.convs = nn.ModuleList([TransformerConv(in_channels=nhid*nheads, out_channels=nhid, heads=nheads, dropout=dropout, edge_dim=edge_dim, concat=True) for _ in range(ntfm)])
+        self.ff = nn.ModuleList([FeedForward(nhid*nheads, nhid*nheads, dropout) for _ in range(ntfm)])
+        self.classifier = nn.Linear(nhid*nheads, 1)
 
 
         
