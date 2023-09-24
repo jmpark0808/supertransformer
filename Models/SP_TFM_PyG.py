@@ -17,8 +17,8 @@ class SP_TFM_PyG(nn.Module):
         self.linear1 = nn.Linear(nfeat, nhid)
         self.elu = nn.ELU()
     
-        self.convs = nn.ModuleList([TransformerConv(in_channels=nhid, out_channels=nhid, heads=nheads, dropout=dropout, edge_dim=edge_dim, concat=False) for _ in range(ntfm)])
-        self.ff = nn.ModuleList([FeedForward(nhid, nhid*2, dropout) for _ in range(ntfm)])
+        self.convs = nn.ModuleList([TransformerConv(in_channels=nhid, out_channels=nhid, heads=nheads, dropout=dropout, edge_dim=edge_dim, concat=True) for _ in range(ntfm)])
+        self.ff = nn.ModuleList([FeedForward(nhid*nheads, nhid*2, dropout, nhid) for _ in range(ntfm)])
         self.classifier = nn.Linear(nhid, 1)
 
 
