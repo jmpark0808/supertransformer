@@ -424,7 +424,9 @@ class SPDataset(data.Dataset):
         mask = self.resize_mask(mask)
         mask = (mask > 0.5).float()
         if self.fully_connected:
-            neighbor_array = np.ones([self.num_seg, self.num_seg])
+            node_idx = np.unique(segments)-1
+            neighbor_array = np.zeros([self.num_seg, self.num_seg])
+            neighbor_array[node_idx[:, np.newaxis], node_idx[np.newaxis, :]] = 1
             edge_index = np.array(np.nonzero(neighbor_array))
             features_centroids = features[:, :2]
             spatial_distances = euclidean_distances(features_centroids, features_centroids)
