@@ -150,7 +150,7 @@ class ToTensorSPFFT(object):
         # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
             
         slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
-        segments = slic.iterate(img_np)
+        segments = slic.iterate(img_np)+1
         # segments = slic(img_np, n_segments=self.num_seg,
         #     compactness=self.compactness,
         #     max_num_iter=3,
@@ -240,7 +240,7 @@ class ToTensorSP(object):
         # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
             
         slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
-        segments = slic.iterate(img_np)
+        segments = slic.iterate(img_np)+1
         # segments = slic(img_np, n_segments=self.num_seg,
         #     compactness=self.compactness,
         #     max_num_iter=3,
@@ -255,13 +255,14 @@ class ToTensorSP(object):
         # vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
         # vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
         # bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
-
+        
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
                                                                                     'coords'))#, polarize])
 
         seq_len = len(regions['label'])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
+        
         features = np.zeros([self.num_seg, 5])
 
 
@@ -366,8 +367,7 @@ class SPDataset(data.Dataset):
 
             segments = sample[2]
             features = sample[0]
-
-            
+     
             if self.fully_connected:
                 neighbor_array = np.ones([self.num_seg, self.num_seg])
             else:
@@ -383,7 +383,7 @@ class SPDataset(data.Dataset):
             edge_index = np.array(np.nonzero(neighbor_array))
             np.save(sp_file_path_edge_index, edge_index)
 
-            features_centroids = features[:, :2]
+            features_centroids = features[:, :2]/self.size
             spatial_distances = euclidean_distances(features_centroids, features_centroids)
             spatial_distances = spatial_distances[edge_index[0], edge_index[1]]
             
@@ -429,14 +429,14 @@ class SPDataset(data.Dataset):
             features_centroids = features[:, :2]
             spatial_distances = euclidean_distances(features_centroids, features_centroids)
             spatial_distances = spatial_distances[edge_index[0], edge_index[1]]
-            
+
         
-            edge_features = np.expand_dims(spatial_distances, axis=1)/self.size
+            edge_features = np.expand_dims(spatial_distances, axis=1)
 
         else:
             edge_index = np.load(sp_file_path_edge_index)
 
-            edge_features = np.load(sp_file_path_edge_features)/self.size
+            edge_features = np.load(sp_file_path_edge_features)
         
         if self.sigma_agen is not None:
             agen_noise = np.random.normal(0, self.sigma_agen, edge_index.shape)

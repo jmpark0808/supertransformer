@@ -109,7 +109,7 @@ class ToTensorSP(object):
 
 
         slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
-        segments = slic.iterate(img_np)
+        segments = slic.iterate(img_np)+1
         # segments = slic(img_np, n_segments=self.num_seg,
         #     compactness=self.compactness,
         #     max_num_iter=3,
@@ -299,7 +299,7 @@ class ToTensorSPFFT(object):
         # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
             
         slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
-        segments = slic.iterate(img_np)
+        segments = slic.iterate(img_np)+1
         # segments = slic(img_np, n_segments=self.num_seg,
         #     compactness=self.compactness,
         #     max_num_iter=3,
@@ -447,7 +447,7 @@ class ToTensorSPCNN(object):
             enforce_connectivity=False,
             slic_zero=True, min_size_factor=0.)
         # slic = SlicAvx2(num_components=self.num_seg, compactness=10)
-        # segments = slic.iterate(img_np)
+        # segments = slic.iterate(img_np)+1
     
         lbp_np = local_binary_pattern(img_gray, 57, 8)
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean','coords'))

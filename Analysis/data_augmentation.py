@@ -142,7 +142,7 @@ for ind, img in enumerate(imgs):
 
 
     slic = SlicAvx2(num_components=num_seg, compactness=10)
-    segments = slic.iterate(img_np)
+    segments = slic.iterate(img_np)+1
     row = ind//2
     col = ind%2
     ax[row, col].imshow(mark_boundaries(img_np, segments))

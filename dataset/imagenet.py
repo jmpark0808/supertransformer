@@ -99,7 +99,7 @@ class ImageNetDatasetTest(data.Dataset):
             #     slic_zero=False)
 
             slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
-            segments = slic.iterate(img_np)
+            segments = slic.iterate(img_np)+1
 
 
             regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
@@ -212,7 +212,7 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
             #     slic_zero=False,
             #     min_size_factor=0)
             slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
-            segments = slic.iterate(img_np)
+            segments = slic.iterate(img_np)+1
             # plt.imshow(mark_boundaries(img_np, segments))
             # plt.show()
 

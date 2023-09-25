@@ -88,7 +88,7 @@ for file in tqdm(os.listdir(data_dir)):
     img_size = img_np.shape[1]
     slic = SlicAvx2(num_components=num_seg, compactness=10.0, min_size_factor=0)
     start = time.time()
-    segments = slic.iterate(img_np)
+    segments = slic.iterate(img_np)+1
     regions = regionprops_table(segments, intensity_image=img_np, properties=(['label']), extra_properties=[fourier_descriptors])#, polarize]
         
     end = time.time()
