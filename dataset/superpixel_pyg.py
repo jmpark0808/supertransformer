@@ -425,14 +425,22 @@ class SPDataset(data.Dataset):
         if self.fully_connected:
             neighbor_array = np.ones([self.num_seg, self.num_seg])
             edge_index = np.array(np.nonzero(neighbor_array))
+            features_centroids = features[:, :2]
+            spatial_distances = euclidean_distances(features_centroids, features_centroids)
+            spatial_distances = spatial_distances[edge_index[0], edge_index[1]]
+            
+        
+            edge_features = np.expand_dims(spatial_distances, axis=1)
+
         else:
             edge_index = np.load(sp_file_path_edge_index)
+            edge_features = np.load(sp_file_path_edge_features)/self.size
         
         if self.sigma_agen is not None:
             agen_noise = np.random.normal(0, self.sigma_agen, edge_index.shape)
             edge_index += agen_noise
         
-        edge_features = np.load(sp_file_path_edge_features)/self.size
+        
 
         if self.sigma_agen is not None:
             agen_noise = np.random.normal(0, self.sigma_agen, edge_index.shape)
