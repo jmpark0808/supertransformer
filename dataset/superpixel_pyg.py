@@ -304,7 +304,7 @@ class ToTensorSP(object):
 class SPDataset(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, compactness,
                   dataloader, data_augmentation=True, coeff=None,
-                    ignore_phase=False, fully_conneted=False, sigma_agen=None, sigma_agnn=None):
+                    ignore_phase=False, fully_conneted=False, sigma_agen=None, sigma_agnn=None, dilation=1):
         self.image_list = image_list
         self.mask_list = mask_list
         self.fully_connected = fully_conneted
@@ -314,6 +314,7 @@ class SPDataset(data.Dataset):
         self.sigma_agen = sigma_agen
         self.sigma_agnn = sigma_agnn
         self.size = size
+        self.dilation = dilation
         
         if dataloader == 'SPGFFT':
             totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
@@ -430,10 +431,11 @@ class SPDataset(data.Dataset):
             spatial_distances = spatial_distances[edge_index[0], edge_index[1]]
             
         
-            edge_features = np.expand_dims(spatial_distances, axis=1)
+            edge_features = np.expand_dims(spatial_distances, axis=1)/self.size
 
         else:
             edge_index = np.load(sp_file_path_edge_index)
+
             edge_features = np.load(sp_file_path_edge_features)/self.size
         
         if self.sigma_agen is not None:
