@@ -30,6 +30,7 @@ class SP_GAT_PyG(nn.Module):
 
         for conv in self.convs[:-1]:
             x = conv(x, edge_index, edge_attr=edge_attr) # adding edge features here!
+            x = self.elu(x)
 
       
         x = self.convs[-1](x, edge_index, edge_attr=edge_attr)
