@@ -19,9 +19,7 @@ class SP_TFM_PyG(nn.Module):
         self.elu = nn.ELU()
     
         self.convs = nn.ModuleList([TransformerConv(in_channels=nhid*nheads, out_channels=nhid, heads=nheads, dropout=dropout, edge_dim=edge_dim, concat=True) for _ in range(ntfm)])
-        self.ff = nn.ModuleList([FeedForward(nhid*nheads, nhid*nheads, dropout) for _ in range(ntfm)])
-        self.bn1 = nn.ModuleList([GraphNorm(nhid*nheads) for _ in range(ntfm)])
-        self.bn2 = nn.ModuleList([GraphNorm(nhid*nheads) for _ in range(ntfm)])
+        # self.ff = nn.ModuleList([FeedForward(nhid*nheads, nhid*nheads, dropout) for _ in range(ntfm)])
         self.classifier = nn.Linear(nhid*nheads, 1)
 
 
@@ -32,11 +30,9 @@ class SP_TFM_PyG(nn.Module):
         x = self.linear1(x)
         x = self.elu(x)
 
-        for conv, ff, bn1, bn2 in zip(self.convs, self.ff, self.bn1, self.bn2):
-            x = bn1(x)
-            x = conv(x, edge_index, edge_attr=edge_attr)+x # adding edge features here!
-            x = bn2(x)
-            x = ff(x)+x
+        for conv in self.convs:
+            x = conv(x, edge_index, edge_attr=edge_attr)# adding edge features here
+            x = self.elu(x)
       
         # x = self.convs[-1](x, edge_index, edge_attr=edge_attr)
         x = self.classifier(x)
