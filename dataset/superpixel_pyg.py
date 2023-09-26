@@ -456,7 +456,7 @@ class SPDataset(data.Dataset):
             features[:, 2:5] = np.clip(features[:, 2:5], 0, 1)
         
         
-        sample = (Data(x=torch.tensor(features[:, 2:]).float(),
+        sample = (Data(x=torch.tensor(features).float(),
                         edge_index=torch.tensor(edge_index),
                             edge_attr=torch.tensor(edge_features).float()),
                     torch.tensor(seq_mask), torch.tensor(segments), mask, self.image_list[item])
