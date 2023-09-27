@@ -154,11 +154,11 @@ def get_input_dim(args):
     elif args.get('dataloader') == 'SPFFT' or args.get('dataloader') == 'ImageNet' or args.get('dataloader')== 'SPGFFT' or \
     args.get('dataloader')== 'SPGIFFT':
         if args.get('ignore_phase'):
-            return 8+(args.get('coeff'))
+            return 6+(args.get('coeff'))
         else:
-            return 8+(args.get('coeff')*2)
+            return 6+(args.get('coeff')*2)
     elif args.get('dataloader') == 'SPG' or args.get('dataloader') == 'SPGI':
-        return 5
+        return 3
     else:
         raise 'Unrecognized dataloader'
     

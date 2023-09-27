@@ -379,6 +379,8 @@ class SPDataset(data.Dataset):
                 neighbor_array = np.zeros([self.num_seg, self.num_seg])
                 neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
                 neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+                if self.dilation != 1:
+                    neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
                 
             edge_index = np.array(np.nonzero(neighbor_array))
             np.save(sp_file_path_edge_index, edge_index)
@@ -440,17 +442,12 @@ class SPDataset(data.Dataset):
 
             edge_features = np.load(sp_file_path_edge_features)
         
-        if self.sigma_agen is not None:
-            agen_noise = np.random.normal(0, self.sigma_agen, edge_index.shape)
-            edge_index += agen_noise
-        
-        
 
-        if self.sigma_agen is not None:
-            agen_noise = np.random.normal(0, self.sigma_agen, edge_index.shape)
+        if self.sigma_agen is not None and self.data_augmentation:
+            agen_noise = np.random.normal(0, self.sigma_agen, edge_features.shape)
             edge_features += agen_noise
 
-        if self.sigma_agnn is not None:
+        if self.sigma_agnn is not None and self.data_augmentation:
             agnn_noise = np.random.normal(0, self.sigma_agnn, features[:, 2:5].shape)
             features[:, 2:5] += agnn_noise
             features[:, 2:5] = np.clip(features[:, 2:5], 0, 1)
@@ -484,6 +481,7 @@ class SPGDataModule(pl.LightningDataModule):
         self.fully_connected = kwargs.get('fully_connected', False)
         self.sigma_agen = kwargs.get('sigma_agen', None)
         self.sigma_agnn = kwargs.get('sigma_agnn', None)
+        self.dilation = kwargs.get('dilation')
         
         self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
         self.mask_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.train_dir, 'Mask'))]))
@@ -504,7 +502,7 @@ class SPGDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.compactness, self.dataloader, True,
-                                  self.coeff, self.ignore_phase, self.fully_connected)
+                                  self.coeff, self.ignore_phase, self.fully_connected, self.dilation)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=False)
@@ -512,10 +510,10 @@ class SPGDataModule(pl.LightningDataModule):
     def val_dataloader(self):
         data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg,
                               self.res, self.compactness, self.dataloader,False,
-                                self.coeff, self.ignore_phase, self.fully_connected)
+                                self.coeff, self.ignore_phase, self.fully_connected, self.dilation)
         data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.dataloader,False, 
-                               self.coeff, self.ignore_phase, self.fully_connected)
+                               self.coeff, self.ignore_phase, self.fully_connected,  self.dilation)
         val_dataloader = DataLoader(
                 data_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
@@ -527,7 +525,7 @@ class SPGDataModule(pl.LightningDataModule):
     def test_dataloader(self):
         data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.dataloader, False,
-                                 self.coeff, self.ignore_phase, self.fully_connected)
+                                 self.coeff, self.ignore_phase, self.fully_connected,  self.dilation)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)

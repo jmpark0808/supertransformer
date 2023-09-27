@@ -24,7 +24,8 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         self.tfm_hp = kwargs.get('tfmhp')
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
-        self.model = SP_TFM_PyG(input_dim, self.tfm_hp[1], 1, self.dropout, self.tfm_hp[0], self.tfm_hp[2])
+        self.model = SP_TFM_PyG(input_dim, self.tfm_hp[1], 1, self.dropout, self.tfm_hp[0], self.tfm_hp[2],
+                                 self.num_seg)
         
         # data = Data(x=torch.ones(self.num_seg, input_dim),
         #              edge_index=torch.ones(self.num_seg,self.num_seg),
