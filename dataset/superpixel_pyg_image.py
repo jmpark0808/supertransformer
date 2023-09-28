@@ -193,7 +193,7 @@ class ToTensorSPFFT(object):
             seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
 
    
-        seq_mask, segments, mask, img = torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
+        seq_mask, mask, img = torch.tensor(seq_mask).float(), self.tensor(mask), self.tensor(img)
         mask = (mask>0.5).float()
         return features, seq_mask, segments, mask, img
     
@@ -263,7 +263,7 @@ class ToTensorRaw(object):
 class SPDataset(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size,
                   compactness, dataloader, data_augmentation=True,
-                    coeff=None, ignore_phase=False, fully_connected=False):
+                    coeff=None, ignore_phase=False, fully_connected=False, dilation=1):
         self.image_list = image_list
         self.mask_list = mask_list
         self.fully_connected = fully_connected
@@ -271,6 +271,7 @@ class SPDataset(data.Dataset):
         self.dataloader = dataloader
         self.resize_mask = ResizeMask(size)
         self.size = size
+        self.dilation = dilation
         
         if dataloader == 'SPGIFFT':
             totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_connected)
@@ -281,7 +282,6 @@ class SPDataset(data.Dataset):
         self.transform = transforms.Compose(
             [RandomFlip(0.5),
              RandomCrop(size, int(size*1.14)),
-             RandomAffine(30, 0.2, 0.3),
              totensor])
         if not data_augmentation:
             self.transform = transforms.Compose([Resize(size), totensor])
@@ -307,8 +307,8 @@ class SPDataset(data.Dataset):
                 sp_file_path_edge_features = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_edge_features )
                 sp_file_path_seq_mask = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_seq_mask )
                 sp_file_path_segments = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_segments )
-                # if os.path.exists(sp_file_path_features):
-                #     continue
+                if os.path.exists(sp_file_path_features):
+                    continue
                 img = Image.open(image)
                 img = img.convert('RGB')
                 mask = Image.open(mask)
@@ -335,6 +335,8 @@ class SPDataset(data.Dataset):
                     neighbor_array = np.zeros([self.num_seg, self.num_seg])
                     neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
                     neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+                    if self.dilation != 1:
+                        neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
                     
                 edge_index = np.array(np.nonzero(neighbor_array))
                 np.save(sp_file_path_edge_index, edge_index)
@@ -391,7 +393,7 @@ class SPDataset(data.Dataset):
             
             edge_features = np.load(sp_file_path_edge_features)/self.size  
             
-            sample = (Data(x=torch.tensor(features[:, 2:]).float(),
+            sample = (Data(x=torch.tensor(features).float(),
                             edge_index=torch.tensor(edge_index),
                                 edge_attr=torch.tensor(edge_features).float()),
                         torch.tensor(seq_mask), torch.tensor(segments), mask, self.image_list[item])
@@ -420,6 +422,8 @@ class SPDataset(data.Dataset):
             neighbor_array = np.zeros([self.num_seg, self.num_seg])
             neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
             neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+            if self.dilation != 1:
+                neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
             
         edge_index = np.array(np.nonzero(neighbor_array))
 
@@ -434,7 +438,7 @@ class SPDataset(data.Dataset):
 
 
 
-        sample = (Data(x=torch.tensor(features[:, 2:]).float(),
+        sample = (Data(x=torch.tensor(features).float(),
                             edge_index=torch.tensor(edge_index),
                                 edge_attr=torch.tensor(edge_features).float()),
                         seq_mask, torch.tensor(segments), mask, self.image_list[item])
@@ -459,6 +463,7 @@ class SPGIDataModule(pl.LightningDataModule):
         self.compactness = kwargs.get('compactness')
         self.ignore_phase = kwargs.get('ignore_phase')
         self.fully_connected = kwargs.get('fully_connected', False)
+        self.dilation = kwargs.get('dilation', 1)
         
         self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
         self.mask_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Mask'), f) for f in os.listdir('{}/Mask'.format(self.train_dir))]))
@@ -478,7 +483,7 @@ class SPGIDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.compactness, self.dataloader, True,
-                                  self.coeff, self.ignore_phase, self.fully_connected)
+                                  self.coeff, self.ignore_phase, self.fully_connected, self.dilation)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=False)
@@ -486,10 +491,10 @@ class SPGIDataModule(pl.LightningDataModule):
     def val_dataloader(self):
         data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg,
                               self.res, self.compactness, self.dataloader,False,
-                                self.coeff, self.ignore_phase, self.fully_connected)
+                                self.coeff, self.ignore_phase, self.fully_connected, self.dilation)
         data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.dataloader,False, 
-                               self.coeff, self.ignore_phase, self.fully_connected)
+                               self.coeff, self.ignore_phase, self.fully_connected, self.dilation)
         val_dataloader = DataLoader(
                 data_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
@@ -501,7 +506,7 @@ class SPGIDataModule(pl.LightningDataModule):
     def test_dataloader(self):
         data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.dataloader, False,
-                                 self.coeff, self.ignore_phase, self.fully_connected)
+                                 self.coeff, self.ignore_phase, self.fully_connected, self.dilation)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
