@@ -21,9 +21,9 @@ class SP_TFM_PyG(nn.Module):
         self.convs = nn.ModuleList([TransformerConv(in_channels=nhid*nheads, out_channels=nhid,
                                                                           heads=nheads, dropout=dropout, edge_dim=None,
                                                                             concat=True) for _ in range(ntfm)])
-        self.ffs = nn.ModuleList([FeedForward(nhid*nheads, nhid*nheads, dropout) for _ in range(ntfm)])
+        # self.ffs = nn.ModuleList([FeedForward(nhid*nheads, nhid*nheads, dropout) for _ in range(ntfm)])
         self.ln1s = nn.ModuleList([LayerNorm(nhid*nheads) for _ in range(ntfm)])
-        self.ln2s = nn.ModuleList([LayerNorm(nhid*nheads) for _ in range(ntfm)])
+        # self.ln2s = nn.ModuleList([LayerNorm(nhid*nheads) for _ in range(ntfm)])
         self.classifier = nn.Linear(nhid*nheads, 1)
         self.num_seg = num_seg
         
@@ -44,11 +44,15 @@ class SP_TFM_PyG(nn.Module):
         pos = self.pos_linear(pos)
         x += pos
 
-        for conv, ff, ln1, ln2 in zip(self.convs, self.ffs, self.ln1s, self.ln2s):
+        # for conv, ff, ln1, ln2 in zip(self.convs, self.ffs, self.ln1s, self.ln2s):
+        #     x = ln1(x, batch_index)
+        #     x = conv(x, edge_index=edge_index, edge_attr=None)# adding edge features here
+        #     x = ln2(x, batch_index)
+        #     x = ff(x) + x
+        for conv, ln1 in zip(self.convs, self.ln1s):
             x = ln1(x, batch_index)
             x = conv(x, edge_index=edge_index, edge_attr=None)# adding edge features here
-            x = ln2(x, batch_index)
-            x = ff(x) + x
+            x = self.elu(x)
       
         # x = self.convs[-1](x, edge_index, edge_attr=edge_attr)
         x = self.classifier(x)

@@ -40,6 +40,7 @@ from Wrappers.SP_GUNET_PyG import SP_GUNET_PyG_Wrapper
 from dataset.superpixel import DUTSDataModule,  SPDataModule
 from dataset.superpixel_pyg import SPGDataModule
 from dataset.superpixel_pyg_image import SPGIDataModule
+from dataset.superpixel_fast import SPFDataModule
 
 
 # Metric logging
@@ -94,6 +95,7 @@ DATALOADER_DIRECTORY = {
     'SPG': SPGDataModule,
     'SPGIFFT': SPGIDataModule,
     'SPGI': SPGIDataModule,
+    'SPF': SPFDataModule
 
 } 
 
