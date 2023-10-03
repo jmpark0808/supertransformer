@@ -19,7 +19,7 @@ class SP_TFM_PyG(nn.Module):
         self.elu = nn.ELU()
         self.pos_linear = nn.Linear(2, nhid*nheads)
         self.convs = nn.ModuleList([TransformerConv(in_channels=nhid*nheads, out_channels=nhid,
-                                                                          heads=nheads, dropout=dropout, edge_dim=None,
+                                                                          heads=nheads, dropout=dropout, edge_dim=2,
                                                                             concat=True) for _ in range(ntfm)])
         # self.ffs = nn.ModuleList([FeedForward(nhid*nheads, nhid*nheads, dropout) for _ in range(ntfm)])
         self.ln1s = nn.ModuleList([LayerNorm(nhid*nheads) for _ in range(ntfm)])
@@ -35,14 +35,14 @@ class SP_TFM_PyG(nn.Module):
 
         batch_size = x.size(0)//self.num_seg
         batch_index = torch.arange(0, batch_size).repeat(self.num_seg).reshape(self.num_seg, -1).T.reshape(-1).cuda()
-        pos = x[:, :2]
+        # pos = x[:, :2]
         x = x[:, 2:]
 
         x = self.linear1(x)
         x = self.elu(x)
 
-        pos = self.pos_linear(pos)
-        x += pos
+        # pos = self.pos_linear(pos)
+        # x += pos
 
         # for conv, ff, ln1, ln2 in zip(self.convs, self.ffs, self.ln1s, self.ln2s):
         #     x = ln1(x, batch_index)
@@ -51,7 +51,7 @@ class SP_TFM_PyG(nn.Module):
         #     x = ff(x) + x
         for conv, ln1 in zip(self.convs, self.ln1s):
             x = ln1(x, batch_index)
-            x = conv(x, edge_index=edge_index, edge_attr=None)# adding edge features here
+            x = conv(x, edge_index=edge_index, edge_attr=edge_attr)# adding edge features here
             x = self.elu(x)
       
         # x = self.convs[-1](x, edge_index, edge_attr=edge_attr)

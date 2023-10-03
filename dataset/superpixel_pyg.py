@@ -386,11 +386,17 @@ class SPDataset(data.Dataset):
             np.save(sp_file_path_edge_index, edge_index)
 
             features_centroids = features[:, :2]/self.size
-            spatial_distances = euclidean_distances(features_centroids, features_centroids)
-            spatial_distances = spatial_distances[edge_index[0], edge_index[1]]
+            # spatial_distances = euclidean_distances(features_centroids, features_centroids)
+            # spatial_distances = spatial_distances[edge_index[0], edge_index[1]]
+
+            spatial_distances_x = (features_centroids[:, 0:1] - features_centroids[:, 0:1].T)
+            spatial_distances_x = spatial_distances_x[edge_index[0], edge_index[1]]
+            spatial_distances_y = (features_centroids[:, 1:2] - features_centroids[:, 1:2].T)
+            spatial_distances_y = spatial_distances_y[edge_index[0], edge_index[1]]
+            spatial_distances = np.stack((spatial_distances_x, spatial_distances_y), axis=1)
             
-        
-            edge_features = np.expand_dims(spatial_distances, axis=1)
+            edge_features = spatial_distances
+            # edge_features = np.expand_dims(spatial_distances, axis=1)
             np.save(sp_file_path_edge_features, edge_features)
 
     def __len__(self):
