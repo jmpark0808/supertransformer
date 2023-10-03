@@ -443,14 +443,14 @@ class SPDataset(data.Dataset):
             edge_features = np.load(sp_file_path_edge_features)
         
 
-        if self.sigma_agen is not None and self.data_augmentation:
-            agen_noise = np.random.normal(0, self.sigma_agen, edge_features.shape)
-            edge_features += agen_noise
+        # if self.sigma_agen is not None and self.data_augmentation:
+        #     agen_noise = np.random.normal(0, self.sigma_agen, edge_features.shape)
+        #     edge_features += agen_noise
 
-        if self.sigma_agnn is not None and self.data_augmentation:
-            agnn_noise = np.random.normal(0, self.sigma_agnn, features[:, 2:5].shape)
-            features[:, 2:5] += agnn_noise
-            features[:, 2:5] = np.clip(features[:, 2:5], 0, 1)
+        # if self.sigma_agnn is not None and self.data_augmentation:
+        #     agnn_noise = np.random.normal(0, self.sigma_agnn, features[:, 2:5].shape)
+        #     features[:, 2:5] += agnn_noise
+        #     features[:, 2:5] = np.clip(features[:, 2:5], 0, 1)
         
         
         sample = (Data(x=torch.tensor(features).float(),
