@@ -22,9 +22,10 @@ class SP_GUNET_PyG_Wrapper(pl.LightningModule):
         self.es_patience = kwargs.get('es_patience')
         self.dropout = kwargs.get('dropout')
         self.tfm_hp = kwargs.get('tfmhp')
+        self.num_seg = kwargs.get('num_seg')
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
-        self.model = SP_GUNET_PyG(input_dim, self.tfm_hp[1], 1, self.dropout, self.tfm_hp[0], self.tfm_hp[2])
+        self.model = SP_GUNET_PyG(input_dim, self.tfm_hp[1], self.num_seg, self.tfm_hp[2])
         
         # data = Data(x=torch.ones(self.num_seg, input_dim),
         #              edge_index=torch.ones(self.num_seg,self.num_seg),
