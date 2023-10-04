@@ -70,7 +70,7 @@ class ImageNetDatasetTest(data.Dataset):
 
 
         sp_file_name = self.image_list[item].split('.')[0]+'.npy'
-        sp_file_folder = os.path.join(self.root_dir, 'Data/CLS-LOC/sp_test')
+        sp_file_folder = os.path.join(self.root_dir, 'Data/CLS-LOC/sp_test_pyg')
         if not os.path.exists(sp_file_folder):
             os.makedirs(sp_file_folder, exist_ok=True)
         sp_file_path = os.path.join(sp_file_folder, sp_file_name)
@@ -175,7 +175,7 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
         img, target = self.imgs[index], self.targets[index]
         sp_file_name = img[0].split('/')[-1].split('.')[0]+'.npy'
         sp_file_name_edge = img[0].split('/')[-1].split('.')[0]+'edge.npy'
-        sp_file_folder = os.path.join('/',*img[0].split('/')[:-3], 'sp_train')
+        sp_file_folder = os.path.join('/',*img[0].split('/')[:-3], 'sp_train_pyg')
         if not os.path.exists(sp_file_folder):
             os.makedirs(sp_file_folder, exist_ok=True)
         sp_file_path = os.path.join(sp_file_folder, sp_file_name)
