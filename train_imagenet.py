@@ -15,10 +15,12 @@ from pytorch_lightning.profiler import SimpleProfiler
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from Wrappers.SP_ImageNet_TFM import SP_ImageNet_TFM_Wrapper
+from Wrappers.SP_ImageNet_GAT_PyG import SP_ImageNet_GAT_PyG_Wrapper
 
 
 # Import dataset modules
 from dataset.imagenet import SPImageNetDataModule
+from dataset.imagenet_pyg import SPGImageNetDataModule
 
 
 
@@ -29,10 +31,12 @@ from dataset.imagenet import SPImageNetDataModule
 
 MODEL_DIRECTORY = {
     'SP_ImageNet': SP_ImageNet_TFM_Wrapper,
+    'SP_ImageNet_PyG': SP_ImageNet_GAT_PyG_Wrapper
 
 }
 DATALOADER_DIRECTORY = {
     'ImageNet': SPImageNetDataModule,
+    'ImageNet_PyG': SPGImageNetDataModule
 } 
 
 if __name__ == "__main__":
@@ -70,6 +74,8 @@ if __name__ == "__main__":
                     type=int, help='Hyperparameters for Transformer')
     parser.add_argument('--coeff', help='Number of coefficients for fft', type=int, default=10)
     parser.add_argument('--compactness', help='Compactness for SLIC', type=float, default=10)
+    parser.add_argument('--dilation', help='Dilation for local transformer', type=int, default=5)
+
 
 
 

@@ -8,7 +8,7 @@ from dataset.constants import *
 from dataset.constants import NUM_CHUNK
 from util.util import get_input_dim
 
-class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
+class SP_ImageNet_GAT_PyG_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 

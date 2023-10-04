@@ -266,7 +266,7 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
 
         
 
-class SPImageNetDataModule(pl.LightningDataModule):
+class SPGImageNetDataModule(pl.LightningDataModule):
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -293,8 +293,9 @@ class SPImageNetDataModule(pl.LightningDataModule):
         self.num_seg = kwargs.get('num_seg', 600)
         self.coeff = kwargs.get('coeff', 70)
         self.compactness = kwargs.get('compactness', 10)
+        self.dilation = kwargs.get('dilation')
 
-        train_dataset = ImageNetDatasetTrain(train_dir, self.num_seg, self.coeff, self.compactness, val_test_transform, 'train')
+        train_dataset = ImageNetDatasetTrain(train_dir, self.num_seg, self.coeff, self.compactness, val_test_transform, 'train', self.dilation)
         class_to_idx = train_dataset.class_to_idx
         train_size = int(0.8*len(train_dataset))
         val_size = len(train_dataset) - train_size
@@ -302,7 +303,7 @@ class SPImageNetDataModule(pl.LightningDataModule):
         val_dataset.dataset.transform = val_test_transform
         val_dataset.mode = 'val'
 
-        test_dataset = ImageNetDatasetTest(test_dir, val_test_transform, self.num_seg, self.coeff, class_to_idx, self.compactness)
+        test_dataset = ImageNetDatasetTest(test_dir, val_test_transform, self.num_seg, self.coeff, class_to_idx, self.compactness, self.dilation)
 
         self.train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,
                                                                num_workers =self.num_workers, drop_last=True)
