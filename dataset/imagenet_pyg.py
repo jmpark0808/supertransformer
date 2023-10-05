@@ -26,7 +26,7 @@ from torch_geometric.data import Data
 from dataset.fft_transform import *
 
 class ImageNetDatasetTest(data.Dataset):
-    def __init__(self, root_dir, transforms, num_seg, coeff, class_to_idx, compactness):
+    def __init__(self, root_dir, transforms, num_seg, coeff, class_to_idx, compactness, dilation):
         self.root_dir = root_dir
         self.image_list = sorted(os.listdir('{}/Data/CLS-LOC/val'.format(root_dir)))
         self.target_list = sorted(os.listdir('{}/Annotations/CLS-LOC/val'.format(root_dir)))
@@ -35,6 +35,7 @@ class ImageNetDatasetTest(data.Dataset):
         self.num_seg = num_seg
         self.compactness = compactness
         self.coeff = coeff
+        self.dilation = dilation
 
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
