@@ -22,7 +22,7 @@ class SP_ImageNet_GAT_PyG_Wrapper(pl.LightningModule):
         self.tfm_hp = kwargs.get('tfmhp')
         self.dataloader = kwargs.get('dataloader')
         self.load = kwargs.get('load', None)
-        input_dim = get_input_dim(self.dataloader, kwargs)
+        input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
         self.supert = SP_GAT_IN(input_dim, self.tfm_hp[1], self.dropout, self.tfm_hp[0], self.tfm_hp[2], self.num_seg)
         if self.load:
