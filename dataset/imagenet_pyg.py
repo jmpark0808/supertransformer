@@ -143,7 +143,7 @@ class ImageNetDatasetTest(data.Dataset):
 
             features, target = torch.tensor(features).float(), torch.tensor(target)
 
-            return Data(x=features, edge_index=edge_index), target
+            return Data(x=features, edge_index=torch.tensor(edge_index)), target
 
 
 
@@ -277,7 +277,7 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
             
             features, target = torch.tensor(features).float(), torch.tensor(target)
 
-            return Data(x=features, edge_index=edge_index), target
+            return Data(x=features, edge_index=torch.tensor(edge_index)), target
 
         
 
