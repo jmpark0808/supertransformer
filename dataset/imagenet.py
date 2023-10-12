@@ -23,6 +23,7 @@ from skimage.segmentation import mark_boundaries
 import torchvision 
 import xml.etree.ElementTree as ET
 from dataset.fft_transform import *
+import pathlib
 
 class ImageNetDatasetTest(data.Dataset):
     def __init__(self, root_dir, transforms, num_seg, coeff, class_to_idx, compactness):
@@ -34,6 +35,14 @@ class ImageNetDatasetTest(data.Dataset):
         self.num_seg = num_seg
         self.compactness = compactness
         self.coeff = coeff
+
+
+    def __len__(self):
+        return len(self.image_list)
+
+    def __getitem__(self, item):
+        img_name = '{}/Data/CLS-LOC/val/{}'.format(self.root_dir, self.image_list[item])
+        target_name = '{}/Annotations/CLS-LOC/val/{}'.format(self.root_dir, self.target_list[item])
 
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
@@ -48,8 +57,8 @@ class ImageNetDatasetTest(data.Dataset):
             contour_complex.imag = contour_array[:, 1]
             fourier_result = np.fft.fft(contour_complex)
 
-            fourier_result_front = fourier_result[1:1+coeff//2]
-            fourier_result_back = fourier_result[-coeff//2:]
+            fourier_result_front = fourier_result[1:1+self.coeff//2]
+            fourier_result_back = fourier_result[-self.coeff//2:]
             fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
 
             amp = abs(fourier_result)
@@ -58,18 +67,8 @@ class ImageNetDatasetTest(data.Dataset):
             # return np.array(amp)
             return np.concatenate((amp, phase))
 
-        self.fourier_descriptors = fourier_descriptors
-
-    def __len__(self):
-        return len(self.image_list)
-
-    def __getitem__(self, item):
-        img_name = '{}/Data/CLS-LOC/val/{}'.format(self.root_dir, self.image_list[item])
-        target_name = '{}/Annotations/CLS-LOC/val/{}'.format(self.root_dir, self.target_list[item])
-
-
         sp_file_name = self.image_list[item].split('.')[0]+'.npy'
-        sp_file_folder = os.path.join(self.root_dir, 'Data/CLS-LOC/sp_test')
+        sp_file_folder = pathlib.Path(os.path.join(self.root_dir,'Data/CLS-LOC/sp_test'))
         if not os.path.exists(sp_file_folder):
             os.makedirs(sp_file_folder, exist_ok=True)
         sp_file_path = os.path.join(sp_file_folder, sp_file_name)
@@ -103,7 +102,7 @@ class ImageNetDatasetTest(data.Dataset):
 
 
             regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
-                                                                                        'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
+                                                                                        'coords'), extra_properties=[image_stdev, fourier_descriptors])#, polarize])
 
             seq_len = len(regions['label'])
             label = regions['label']
@@ -137,6 +136,20 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
         self.compactness = compactness
         self.coeff = coeff
         self.mode = mode
+        
+
+   
+
+    def __getitem__(self, index: int):
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            tuple: (image, target) where target is index of the target class.
+        """
+
+        img, target = self.imgs[index], self.targets[index]
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
             contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -150,8 +163,8 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
             contour_complex.imag = contour_array[:, 1]
             fourier_result = np.fft.fft(contour_complex)
 
-            fourier_result_front = fourier_result[1:1+coeff//2]
-            fourier_result_back = fourier_result[-coeff//2:]
+            fourier_result_front = fourier_result[1:1+self.coeff//2]
+            fourier_result_back = fourier_result[-self.coeff//2:]
             fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
 
             amp = abs(fourier_result)
@@ -159,20 +172,8 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
 
             # return np.array(amp)
             return np.concatenate((amp, phase))
-
-        self.fourier_descriptors = fourier_descriptors
-
-    def __getitem__(self, index: int):
-        """
-        Args:
-            index (int): Index
-
-        Returns:
-            tuple: (image, target) where target is index of the target class.
-        """
-        img, target = self.imgs[index], self.targets[index]
-        sp_file_name = img[0].split('/')[-1].split('.')[0]+'.npy'
-        sp_file_folder = os.path.join('/',*img[0].split('/')[:-3], 'sp_train')
+        sp_file_name = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'.npy'
+        sp_file_folder = os.path.join('/',*pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[:-3], 'sp_train')
         if not os.path.exists(sp_file_folder):
             os.makedirs(sp_file_folder, exist_ok=True)
         sp_file_path = os.path.join(sp_file_folder, sp_file_name)
@@ -217,7 +218,7 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
             # plt.show()
 
             regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
-                                                                                        'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
+                                                                                        'coords'), extra_properties=[image_stdev, fourier_descriptors])#, polarize])
 
             seq_len = len(regions['label'])
             label = regions['label']
@@ -300,7 +301,7 @@ class SPImageNetDataModule(pl.LightningDataModule):
         return self.train_source_loader
 
     def val_dataloader(self):
-        return self.val_source_loader
+        return [self.val_source_loader, self.test_source_loader]
 
     def test_dataloader(self):
         return self.test_source_loader
