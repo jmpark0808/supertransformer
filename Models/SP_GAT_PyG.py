@@ -81,7 +81,7 @@ class SP_GAT_IN(nn.Module):
         
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
-
+       
         batch_size = x.size(0)//self.num_seg
         batch_index = torch.arange(0, batch_size).repeat(self.num_seg).reshape(self.num_seg, -1).T.reshape(-1).cuda()
         pos = x[:, :2]
@@ -92,7 +92,7 @@ class SP_GAT_IN(nn.Module):
 
         pos = self.pos_linear(pos)
         x += pos
-
+        
         for conv, ln1 in zip(self.convs, self.ln1s):
             x = ln1(x, batch_index)
             x = conv(x, edge_index=edge_index, edge_attr=None)# adding edge features here

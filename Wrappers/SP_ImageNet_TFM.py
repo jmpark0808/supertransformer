@@ -22,7 +22,7 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
         self.tfm_hp = kwargs.get('tfmhp')
         self.dataloader = kwargs.get('dataloader')
         self.load = kwargs.get('load', None)
-        input_dim = get_input_dim(self.dataloader, kwargs)
+        input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
         self.supert = SP_ImageNet_TFM(input_dim, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout)
         if self.load:
@@ -112,7 +112,7 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
         self.iteration += 1
         return loss
 
-    def validation_epoch_end(self, validation_step_outputs):
+    def on_validation_epoch_end(self, validation_step_outputs):
         acc = self.val_acc/self.val_num_samples
         self.log('Validation Accuracy', acc)
         self.scheduler.step(torch.mean(torch.stack(validation_step_outputs)))
@@ -148,7 +148,7 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
         return loss
 
 
-    def test_epoch_end(self, validation_step_outputs):
+    def on_test_epoch_end(self, validation_step_outputs):
         acc = self.test_acc/self.test_num_samples
         self.log('Test Accuracy', acc)
 

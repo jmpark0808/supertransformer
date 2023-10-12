@@ -11,7 +11,6 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks.lr_monitor import LearningRateMonitor
-from pytorch_lightning.profiler import SimpleProfiler
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from Wrappers.SP_ImageNet_TFM import SP_ImageNet_TFM_Wrapper
@@ -116,20 +115,18 @@ if __name__ == "__main__":
     data_module = DATALOADER_DIRECTORY[dict_args['dataloader']](**dict_args)
 
     # Trainer: initialize training behaviour
-    profiler = SimpleProfiler()
+    
     lr_monitor = LearningRateMonitor(logging_interval='step')
     logger = TensorBoardLogger(save_dir=dict_args['logdir'], version=now+'_'+dict_args["tag"], name='lightning_logs', log_graph=True)
     trainer = pl.Trainer(
         callbacks=[early_stopping_callback, checkpoint_callback, lr_monitor],
         val_check_interval=dict_args['val_freq'],
         deterministic=False,
-        gpus=dict_args['gpus'],
-        profiler=profiler,
+        profiler='simple',
         logger=logger,
         max_epochs=dict_args["epoch"],
         log_every_n_steps=10,
         gradient_clip_val=dict_args['clip_grad_norm'],
-        resume_from_checkpoint=dict_args['resume_from_checkpoint']
     ) 
 
     # Trainer: train model

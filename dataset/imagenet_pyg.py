@@ -11,7 +11,7 @@ from skimage.feature import local_binary_pattern
 from sklearn.metrics.pairwise import euclidean_distances
 from skimage import color
 import pytorch_lightning as pl
-from torch.utils.data import DataLoader
+from torch_geometric.loader import DataLoader
 from fast_slic.avx2 import SlicAvx2
 from dataset.constants import *
 import matplotlib.pyplot as plt
@@ -24,6 +24,7 @@ import torchvision
 import xml.etree.ElementTree as ET
 from torch_geometric.data import Data
 from dataset.fft_transform import *
+import pathlib
 
 class ImageNetDatasetTest(data.Dataset):
     def __init__(self, root_dir, transforms, num_seg, coeff, class_to_idx, compactness, dilation):
@@ -37,6 +38,14 @@ class ImageNetDatasetTest(data.Dataset):
         self.coeff = coeff
         self.dilation = dilation
 
+    def __len__(self):
+        return len(self.image_list)
+    
+    
+
+    def __getitem__(self, item):
+        img_name = '{}/Data/CLS-LOC/val/{}'.format(self.root_dir, self.image_list[item])
+        target_name = '{}/Annotations/CLS-LOC/val/{}'.format(self.root_dir, self.target_list[item])
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
             contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -50,8 +59,8 @@ class ImageNetDatasetTest(data.Dataset):
             contour_complex.imag = contour_array[:, 1]
             fourier_result = np.fft.fft(contour_complex)
 
-            fourier_result_front = fourier_result[1:1+coeff//2]
-            fourier_result_back = fourier_result[-coeff//2:]
+            fourier_result_front = fourier_result[1:1+self.coeff//2]
+            fourier_result_back = fourier_result[-self.coeff//2:]
             fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
 
             amp = abs(fourier_result)
@@ -60,21 +69,14 @@ class ImageNetDatasetTest(data.Dataset):
             # return np.array(amp)
             return np.concatenate((amp, phase))
 
-        self.fourier_descriptors = fourier_descriptors
-
-    def __len__(self):
-        return len(self.image_list)
-
-    def __getitem__(self, item):
-        img_name = '{}/Data/CLS-LOC/val/{}'.format(self.root_dir, self.image_list[item])
-        target_name = '{}/Annotations/CLS-LOC/val/{}'.format(self.root_dir, self.target_list[item])
-
-
         sp_file_name = self.image_list[item].split('.')[0]+'.npy'
-        sp_file_folder = os.path.join(self.root_dir, 'Data/CLS-LOC/sp_test_pyg')
+        sp_file_name_edge = self.image_list[item].split('.')[0]+'edge.npy'
+        sp_file_folder = pathlib.Path(os.path.join(self.root_dir, 'Data/CLS-LOC/sp_test_pyg'))
         if not os.path.exists(sp_file_folder):
             os.makedirs(sp_file_folder, exist_ok=True)
         sp_file_path = os.path.join(sp_file_folder, sp_file_name)
+        sp_file_path_edge_index = os.path.join(sp_file_folder, sp_file_name_edge)
+
         target = ET.parse(target_name)
         root = target.getroot()
         target = root[5][0].text
@@ -82,9 +84,9 @@ class ImageNetDatasetTest(data.Dataset):
 
         if os.path.exists(sp_file_path):
             features = torch.tensor(np.load(sp_file_path)).float()
+            edge_index = torch.tensor(np.load(sp_file_path_edge_index))
 
-            target = torch.tensor(target)
-            return features, target
+            return Data(x=features, edge_index=edge_index), torch.tensor(target)
         else:
 
             img = Image.open(img_name)
@@ -103,9 +105,22 @@ class ImageNetDatasetTest(data.Dataset):
             slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
             segments = slic.iterate(img_np)+1
 
+            vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
+            vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
+            vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
+            vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
+            bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
+            neighbor_array = np.zeros([self.num_seg, self.num_seg])
+            neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+            neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+            if self.dilation != 1:
+                neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
+
+            edge_index = np.array(np.nonzero(neighbor_array))
+            np.save(sp_file_path_edge_index, edge_index)
 
             regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
-                                                                                        'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
+                                                                                        'coords'), extra_properties=[image_stdev, fourier_descriptors])#, polarize])
 
             seq_len = len(regions['label'])
             label = regions['label']
@@ -128,7 +143,7 @@ class ImageNetDatasetTest(data.Dataset):
 
             features, target = torch.tensor(features).float(), torch.tensor(target)
 
-            return features, target
+            return Data(x=features, edge_index=edge_index), target
 
 
 
@@ -140,6 +155,17 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
         self.coeff = coeff
         self.mode = mode
         self.dilation = dilation
+        
+
+    def __getitem__(self, index: int):
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            tuple: (image, target) where target is index of the target class.
+        """
+        img, target = self.imgs[index], self.targets[index]
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
             contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -153,8 +179,8 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
             contour_complex.imag = contour_array[:, 1]
             fourier_result = np.fft.fft(contour_complex)
 
-            fourier_result_front = fourier_result[1:1+coeff//2]
-            fourier_result_back = fourier_result[-coeff//2:]
+            fourier_result_front = fourier_result[1:1+self.coeff//2]
+            fourier_result_back = fourier_result[-self.coeff//2:]
             fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
 
             amp = abs(fourier_result)
@@ -162,21 +188,9 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
 
             # return np.array(amp)
             return np.concatenate((amp, phase))
-
-        self.fourier_descriptors = fourier_descriptors
-
-    def __getitem__(self, index: int):
-        """
-        Args:
-            index (int): Index
-
-        Returns:
-            tuple: (image, target) where target is index of the target class.
-        """
-        img, target = self.imgs[index], self.targets[index]
-        sp_file_name = img[0].split('/')[-1].split('.')[0]+'.npy'
-        sp_file_name_edge = img[0].split('/')[-1].split('.')[0]+'edge.npy'
-        sp_file_folder = os.path.join('/',*img[0].split('/')[:-3], 'sp_train_pyg')
+        sp_file_name = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'.npy'
+        sp_file_name_edge = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'edge.npy'
+        sp_file_folder = os.path.join('/',*pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[:-3], 'sp_train_pyg')
         if not os.path.exists(sp_file_folder):
             os.makedirs(sp_file_folder, exist_ok=True)
         sp_file_path = os.path.join(sp_file_folder, sp_file_name)
@@ -239,7 +253,7 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
             # plt.show()
 
             regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
-                                                                                        'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
+                                                                                        'coords'), extra_properties=[image_stdev, fourier_descriptors])#, polarize])
 
             seq_len = len(regions['label'])
             label = regions['label']
@@ -306,13 +320,13 @@ class SPGImageNetDataModule(pl.LightningDataModule):
 
         test_dataset = ImageNetDatasetTest(test_dir, val_test_transform, self.num_seg, self.coeff, class_to_idx, self.compactness, self.dilation)
 
-        self.train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,
+        self.train_source_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,
                                                                num_workers =self.num_workers, drop_last=True)
         
-        self.val_source_loader = torch.utils.data.DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False,
+        self.val_source_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False,
                                                               num_workers=self.num_workers, drop_last=False)
         
-        self.test_source_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False,
+        self.test_source_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False,
                                                               num_workers=self.num_workers, drop_last=False)
 
         

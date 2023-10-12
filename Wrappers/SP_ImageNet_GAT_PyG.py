@@ -31,7 +31,7 @@ class SP_ImageNet_GAT_PyG_Wrapper(pl.LightningModule):
                 ckpt['state_dict'][key.replace('supert.', '')] = ckpt['state_dict'].pop(key)
             self.supert.load_state_dict(ckpt['state_dict'])
 
-  
+        self.validation_step_outputs = []
         self.loss_fn = torch.nn.CrossEntropyLoss()
         self.iteration = 0
         self.test_iteration = 0
@@ -112,14 +112,15 @@ class SP_ImageNet_GAT_PyG_Wrapper(pl.LightningModule):
         self.iteration += 1
         return loss
 
-    def validation_epoch_end(self, validation_step_outputs):
+    def on_validation_epoch_end(self):
         acc = self.val_acc/self.val_num_samples
         self.log('Validation Accuracy', acc)
 
         acc = self.test_acc/self.test_num_samples
         self.log('Test Accuracy', acc)
 
-        self.scheduler.step(torch.mean(torch.stack(validation_step_outputs)))
+        self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
+        self.validation_step_outputs.clear()
 
     def on_validation_start(self):
         self.val_acc = 0
@@ -146,6 +147,7 @@ class SP_ImageNet_GAT_PyG_Wrapper(pl.LightningModule):
 
         loss = self.loss(pred, label)
         
+        
         max_scores, max_idx_class = pred.max(dim=1)
         n = pred.size(0)
         acc = (max_idx_class == label).sum().item() 
@@ -153,13 +155,14 @@ class SP_ImageNet_GAT_PyG_Wrapper(pl.LightningModule):
         if dataloader_idx == 0:
             self.val_acc += acc
             self.val_num_samples += n
+            self.validation_step_outputs.append(loss)
         if dataloader_idx == 1:
             self.test_acc += acc
             self.test_num_samples += n
         return loss
 
 
-    def test_epoch_end(self, validation_step_outputs):
+    def on_test_epoch_end(self):
         acc = self.test_acc/self.test_num_samples
         self.log('Final Test Accuracy', acc)
 
