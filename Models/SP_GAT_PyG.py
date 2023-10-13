@@ -17,7 +17,7 @@ class SP_GAT_PyG(nn.Module):
         """Dense version of GAT."""
         super(SP_GAT_PyG, self).__init__()
         self.linear1 = nn.Linear(nfeat, nhid*nheads)
-        self.elu = nn.ELU()
+        self.elu = nn.ReLU()
         self.pos_linear = nn.Linear(2, nhid*nheads)
         self.convs = nn.ModuleList([GATv2Conv(in_channels=nhid*nheads, out_channels=nhid,
                                                                           heads=nheads, dropout=dropout, edge_dim=None,
@@ -40,8 +40,7 @@ class SP_GAT_PyG(nn.Module):
         x = x[:, 2:]
 
         x = self.linear1(x)
-        x = self.elu(x)
-
+        
         pos = self.pos_linear(pos)
         x += pos
 
