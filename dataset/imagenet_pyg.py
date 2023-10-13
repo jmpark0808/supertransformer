@@ -25,6 +25,7 @@ import xml.etree.ElementTree as ET
 from torch_geometric.data import Data
 from dataset.fft_transform import *
 import pathlib
+from tqdm import tqdm
 
 class ImageNetDatasetTest(data.Dataset):
     def __init__(self, root_dir, transforms, num_seg, coeff, class_to_idx, compactness, dilation):
@@ -310,7 +311,13 @@ class SPGImageNetDataModule(pl.LightningDataModule):
         self.compactness = kwargs.get('compactness', 10)
         self.dilation = kwargs.get('dilation')
 
+        
+
+
+
+
         train_dataset = ImageNetDatasetTrain(train_dir, self.num_seg, self.coeff, self.compactness, val_test_transform, 'train', self.dilation)
+
         class_to_idx = train_dataset.class_to_idx
         train_size = int(0.8*len(train_dataset))
         val_size = len(train_dataset) - train_size
@@ -319,6 +326,27 @@ class SPGImageNetDataModule(pl.LightningDataModule):
         val_dataset.mode = 'val'
 
         test_dataset = ImageNetDatasetTest(test_dir, val_test_transform, self.num_seg, self.coeff, class_to_idx, self.compactness, self.dilation)
+
+        dummy_tr_loader = DataLoader(train_dataset, batch_size=16, shuffle=False,
+                                                               num_workers = 4, drop_last=False)
+        
+        print('Initializing Training Dataset')
+        for _ in tqdm(dummy_tr_loader):
+            pass
+        del dummy_tr_loader
+        dummy_val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False,
+                                                               num_workers = 4, drop_last=False)
+        print('Initializing validation Dataset')
+        for _ in tqdm(dummy_val_loader):
+            pass
+
+        del dummy_val_loader
+        dummy_te_loader = DataLoader(test_dataset, batch_size=16, shuffle=False,
+                                                               num_workers = 4, drop_last=False)
+        print('Initializing Test Dataset')
+        for _ in tqdm(dummy_te_loader):
+            pass
+        del dummy_te_loader
 
         self.train_source_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,
                                                                num_workers =self.num_workers, drop_last=True)
