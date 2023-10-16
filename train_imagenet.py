@@ -130,7 +130,10 @@ if __name__ == "__main__":
     ) 
 
     # Trainer: train model
-    trainer.fit(model, data_module)
+    if dict_args['resume_from_checkpoint'] is not None:
+        trainer.fit(model, data_module, ckpt_path=dict_args['resume_from_checkpoint'])
+    else:
+        trainer.fit(model, data_module)
 
     # Evaluate model on best ckpt (defined in 'ModelCheckpoint' callback)
     if dict_args['eval'] and dict_args['test_dir']:

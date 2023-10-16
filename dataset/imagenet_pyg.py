@@ -327,26 +327,26 @@ class SPGImageNetDataModule(pl.LightningDataModule):
 
         test_dataset = ImageNetDatasetTest(test_dir, val_test_transform, self.num_seg, self.coeff, class_to_idx, self.compactness, self.dilation)
 
-        dummy_tr_loader = DataLoader(train_dataset, batch_size=16, shuffle=False,
-                                                               num_workers = 4, drop_last=False)
+        # dummy_tr_loader = DataLoader(train_dataset, batch_size=16, shuffle=False,
+        #                                                        num_workers = 4, drop_last=False)
         
-        print('Initializing Training Dataset')
-        for _ in tqdm(dummy_tr_loader):
-            pass
-        del dummy_tr_loader
-        dummy_val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False,
-                                                               num_workers = 4, drop_last=False)
-        print('Initializing validation Dataset')
-        for _ in tqdm(dummy_val_loader):
-            pass
+        # print('Initializing Training Dataset')
+        # for _ in tqdm(dummy_tr_loader):
+        #     pass
+        # del dummy_tr_loader
+        # dummy_val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False,
+        #                                                        num_workers = 4, drop_last=False)
+        # print('Initializing validation Dataset')
+        # for _ in tqdm(dummy_val_loader):
+        #     pass
 
-        del dummy_val_loader
-        dummy_te_loader = DataLoader(test_dataset, batch_size=16, shuffle=False,
-                                                               num_workers = 4, drop_last=False)
-        print('Initializing Test Dataset')
-        for _ in tqdm(dummy_te_loader):
-            pass
-        del dummy_te_loader
+        # del dummy_val_loader
+        # dummy_te_loader = DataLoader(test_dataset, batch_size=16, shuffle=False,
+        #                                                        num_workers = 4, drop_last=False)
+        # print('Initializing Test Dataset')
+        # for _ in tqdm(dummy_te_loader):
+        #     pass
+        # del dummy_te_loader
 
         self.train_source_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,
                                                                num_workers =self.num_workers, drop_last=True)
