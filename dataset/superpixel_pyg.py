@@ -148,7 +148,7 @@ class ToTensorSPFFT(object):
         img_size = img_np.shape
 
         # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
-            
+        print(img_np.shape)
         slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
         segments = slic.iterate(img_np)+1
         # segments = slic(img_np, n_segments=self.num_seg,
@@ -458,15 +458,11 @@ class SPDataset(data.Dataset):
         #     features[:, 2:5] += agnn_noise
         #     features[:, 2:5] = np.clip(features[:, 2:5], 0, 1)
         
+      
         
-        sample = (Data(x=torch.tensor(features).float(),
+        return Data(x=torch.tensor(features).float(),
                         edge_index=torch.tensor(edge_index),
-                            edge_attr=torch.tensor(edge_features).float()),
-                    torch.tensor(seq_mask), torch.tensor(segments), mask, self.image_list[item])
-
-    
-        return sample
-
+                            edge_attr=torch.tensor(edge_features).float()), torch.tensor(seq_mask), torch.tensor(segments), mask, self.image_list[item]
 
 
 class SPGDataModule(pl.LightningDataModule):

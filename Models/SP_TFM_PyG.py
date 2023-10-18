@@ -2,7 +2,7 @@ import torch.nn as nn
 from Blocks.GraphBlocks import *
 from Blocks.TransformerBlocks import *
 from dataset.constants import *
-from torch_geometric.nn.conv import TransformerConv
+from Blocks.GraphTransformer import TransformerConv
 from torch_geometric.nn.norm import LayerNorm
 from Blocks.TransformerBlocks import FeedForward 
 
@@ -19,7 +19,7 @@ class SP_TFM_PyG(nn.Module):
         self.elu = nn.ELU()
         self.pos_linear = nn.Linear(2, nhid*nheads)
         self.convs = nn.ModuleList([TransformerConv(in_channels=nhid*nheads, out_channels=nhid,
-                                                                          heads=nheads, dropout=dropout, edge_dim=2,
+                                                                          heads=nheads, dropout=dropout, edge_dim=None,
                                                                             concat=True, root_weight=False) for _ in range(ntfm)])
         self.ffs = nn.ModuleList([FeedForward(nhid*nheads, nhid*nheads, dropout) for _ in range(ntfm)])
         self.ln1s = nn.ModuleList([LayerNorm(nhid*nheads) for _ in range(ntfm)])

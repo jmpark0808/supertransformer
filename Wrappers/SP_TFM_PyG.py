@@ -197,13 +197,14 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
             self.precs.append(prec)
             self.recalls.append(recall)
             self.test_iteration += 1
+            self.validation_step_outputs.append(mae)
         elif dataloader_idx == 1:
             self.precs_test.append(prec)
             self.recalls_test.append(recall)
         return mae
 
 
-    def validation_epoch_end(self, validation_step_outputs):
+    def on_validation_epoch_end(self):
         prec = torch.cat(self.precs, dim=0).cuda().mean(dim=0)
         recall = torch.cat(self.recalls, dim=0).cuda().mean(dim=0)
         beta_square = 0.3
@@ -228,7 +229,8 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         pred = torch.cat(self.preds_test, 0).cuda()
         mask = torch.cat(self.masks_test, 0).cuda().round().float()
         self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
-        self.scheduler.step(torch.mean(torch.stack(validation_step_outputs[0])))
+        self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
+        self.validation_step_outputs.clear()
 
     def on_validation_start(self):
         self.preds = []
@@ -241,11 +243,15 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         self.precs_test = []
         self.recalls_test = []
 
+        self.validation_step_outputs = []
+
     def on_test_start(self):
         self.preds = []
         self.masks = []
         self.precs = []
         self.recalls = []
+
+       
 
     def test_step(self, batch, batch_idx):
         """
@@ -298,9 +304,10 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         self.precs.append(prec)
         self.recalls.append(recall)
         self.test_iteration += 1
+       
         return mae
     
-    def test_epoch_end(self, test_step_outputs):
+    def on_test_epoch_end(self):
         prec = torch.cat(self.precs, dim=0).cuda().mean(dim=0)
         recall = torch.cat(self.recalls, dim=0).cuda().mean(dim=0)
         beta_square = 0.3
@@ -312,7 +319,7 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         pred = torch.cat(self.preds, 0).cuda()
         mask = torch.cat(self.masks, 0).cuda().round().float()
         self.log('Final Test MAE', torch.mean(torch.abs(pred-mask)))
-        self.scheduler.step(torch.mean(torch.stack(test_step_outputs)))
+      
                     
     
 
