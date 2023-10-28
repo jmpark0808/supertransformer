@@ -114,7 +114,7 @@ if __name__ == "__main__":
     parser.add_argument('--dataset_test', help='Directory of your test Dataset', default=None)
     parser.add_argument('--cuda', help="'cuda' for cuda, 'cpu' for cpu, default = cuda",
                         default='cuda', choices=['cuda', 'cpu'])
-    parser.add_argument('--gpus', help="Number of gpus to use for training", default=1, type=int)
+    parser.add_argument('--gpus', help="Number of gpus to use for training", default=0, type=int)
     parser.add_argument('--batch_size', help="batchsize, default = 1", default=1, type=int)
     parser.add_argument('--epoch', help='# of epochs. default = 20', default=20, type=int)
     parser.add_argument('--num_workers', help="# of dataloader cpu process", default=0, type=int)
@@ -195,6 +195,7 @@ if __name__ == "__main__":
         max_epochs=dict_args["epoch"],
         log_every_n_steps=10,
         gradient_clip_val=dict_args['clip_grad_norm'],
+        devices=[dict_args['gpus']]
     ) 
 
     # Trainer: train model

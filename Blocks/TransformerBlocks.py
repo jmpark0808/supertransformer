@@ -111,11 +111,11 @@ class PosAttention(nn.Module):
     def forward(self, x, emb, adj, distances):
         qkv = self.to_qkv(x).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
-
+        
         dots = torch.matmul(q, k.transpose(-1, -2))
         zero_vec = -1e9*torch.ones_like(dots)
 
-        adj = torch.matrix_power(adj, self.dilation).bool().int()
+        # adj = torch.matrix_power(adj, self.dilation).bool().int()
         adj = adj.unsqueeze(1).bool() # B x 1 x R x R
         adj = adj.repeat(1, dots.size(1), 1, 1)
 
@@ -134,10 +134,12 @@ class PosAttention(nn.Module):
             attention = torch.where(adj > 0, dots, zero_vec)
 
         attn = self.attend((attention)*self.scale)
+        
 
-
+        
         out = torch.matmul(attn, v)
         out = rearrange(out, 'b h n d -> b n (h d)')
+        
         return self.to_out(out)
     
     def skew(self, QEr):
@@ -260,18 +262,24 @@ class PosTransformer(nn.Module):
         super().__init__()
         self.layers = nn.ModuleList([])
         for _ in range(depth):
-            self.layers.append(nn.ModuleList([
-                PreNorm(dim, PosAttention(dim, dilation, heads = heads, dim_head = dim_head, dropout = dropout)),
-                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+            self.layers.append(nn.ModuleList([nn.LayerNorm(dim),
+                PosAttention(dim, dilation, heads = heads, dim_head = dim_head, dropout = dropout),
+                nn.LayerNorm(dim),
+                FeedForward(dim, mlp_dim, dropout = dropout)
             ]))
+
     def forward(self, x, emb, adj, distances):
-        for idx, (attn, ff) in enumerate(self.layers):
+        for idx, (ln1, attn, ln2, ff) in enumerate(self.layers):
             if idx == 0:
-                x = attn(x, emb=emb, adj=adj, distances=distances) + x
-                x = ff(x) + x
+                x_ = ln1(x)
+                x = attn(x_, emb=emb, adj=adj, distances=distances) + x
+                x_ = ln2(x)
+                x = ff(x_) + x
             else:
-                x = attn(x, emb=emb, adj=adj, distances=None) + x
-                x = ff(x) + x
+                x_ = ln1(x)
+                x = attn(x_, emb=emb, adj=adj, distances=None) + x
+                x_ = ln2(x)
+                x = ff(x_) + x
         return x
 
 class GraphConvTransformer(nn.Module):

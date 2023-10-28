@@ -61,7 +61,7 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         return optimizer
       
 
-    def forward(self, input):
+    def forward(self, input, batch_ind):
         """
         Forward pass through model
         :param x: Input features
@@ -69,9 +69,8 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
         
-        pred = self.model(input)
-        pred = pred.reshape(-1, self.num_seg)
-
+        pred = self.model(input, batch_ind)
+        
         return pred
 
     def on_train_epoch_start(self):
@@ -93,30 +92,35 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
         features = batch[0]
-        seq_mask = batch[1]
+        node_num = batch[1]
         segments = batch[2]
         mask = batch[3]
 
+        batch_ind = []
+        for idx, node in enumerate(node_num):
+            batch_ind += [idx]*node
 
         features = features.cuda()
         mask = mask.cuda()
      
         # forward pass
         
-        pred = self.forward(features)
+        pred = self.forward(features, torch.tensor(batch_ind).cuda())
 
-        loss = self.loss(pred, seq_mask)
+        loss = self.loss(pred, features.y)
         
-        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
-        seq_mask_numpy = seq_mask.detach().cpu().numpy()
+        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # sum(node_num), 1
+        
         batch_size = mask.size(0)
         img_size = mask.size(2)
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
         samples = []
-        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
+        node_ind = 0
+        for nodes, labels in zip(node_num, segments.cpu().numpy()):
+            plt_image = pred_numpy[node_ind:node_ind+nodes][labels-1].reshape([img_size, img_size])
             samples.append(plt_image)
+            node_ind += nodes
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
 
@@ -146,28 +150,32 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         """
         tensorboard = self.logger.experiment
         features = batch[0]
-        seq_mask = batch[1]
+        node_num = batch[1]
         segments = batch[2]
         mask = batch[3]
   
-
+        batch_ind = []
+        for idx, node in enumerate(node_num):
+            batch_ind += [idx]*node
         features = features.cuda()
         mask = mask.cuda()
 
 
         # forward pass
-        pred = self.forward(features)
+        pred = self.forward(features, torch.tensor(batch_ind).cuda())
 
-        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
-        seq_mask_numpy = seq_mask.detach().cpu().numpy()
+        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # sum(node_num), 1
+
         batch_size = mask.size(0)
         img_size = mask.size(2)
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
         samples = []
-        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
+        node_ind = 0
+        for nodes, labels in zip(node_num, segments.cpu().numpy()):
+            plt_image = pred_numpy[node_ind:node_ind+nodes][labels-1].reshape([img_size, img_size])
             samples.append(plt_image)
+            node_ind += nodes
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
         if batch_idx == 0:
@@ -259,28 +267,32 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
         features = batch[0]
-        seq_mask = batch[1]
+        node_num = batch[1]
         segments = batch[2]
         mask = batch[3]
-
+        batch_ind = []
+        for idx, node in enumerate(node_num):
+            batch_ind += [idx]*node
 
         features = features.cuda()
         mask = mask.cuda()
 
 
         # forward pass
-        pred = self.forward(features)
+        pred = self.forward(features, torch.tensor(batch_ind).cuda())
 
-        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
-        seq_mask_numpy = seq_mask.detach().cpu().numpy()
+        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # sum(node_num), 1
+
         batch_size = mask.size(0)
         img_size = mask.size(2)
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
         samples = []
-        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
+        node_ind = 0
+        for nodes, labels in zip(node_num, segments.cpu().numpy()):
+            plt_image = pred_numpy[node_ind:node_ind+nodes][labels-1].reshape([img_size, img_size])
             samples.append(plt_image)
+            node_ind += nodes
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
         # tensorboard.add_images('Test Pred', samples, self.test_iteration)

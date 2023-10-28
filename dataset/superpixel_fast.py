@@ -20,6 +20,7 @@ from dataset.attributes import *
 from torch.utils.data import DataLoader
 from pathlib import Path
 from tqdm import tqdm
+import time
 
 class Resize(object):
     def __init__(self, size):
@@ -385,6 +386,7 @@ class SPDataset(data.Dataset):
         return len(self.image_list)
 
     def __getitem__(self, item):
+        start = time.time()
         img_name = self.image_list[item]
         mask_name = self.mask_list[item]
 
@@ -403,8 +405,8 @@ class SPDataset(data.Dataset):
         sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_seq_mask )
         sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_segments )
 
-        img = Image.open(img_name)
-        img = img.convert('RGB')
+        # img = Image.open(img_name)
+        # img = img.convert('RGB')
         mask = Image.open(mask_name)
         mask = mask.convert('L')
         
@@ -414,7 +416,7 @@ class SPDataset(data.Dataset):
         segments = np.load(sp_file_path_segments)
         mask = self.resize_mask(mask)
         mask = (mask > 0.5).float()
-        img = self.resize_mask(img)
+        # img = self.resize_mask(img)
         if self.fully_connected:
             node_idx = np.unique(segments)-1
             neighbor_array = np.zeros([self.num_seg, self.num_seg])
@@ -423,8 +425,8 @@ class SPDataset(data.Dataset):
 
         else:
             neighbor_array = np.load(sp_file_path_edge_index)
-            if self.dilation != 1:
-                neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
+            # if self.dilation != 1:
+            #     neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
 
             
         
@@ -438,10 +440,11 @@ class SPDataset(data.Dataset):
         #     features[:, 2:5] += agnn_noise
         #     features[:, 2:5] = np.clip(features[:, 2:5], 0, 1)
         
-    
+        end = time.time()
+        # print(end-start)
         return {'features': torch.tensor(features).float(), 'seq_mask': torch.tensor(seq_mask),
-                 'segments': torch.tensor(segments), 'mask': mask, 'img': img, 'neighbor_array': neighbor_array,
-                   'edge_features': neighbor_array, 'file_name':self.image_list[item]}
+                 'segments': torch.tensor(segments), 'mask': mask, 'neighbor_array': torch.tensor(neighbor_array),
+                   'file_name':self.image_list[item]}
 
 
 

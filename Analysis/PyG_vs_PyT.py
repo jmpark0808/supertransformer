@@ -2,12 +2,16 @@ import torch.nn as nn
 
 import torch
 import sys
+sys.path.insert(0, '/mnt/dragon/waterloo/supertransformer')
 import numpy as np
 from torch_geometric.data import Data
 
 from fvcore.nn import FlopCountAnalysis
 from fvcore.nn import flop_count_table
 from einops import rearrange
+
+from Models.SP_TFM_PyG import SP_TFM_PyG
+from Models.SP_TFM import SP_TFM_REL
 
 
 import math
@@ -21,6 +25,7 @@ from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.dense.linear import Linear
 from torch_geometric.typing import Adj, OptTensor, PairTensor, SparseTensor
 from torch_geometric.utils import softmax
+from torch_geometric.loader import DataLoader
 
 
 class TransformerConv(MessagePassing):
@@ -255,11 +260,15 @@ def init_weights(m):
     if isinstance(m, nn.Linear):
         m.weight.data.fill_(0.5)
         if m.bias is not None:
-            m.bias.data.fill_(0.)
+            m.bias.data.fill_(0.1)
     if isinstance(m, Linear):
         m.weight.data.fill_(0.5)
         if m.bias is not None:
-            m.bias.data.fill_(0.)
+            m.bias.data.fill_(0.1)
+    if isinstance(m, nn.LayerNorm):
+        m.weight.data.fill_(1)
+        if m.bias is not None:
+            m.bias.data.fill_(0)
 
 
 class PyG_Transformer(nn.Module):
@@ -280,7 +289,8 @@ class PyG_Transformer(nn.Module):
             
         return x
 
-pyg_tfm = PyG_Transformer()
+# pyg_tfm = PyG_Transformer()
+pyg_tfm = SP_TFM_PyG(3, 5, None, 0, 4, 4, 100).cuda()
 pyg_tfm.apply(init_weights)
 pyg_tfm.eval()
 
@@ -327,11 +337,18 @@ class PosAttention(nn.Module):
         return self.to_out(out)
 
 
-pyt_tfm = PosAttention(3, 100, 8, 10, 0)
+# pyt_tfm = PosAttention(3, 100, 8, 10, 0)
+pyt_tfm = SP_TFM_REL(3, 100, 5, 4, 4, 0).cuda()
 pyt_tfm.apply(init_weights)
 pyt_tfm.eval()
 
-x = torch.ones(1, 100, 3)
+# print(pyg_tfm.ln1s[0].weight)
+# print(pyg_tfm.ln1s[0].bias)
+
+# print(pyt_tfm.transformer_enc.dummy_layer.norm.weight)
+# print(pyt_tfm.transformer_enc.dummy_layer.norm.bias)
+
+x = torch.randn(5, 100, 5)
 neighbor_array_pyt = np.ones((1, 100, 100))
 neighbor_array = np.ones((100, 100))
 edge_index = torch.tensor(np.array(np.nonzero(neighbor_array)))
@@ -339,16 +356,21 @@ edge_index = torch.tensor(np.array(np.nonzero(neighbor_array)))
 for para in pyg_tfm.parameters():
     para.requires_grad = False
 # flops = FlopCountAnalysis(pyg_tfm, [x, edge_index])
-out = pyg_tfm([x, edge_index])
-# print(out)
+pyg_x = [Data(x=x[i], edge_index=edge_index, edge_attr=torch.zeros_like(edge_index)).cuda() for i in range(5)]
+loader = DataLoader(pyg_x, batch_size=5, shuffle=False)
+batch = next(iter(loader))
+
+out_pyg = pyg_tfm(batch)
+out_pyg = out_pyg.reshape(5, 100, 1)
+print(out_pyg[3])
 # print(flop_count_table(flops))
 
 # flops = FlopCountAnalysis(pyt_tfm, (x, None, torch.tensor(neighbor_array_pyt), None))
-out = pyt_tfm(x, None, torch.tensor(neighbor_array_pyt), None)
-# print(out)
+out_pyt = pyt_tfm(x.cuda(), torch.tensor(neighbor_array_pyt).cuda(), None)
+print(out_pyt[3])
 # print(flop_count_table(flops))
 
-
+print(torch.sum(torch.abs(out_pyg-out_pyt)))
 
 
           

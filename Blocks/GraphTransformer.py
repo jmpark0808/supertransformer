@@ -174,14 +174,14 @@ class TransformerConv(MessagePassing):
         query = self.lin_query(x[1]).view(-1, H, C)
         key = self.lin_key(x[0]).view(-1, H, C)
         value = self.lin_value(x[0]).view(-1, H, C)
-
+        
         # propagate_type: (query: Tensor, key:Tensor, value: Tensor, edge_attr: OptTensor) # noqa
         out = self.propagate(edge_index, query=query, key=key, value=value,
                              edge_attr=edge_attr, size=None)
 
         alpha = self._alpha
         self._alpha = None
-
+        
         if self.concat:
             out = out.view(-1, self.heads * self.out_channels)
         else:
@@ -219,7 +219,7 @@ class TransformerConv(MessagePassing):
         alpha = softmax(alpha, index, ptr, size_i)
         self._alpha = alpha
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
-
+        
         out = value_j
         if edge_attr is not None:
             out = out + edge_attr

@@ -90,28 +90,27 @@ class SP_TFM_Wrapper(pl.LightningModule):
         seq_mask = batch['seq_mask']
         segments = batch['segments']
         mask = batch['mask'].cpu()
-        img = batch['img']
         adj = batch['neighbor_array']
-        distances = batch['edge_features']
+
 
 
 
         features = features.cuda()
         seq_mask = seq_mask.cuda()
         adj = adj.cuda()
-        distances = distances.cuda()
+
 
 
         # forward pass
         
-        pred = self.forward(features, adj, distances)
+        pred = self.forward(features, adj, None)
 
         loss = self.loss(pred, seq_mask)
         
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
-        batch_size = img.shape[0]
-        img_size = img.shape[2]
+        batch_size = mask.shape[0]
+        img_size = mask.shape[2]
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
         samples = []
@@ -149,25 +148,24 @@ class SP_TFM_Wrapper(pl.LightningModule):
         seq_mask = batch['seq_mask']
         segments = batch['segments']
         mask = batch['mask']
-        img = batch['img']
         adj = batch['neighbor_array']
-        distances = batch['edge_features']
+
 
 
         features = features.cuda()
         seq_mask = seq_mask.cuda()
         adj = adj.cuda()
-        distances = distances.cuda()
+    
         mask = mask.cuda()
 
 
         # forward pass
-        pred = self.forward(features, adj, distances)
+        pred = self.forward(features, adj, None)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
-        batch_size = img.shape[0]
-        img_size = img.shape[2]
+        batch_size = mask.shape[0]
+        img_size = mask.shape[2]
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
         samples = []
@@ -199,6 +197,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         if dataloader_idx == 0:
             self.precs.append(prec)
             self.recalls.append(recall)
+            self.validation_step_outputs.append(mae)
             self.test_iteration += 1
         elif dataloader_idx == 1:
             self.precs_test.append(prec)
@@ -206,7 +205,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         return mae
 
 
-    def validation_epoch_end(self, validation_step_outputs):
+    def on_validation_epoch_end(self):
         prec = torch.cat(self.precs, dim=0).cuda().mean(dim=0)
         recall = torch.cat(self.recalls, dim=0).cuda().mean(dim=0)
         beta_square = 0.3
@@ -230,7 +229,8 @@ class SP_TFM_Wrapper(pl.LightningModule):
         pred = torch.cat(self.preds_test, 0)
         mask = torch.cat(self.masks_test, 0).round().float()
         self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
-        self.scheduler.step(torch.mean(torch.stack(validation_step_outputs[0])))
+        self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
+        self.validation_step_outputs.clear()
 
     def on_validation_start(self):
         self.preds = []
@@ -243,11 +243,14 @@ class SP_TFM_Wrapper(pl.LightningModule):
         self.precs_test = []
         self.recalls_test = []
 
+        self.validation_step_outputs = []
+
     def on_test_start(self):
         self.preds = []
         self.masks = []
         self.precs = []
         self.recalls = []
+        self.test_step_outputs = []
 
 
     def test_step(self, batch, batch_idx):
@@ -259,24 +262,23 @@ class SP_TFM_Wrapper(pl.LightningModule):
         seq_mask = batch['seq_mask']
         segments = batch['segments']
         mask = batch['mask']
-        img = batch['img']
         adj = batch['neighbor_array']
-        distances = batch['edge_features']
+     
 
 
         features = features.cuda()
         seq_mask = seq_mask.cuda()
         adj = adj.cuda()
-        distances = distances.cuda()
+    
         mask = mask.cuda()
 
         # forward pass
-        pred = self.forward(features, adj, distances)
+        pred = self.forward(features, adj, None)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
-        batch_size = img.shape[0]
-        img_size = img.shape[2]
+        batch_size = mask.shape[0]
+        img_size = mask.shape[2]
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
         samples = []
@@ -305,10 +307,11 @@ class SP_TFM_Wrapper(pl.LightningModule):
         # (batch, threshold)
         self.precs.append(prec)
         self.recalls.append(recall)
+        self.test_step_outputs.append(mae)
         self.test_iteration += 1
         return mae
     
-    def test_epoch_end(self, test_step_outputs):
+    def on_test_epoch_end(self):
         prec = torch.cat(self.precs, dim=0).cuda().mean(dim=0)
         recall = torch.cat(self.recalls, dim=0).cuda().mean(dim=0)
         beta_square = 0.3
@@ -320,7 +323,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         pred = torch.cat(self.preds, 0).cuda()
         mask = torch.cat(self.masks, 0).cuda().round().float()
         self.log('Final Test MAE', torch.mean(torch.abs(pred-mask)))
-        self.scheduler.step(torch.mean(torch.stack(test_step_outputs)))
+        self.scheduler.step(torch.mean(torch.stack(self.test_step_outputs)))
                     
     
 

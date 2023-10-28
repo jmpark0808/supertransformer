@@ -21,6 +21,7 @@ from dataset.attributes import *
 from torch_geometric.loader import DataLoader
 from pathlib import Path
 from tqdm import tqdm
+import time
 
 class Resize(object):
     def __init__(self, size):
@@ -142,30 +143,61 @@ class ToTensorSPFFT(object):
 
 
     def __call__(self, sample):
+        # img, mask = sample['image'], sample['mask']
+        # img_np = np.array(img)
+        # mask_np = np.array(mask)/255.
+        # img_size = img_np.shape
+
+        # # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
+        
+        # slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
+        # segments = slic.iterate(img_np)+1
+     
+    
+
+        # regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
+        #                                                                             'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
+
+        # seq_len = len(regions['label'])
+        # seq_mask = np.zeros([seq_len])
+        # label = regions['label']
+        # features = np.zeros([seq_len, 8+(self.coeff)*2])
+        # if self.ignore_phase:
+        #     features = np.zeros([seq_len, 8+self.coeff])
+        #     for i in range(self.coeff):
+        #         features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
+        # else:
+        #     for i in range(self.coeff*2):
+        #         features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
+
+ 
+        # features[label-1, 0] = regions['centroid-0']
+        # features[label-1, 1] = regions['centroid-1']
+        
+        # features[label-1, 2] = regions['intensity_mean-0']/255.
+        # features[label-1, 3] = regions['intensity_mean-1']/255.
+        # features[label-1, 4] = regions['intensity_mean-2']/255.
+        # features[label-1, 5] = regions['image_stdev-0']/255.
+        # features[label-1, 6] = regions['image_stdev-1']/255.
+        # features[label-1, 7] = regions['image_stdev-2']/255.
+        
+
+
+        # for ind, coord in zip(regions['label'], regions['coords']):
+        #     seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
+
+        # return features, seq_mask, seq_len, segments, self.tensor(mask)
+
         img, mask = sample['image'], sample['mask']
         img_np = np.array(img)
         mask_np = np.array(mask)/255.
         img_size = img_np.shape
 
         # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
-        print(img_np.shape)
+        
         slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
         segments = slic.iterate(img_np)+1
-        # segments = slic(img_np, n_segments=self.num_seg,
-        #     compactness=self.compactness,
-        #     max_num_iter=3,
-        #     convert2lab=True,
-        #     enforce_connectivity=False,
-        #     slic_zero=False)
-
-        # plt.imshow(mark_boundaries(img_np, segments))
-        # plt.show()
-
-        # vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
-        # vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
-        # vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
-        # vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
-        # bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
+     
     
 
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
@@ -199,28 +231,8 @@ class ToTensorSPFFT(object):
         for ind, coord in zip(regions['label'], regions['coords']):
             seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
 
-
-        # if self.fully_connected:
-        #     neighbor_array = np.ones([self.num_seg, self.num_seg])
-        # else:
-        #     neighbor_array = np.zeros([self.num_seg, self.num_seg])
-        #     neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
-        #     neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
-        # edge_index = np.nonzero(neighbor_array)
-
-
-
-        # spatial_distances = euclidean_distances(features_centroids, features_centroids)
-        # spatial_distances = spatial_distances[edge_index]
-        
-      
-        # edge_features = np.expand_dims(spatial_distances, axis=1)
-        
-
-        # d = Data(x=torch.tensor(features).float(), edge_index=edge_index, edge_attr=edge_features)
-        # seq_mask, segments, mask = torch.tensor(seq_mask).float(), torch.tensor(segments)
-
-        return features, seq_mask, segments, self.tensor(mask)
+        return features, seq_mask, seq_len, segments, self.tensor(mask)
+    
     
 class ToTensorSP(object):
     def __init__(self, num_seg, compactness, fully_connected):
@@ -260,10 +272,10 @@ class ToTensorSP(object):
                                                                                     'coords'))#, polarize])
 
         seq_len = len(regions['label'])
-        seq_mask = np.zeros([self.num_seg])
+        seq_mask = np.zeros([seq_len])
         label = regions['label']
         
-        features = np.zeros([self.num_seg, 5])
+        features = np.zeros([seq_len, 5])
 
 
     
@@ -298,7 +310,7 @@ class ToTensorSP(object):
         # d = Data(x=torch.tensor(features).float(), edge_index=edge_index, edge_attr=edge_features)
         # seq_mask, segments, mask = torch.tensor(seq_mask).float(), torch.tensor(segments)
 
-        return features, seq_mask, segments, self.tensor(mask)
+        return features, seq_mask, seq_len, segments, self.tensor(mask)
 
 
 
@@ -340,8 +352,9 @@ class SPDataset(data.Dataset):
             sp_file_name_features = image.split('/')[-1].split('.')[0]+'_features.npy'
             sp_file_name_edge_index = image.split('/')[-1].split('.')[0]+'_edge_index.npy'
             sp_file_name_edge_features = image.split('/')[-1].split('.')[0]+'_edge_features.npy'
-            sp_file_name_seq_mask = image.split('/')[-1].split('.')[0]+'_seq_mask.npy'
+            sp_file_name_node_num = image.split('/')[-1].split('.')[0]+'_node_num.npy'
             sp_file_name_segments = image.split('/')[-1].split('.')[0]+'_segments.npy'
+            sp_file_name_seq_mask = image.split('/')[-1].split('.')[0]+'_seq_mask.npy'
 
 
 
@@ -349,9 +362,12 @@ class SPDataset(data.Dataset):
             sp_file_path_features = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_features )
             sp_file_path_edge_index = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_edge_index )
             sp_file_path_edge_features = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_edge_features )
-            sp_file_path_seq_mask = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_seq_mask )
             sp_file_path_segments = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_segments )
-            if os.path.exists(sp_file_path_features):
+            sp_file_path_node_num = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_node_num )
+            sp_file_path_seq_mask = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_seq_mask)
+            if os.path.exists(sp_file_path_features) and os.path.exists(sp_file_path_edge_index) and \
+                 os.path.exists(sp_file_path_edge_features) and  os.path.exists(sp_file_path_node_num) and\
+                    os.path.exists(sp_file_path_segments) and  os.path.exists(sp_file_path_seq_mask):
                 continue
             img = Image.open(image)
             img = img.convert('RGB')
@@ -362,11 +378,13 @@ class SPDataset(data.Dataset):
 
             sample = self.transform(sample)
             np.save(sp_file_path_features, sample[0])
+            np.save(sp_file_path_segments, sample[3])
+            np.save(sp_file_path_node_num, sample[2])
             np.save(sp_file_path_seq_mask, sample[1])
-            np.save(sp_file_path_segments, sample[2])
 
-            segments = sample[2]
+            segments = sample[3]
             features = sample[0]
+           
      
             if self.fully_connected:
                 neighbor_array = np.ones([self.num_seg, self.num_seg])
@@ -379,11 +397,10 @@ class SPDataset(data.Dataset):
                 neighbor_array = np.zeros([self.num_seg, self.num_seg])
                 neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
                 neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
-                if self.dilation != 1:
-                    neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
+                
                 
             edge_index = np.array(np.nonzero(neighbor_array))
-            np.save(sp_file_path_edge_index, edge_index)
+            np.save(sp_file_path_edge_index, neighbor_array)
 
             features_centroids = features[:, :2]/self.size
             # spatial_distances = euclidean_distances(features_centroids, features_centroids)
@@ -403,6 +420,7 @@ class SPDataset(data.Dataset):
         return len(self.image_list)
 
     def __getitem__(self, item):
+        start = time.time()
         img_name = self.image_list[item]
         mask_name = self.mask_list[item]
 
@@ -411,7 +429,7 @@ class SPDataset(data.Dataset):
         sp_file_name_edge_features = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_features.npy'
         sp_file_name_seq_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_seq_mask.npy'
         sp_file_name_segments = self.image_list[item].split('/')[-1].split('.')[0]+'_segments.npy'
-
+        sp_file_name_node_num = self.image_list[item].split('/')[-1].split('.')[0]+'_node_num.npy'
 
 
 
@@ -420,6 +438,7 @@ class SPDataset(data.Dataset):
         sp_file_path_edge_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_features )
         sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_seq_mask )
         sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_segments )
+        sp_file_path_node_num = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_node_num )
 
 
         mask = Image.open(mask_name)
@@ -429,12 +448,12 @@ class SPDataset(data.Dataset):
         features = np.load(sp_file_path_features)
         seq_mask = np.load(sp_file_path_seq_mask)
         segments = np.load(sp_file_path_segments)
+        node_num = np.load(sp_file_path_node_num)
         mask = self.resize_mask(mask)
         mask = (mask > 0.5).float()
         if self.fully_connected:
-            node_idx = np.unique(segments)-1
-            neighbor_array = np.zeros([self.num_seg, self.num_seg])
-            neighbor_array[node_idx[:, np.newaxis], node_idx[np.newaxis, :]] = 1
+            neighbor_array = np.ones([self.num_seg, self.num_seg])
+
             edge_index = np.array(np.nonzero(neighbor_array))
             features_centroids = features[:, :2]
             spatial_distances = euclidean_distances(features_centroids, features_centroids)
@@ -444,8 +463,11 @@ class SPDataset(data.Dataset):
             edge_features = np.expand_dims(spatial_distances, axis=1)
 
         else:
-            edge_index = np.load(sp_file_path_edge_index)
+            neighbor_array = np.load(sp_file_path_edge_index)
+            if self.dilation != 1:
+                neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
 
+            edge_index = np.array(np.nonzero(neighbor_array))
             edge_features = np.load(sp_file_path_edge_features)
         
 
@@ -458,11 +480,18 @@ class SPDataset(data.Dataset):
         #     features[:, 2:5] += agnn_noise
         #     features[:, 2:5] = np.clip(features[:, 2:5], 0, 1)
         
-      
-        
+        if segments.shape[0] != self.size or mask.shape[1] != self.size:
+            os.remove(sp_file_path_features)
+            os.remove(sp_file_path_seq_mask)
+            os.remove(sp_file_path_segments)
+            os.remove(sp_file_path_edge_index)
+            os.remove(sp_file_path_edge_features)
+        end = time.time()
+        # print(end-start)
         return Data(x=torch.tensor(features).float(),
                         edge_index=torch.tensor(edge_index),
-                            edge_attr=torch.tensor(edge_features).float()), torch.tensor(seq_mask), torch.tensor(segments), mask, self.image_list[item]
+                            edge_attr=torch.tensor(edge_features).float(),
+                            y=torch.tensor(seq_mask)), torch.tensor(node_num), torch.tensor(segments), mask, self.image_list[item]
 
 
 class SPGDataModule(pl.LightningDataModule):

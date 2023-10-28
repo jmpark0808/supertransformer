@@ -279,10 +279,11 @@ class SPDataset(data.Dataset):
             totensor = ToTensorSP(num_seg, compactness, fully_connected)
         
 
-        self.transform = transforms.Compose(
-            [RandomFlip(0.5),
-             RandomCrop(size, int(size*1.14)),
-             totensor])
+        # self.transform = transforms.Compose(
+        #     [RandomFlip(0.5),
+        #      RandomCrop(size, int(size*1.14)),
+        #      totensor])
+        self.transform = transforms.Compose([Resize(size), totensor])
         if not data_augmentation:
             self.transform = transforms.Compose([Resize(size), totensor])
 
@@ -428,6 +429,7 @@ class SPDataset(data.Dataset):
             neighbor_array = np.zeros([self.num_seg, self.num_seg])
             neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
             neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+
             if self.dilation != 1:
                 neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
             

@@ -120,26 +120,31 @@ class SP_ImageNet_TFM(nn.Module):
     - Use Fourier descriptors as shape
 
     '''
-    def __init__(self, nfeat, nhid, nheads, ntfm, dropout):
+    def __init__(self, nfeat, dilation, nhid, nheads, ntfm, dropout):
         """Dense version of GAT."""
         super(SP_ImageNet_TFM, self).__init__()
         self.linear = nn.Linear(nfeat, nhid * nheads)
         self.pos_linear = nn.Linear(2, nhid*nheads)
-        self.cls_token = nn.Parameter(torch.randn(1, 1, nhid*nheads))
-        self.encoder = nn.TransformerEncoderLayer(d_model=nhid*nheads, nhead=nheads, dropout=dropout, dim_feedforward=nhid*nheads, batch_first=True)
-        self.transformer_enc = nn.TransformerEncoder(self.encoder, num_layers=ntfm)
-   
+        # self.pos_linear2 = nn.Linear(64, nhid*nheads)
+
+        # self.pos_encoding = PositionalEncodingSuperPixel(nhid*nheads)
+        self.transformer_enc = PosTransformer(nhid * nheads, dilation, ntfm, nheads, nhid, nhid*nheads, dropout)
+        # self.encoder = nn.TransformerEncoderLayer(d_model=nhid*nheads, nhead=nheads, dropout=dropout, dim_feedforward=nhid*nheads, batch_first=True)
+        # self.transformer_enc = nn.TransformerEncoder(self.encoder, num_layers=ntfm)
+
         self.out = nn.Linear(nhid * nheads, 1000)
-    def forward(self, x):
-        centroids = x[:, :, :2]
+    def forward(self, x, adj):
+        pos = x[:, :, :2]
         x = x[:, :, 2:]
         x = self.linear(x)
+        pos = self.pos_linear(pos)
+        # pos = torch.relu(pos)
+        # pos = self.pos_linear2(pos)
+        # pos = self.pos_encoding(pos)
+        x += pos
+        x = self.transformer_enc(x, None, adj, None) # batch, nodes, hid
+        x = torch.mean(x, dim=1)
 
-        cls_tokens = repeat(self.cls_token, '1 1 d -> b 1 d', b = x.size(0))
-        x += self.pos_linear(centroids)
-        x = torch.cat((cls_tokens, x), dim=1)
-        x = self.transformer_enc(x)
-        x = x[:, 0]
         x = self.out(x)
         return x
 
