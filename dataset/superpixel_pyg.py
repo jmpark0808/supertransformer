@@ -143,51 +143,6 @@ class ToTensorSPFFT(object):
 
 
     def __call__(self, sample):
-        # img, mask = sample['image'], sample['mask']
-        # img_np = np.array(img)
-        # mask_np = np.array(mask)/255.
-        # img_size = img_np.shape
-
-        # # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
-        
-        # slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
-        # segments = slic.iterate(img_np)+1
-     
-    
-
-        # regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
-        #                                                                             'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
-
-        # seq_len = len(regions['label'])
-        # seq_mask = np.zeros([seq_len])
-        # label = regions['label']
-        # features = np.zeros([seq_len, 8+(self.coeff)*2])
-        # if self.ignore_phase:
-        #     features = np.zeros([seq_len, 8+self.coeff])
-        #     for i in range(self.coeff):
-        #         features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
-        # else:
-        #     for i in range(self.coeff*2):
-        #         features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
-
- 
-        # features[label-1, 0] = regions['centroid-0']
-        # features[label-1, 1] = regions['centroid-1']
-        
-        # features[label-1, 2] = regions['intensity_mean-0']/255.
-        # features[label-1, 3] = regions['intensity_mean-1']/255.
-        # features[label-1, 4] = regions['intensity_mean-2']/255.
-        # features[label-1, 5] = regions['image_stdev-0']/255.
-        # features[label-1, 6] = regions['image_stdev-1']/255.
-        # features[label-1, 7] = regions['image_stdev-2']/255.
-        
-
-
-        # for ind, coord in zip(regions['label'], regions['coords']):
-        #     seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
-
-        # return features, seq_mask, seq_len, segments, self.tensor(mask)
-
         img, mask = sample['image'], sample['mask']
         img_np = np.array(img)
         mask_np = np.array(mask)/255.
@@ -204,11 +159,11 @@ class ToTensorSPFFT(object):
                                                                                     'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
 
         seq_len = len(regions['label'])
-        seq_mask = np.zeros([self.num_seg])
+        seq_mask = np.zeros([seq_len])
         label = regions['label']
-        features = np.zeros([self.num_seg, 8+(self.coeff)*2])
+        features = np.zeros([seq_len, 8+(self.coeff)*2])
         if self.ignore_phase:
-            features = np.zeros([self.num_seg, 8+self.coeff])
+            features = np.zeros([seq_len, 8+self.coeff])
             for i in range(self.coeff):
                 features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
         else:
@@ -232,6 +187,8 @@ class ToTensorSPFFT(object):
             seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
 
         return features, seq_mask, seq_len, segments, self.tensor(mask)
+
+        
     
     
 class ToTensorSP(object):

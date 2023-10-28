@@ -165,11 +165,11 @@ class ToTensorSPFFT(object):
                                                                                     'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
 
         seq_len = len(regions['label'])
-        seq_mask = np.zeros([self.num_seg])
+        seq_mask = np.zeros([seq_len])
         label = regions['label']
-        features = np.zeros([self.num_seg, 8+(self.coeff)*2])
+        features = np.zeros([seq_len, 8+(self.coeff)*2])
         if self.ignore_phase:
-            features = np.zeros([self.num_seg, 8+self.coeff])
+            features = np.zeros([seq_len, 8+self.coeff])
             for i in range(self.coeff):
                 features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
         else:
@@ -195,7 +195,7 @@ class ToTensorSPFFT(object):
    
         seq_mask, mask, img = torch.tensor(seq_mask).float(), self.tensor(mask), self.tensor(img)
         mask = (mask>0.5).float()
-        return features, seq_mask, segments, mask, img
+        return features, seq_mask, seq_len, segments, mask, img
     
 class ToTensorSP(object):
     def __init__(self, num_seg, compactness, fully_connected):
@@ -231,9 +231,9 @@ class ToTensorSP(object):
                                                                                     'coords'))#, polarize])
 
         seq_len = len(regions['label'])
-        seq_mask = np.zeros([self.num_seg])
+        seq_mask = np.zeros([seq_len])
         label = regions['label']
-        features = np.zeros([self.num_seg, 5])
+        features = np.zeros([seq_len, 5])
 
         features[label-1, 0] = regions['centroid-0']
         features[label-1, 1] = regions['centroid-1']
@@ -249,7 +249,7 @@ class ToTensorSP(object):
         
         seq_mask, mask, img = torch.tensor(seq_mask).float(), self.tensor(mask), self.tensor(img)
         mask = (mask>0.5).float()
-        return features, seq_mask, segments, mask, img
+        return features, seq_mask, seq_len, segments, mask, img
 
 class ToTensorRaw(object):
     def __init__(self):
@@ -299,6 +299,7 @@ class SPDataset(data.Dataset):
                 sp_file_name_edge_features = image.split('/')[-1].split('.')[0]+'_edge_features.npy'
                 sp_file_name_seq_mask = image.split('/')[-1].split('.')[0]+'_seq_mask.npy'
                 sp_file_name_segments = image.split('/')[-1].split('.')[0]+'_segments.npy'
+                sp_file_name_node_num = image.split('/')[-1].split('.')[0]+'_node_num.npy'
 
 
 
@@ -308,6 +309,7 @@ class SPDataset(data.Dataset):
                 sp_file_path_edge_features = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_edge_features )
                 sp_file_path_seq_mask = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_seq_mask )
                 sp_file_path_segments = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_segments )
+                sp_file_path_node_num = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_node_num )
                 if os.path.exists(sp_file_path_features):
                     continue
                 img = Image.open(image)
@@ -320,20 +322,22 @@ class SPDataset(data.Dataset):
                 sample = self.transform(sample)
                 np.save(sp_file_path_features, sample[0])
                 np.save(sp_file_path_seq_mask, sample[1])
-                np.save(sp_file_path_segments, sample[2])
+                np.save(sp_file_path_node_num, sample[2])
+                np.save(sp_file_path_segments, sample[3])
 
-                segments = sample[2]
+                segments = sample[3]
                 features = sample[0]
+                node_num = sample[2]
                 
                 if self.fully_connected:
-                    neighbor_array = np.ones([self.num_seg, self.num_seg])
+                    neighbor_array = np.ones([node_num, node_num])
                 else:
                     vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
                     vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
                     vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
                     vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
                     bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
-                    neighbor_array = np.zeros([self.num_seg, self.num_seg])
+                    neighbor_array = np.zeros([node_num, node_num])
                     neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
                     neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
                     if self.dilation != 1:
@@ -372,6 +376,7 @@ class SPDataset(data.Dataset):
             sp_file_name_edge_features = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_features.npy'
             sp_file_name_seq_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_seq_mask.npy'
             sp_file_name_segments = self.image_list[item].split('/')[-1].split('.')[0]+'_segments.npy'
+            sp_file_name_node_num = self.image_list[item].split('/')[-1].split('.')[0]+'_node_num.npy'
 
 
 
@@ -381,6 +386,7 @@ class SPDataset(data.Dataset):
             sp_file_path_edge_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_features )
             sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_seq_mask )
             sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_segments )
+            sp_file_path_node_num = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_node_num )
 
 
             mask = Image.open(mask_name)
@@ -390,10 +396,11 @@ class SPDataset(data.Dataset):
             features = np.load(sp_file_path_features)
             seq_mask = np.load(sp_file_path_seq_mask)
             segments = np.load(sp_file_path_segments)
+            node_num = np.load(sp_file_path_node_num)
             mask = self.resize_mask(mask)
             mask = (mask > 0.5).float()
             if self.fully_connected:
-                neighbor_array = np.ones([self.num_seg, self.num_seg])
+                neighbor_array = np.ones([node_num, node_num])
                 edge_index = np.array(np.nonzero(neighbor_array))
             else:
                 edge_index = np.load(sp_file_path_edge_index)
@@ -402,8 +409,9 @@ class SPDataset(data.Dataset):
             
             sample = (Data(x=torch.tensor(features).float(),
                             edge_index=torch.tensor(edge_index),
-                                edge_attr=torch.tensor(edge_features).float()),
-                        torch.tensor(seq_mask), torch.tensor(segments), mask, self.image_list[item])
+                                edge_attr=torch.tensor(edge_features).float(),
+                                y=torch.tensor(seq_mask) ),
+                        torch.tensor(node_num), torch.tensor(segments), mask, self.image_list[item])
             return sample
 
     
@@ -414,19 +422,20 @@ class SPDataset(data.Dataset):
         sample = {'image': img, 'mask': mask}
 
         sample = self.transform(sample)
-        segments = sample[2]
+        segments = sample[3]
+        node_num = sample[2]
         seq_mask = sample[1]
         features = sample[0]
         mask = sample[3]
         if self.fully_connected:
-            neighbor_array = np.ones([self.num_seg, self.num_seg])
+            neighbor_array = np.ones([node_num, node_num])
         else:
             vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
             vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
             vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
             vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
             bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
-            neighbor_array = np.zeros([self.num_seg, self.num_seg])
+            neighbor_array = np.zeros([node_num, node_num])
             neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
             neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
 
@@ -454,8 +463,9 @@ class SPDataset(data.Dataset):
 
         sample = (Data(x=torch.tensor(features).float(),
                             edge_index=torch.tensor(edge_index),
-                                edge_attr=torch.tensor(edge_features).float()),
-                        seq_mask, torch.tensor(segments), mask, self.image_list[item])
+                                edge_attr=torch.tensor(edge_features).float(),
+                                y=torch.tensor(seq_mask)),
+                        torch.tensor(node_num), torch.tensor(segments), torch.tensor(mask), self.image_list[item])
         
         return sample
 
