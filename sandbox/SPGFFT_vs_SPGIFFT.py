@@ -2,7 +2,7 @@ import numpy as np
 import os
 import sys
 sys.path.insert(0, '/mnt/pegasus/waterloo/supertransformer')
-from dataset.superpixel_pyg_image import SPDataset as SPGIDataset
+from dataset.superpixel_pyg_image_backup import SPDataset as SPGIDataset
 from dataset.superpixel_pyg import SPDataset as SPGDataset
 from torch_geometric.loader import DataLoader as GDL
 from torch.utils.data import DataLoader as DL
@@ -21,8 +21,8 @@ train_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TR/'
 image_list = np.array(sorted([os.path.join('{}/Image'.format(train_dir), f) for f in os.listdir('{}/Image'.format(train_dir))]))
 mask_list = np.array(sorted([os.path.join('{}/Mask'.format(train_dir), f) for f in os.listdir('{}/Mask'.format(train_dir))]))
 
-image_list = image_list[:int(len(image_list)*0.01)]
-mask_list = mask_list[:int(len(mask_list)*0.01)]
+image_list = image_list[:int(len(image_list))]
+mask_list = mask_list[:int(len(mask_list))]
 
 
 spf_dataset = SPGIDataset(image_list, mask_list, 625, 256, 10, 'SPGIFFT', True, 10, False, False, 7)
@@ -35,23 +35,46 @@ spg_loader = GDL(spg_dataset, 3, False, num_workers=4)
 for a, b in zip(spf_loader, spg_loader):
     spgi_features = a[0]
 
-    spgi_seq_mask = a[1]
-    
+    spgi_seq_mask = spgi_features.y
+
+    spgi_node_num = a[1]
     spgi_segments = a[2]
     spgi_mask = a[3]
+   
 
     spg_features = b[0]
 
     spg_seq_mask = spg_features.y
-    spg_seq_mask = spg_seq_mask.reshape(3, -1)
+
+    spg_node_num = b[1]
     spg_segments = b[2]
     spg_mask = b[3]
 
-    print(f'Feature diff {torch.sum(torch.abs(spgi_features.x-spg_features.x))}')
-    print(f'EI diff {torch.sum(torch.abs(spgi_features.edge_index-spg_features.edge_index))}')
-    print(f'Seq mask diff {torch.sum(torch.abs(spgi_seq_mask-spg_seq_mask))}')
-    print(f'Segments diff {torch.sum(torch.abs(spgi_segments-spg_segments))}')
-    print(f'Mask diff {torch.sum(torch.abs(spgi_mask-spg_mask))}')
+    # features = batch[0]
+    # node_num = batch[1]
+    # segments = batch[2]
+    # mask = batch[3]
+    print(spgi_features.x.dtype, spg_features.x.dtype)
+    print(spgi_features.edge_index.dtype,spg_features.edge_index.dtype)
+    print(spgi_seq_mask.dtype,spg_seq_mask.dtype)
+    print(spgi_segments.dtype,spg_segments.dtype)
+    print(spgi_mask.dtype,spg_mask.dtype)
+    print(spgi_node_num.dtype,spg_node_num.dtype)
+
+    if torch.sum(torch.abs(spgi_features.x-spg_features.x)) != 0 or \
+        torch.sum(torch.abs(spgi_features.edge_index-spg_features.edge_index)) != 0 or \
+        torch.sum(torch.abs(spgi_seq_mask-spg_seq_mask)) != 0 or \
+        torch.sum(torch.abs(spgi_segments-spg_segments)) != 0 or \
+        torch.sum(torch.abs(spgi_mask-spg_mask)) != 0 or \
+        torch.sum(torch.abs(spgi_node_num-spg_node_num)) != 0:
+
+        print(f'Feature diff {torch.sum(torch.abs(spgi_features.x-spg_features.x))}')
+        print(f'EI diff {torch.sum(torch.abs(spgi_features.edge_index-spg_features.edge_index))}')
+        print(f'Seq mask diff {torch.sum(torch.abs(spgi_seq_mask-spg_seq_mask))}')
+        print(f'Segments diff {torch.sum(torch.abs(spgi_segments-spg_segments))}')
+        print(f'Mask diff {torch.sum(torch.abs(spgi_mask-spg_mask))}')
+        print(f'Node num diff {torch.sum(torch.abs(spgi_node_num-spg_node_num))}')
+        assert(0)
 
 assert(0)
 

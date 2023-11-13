@@ -148,7 +148,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     dict_args = vars(args)
     
-    pl.seed_everything(dict_args['seed'])
+    pl.seed_everything(dict_args['seed'], True)
     # Initialize model to train
     assert dict_args['model'] in MODEL_DIRECTORY
     model = MODEL_DIRECTORY[dict_args['model']](**dict_args)

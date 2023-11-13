@@ -95,6 +95,7 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         node_num = batch[1]
         segments = batch[2]
         mask = batch[3]
+        img_lists = batch[4]
 
         batch_ind = []
         for idx, node in enumerate(node_num):
