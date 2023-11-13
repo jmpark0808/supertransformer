@@ -140,6 +140,8 @@ if __name__ == "__main__":
                         , default=False, action="store_true")
     parser.add_argument('--fully_connected', help='Whether or not to use fully connected graphs'
                         , default=False, action="store_true")
+    parser.add_argument('--force_aug', help='Force data augmentation on select dataloaders'
+                        , default=False, action="store_true")
     parser.add_argument('--sigma_agen', help='Sigma for AGEN augmentation', default=0.04, type=float)
     parser.add_argument('--sigma_agnn', help='Sigma for AGNN augmentation', default=0.1, type=float)
 

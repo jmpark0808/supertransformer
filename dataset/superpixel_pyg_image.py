@@ -274,7 +274,7 @@ class ToTensorSP(object):
 class SPDataset(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, compactness,
                   dataloader, data_augmentation=True, coeff=None,
-                    ignore_phase=False, fully_conneted=False, sigma_agen=None, sigma_agnn=None, dilation=1):
+                    ignore_phase=False, fully_conneted=False, sigma_agen=None, sigma_agnn=None, dilation=1, force_aug=False):
         self.image_list = image_list
         self.mask_list = mask_list
         self.fully_connected = fully_conneted
@@ -291,11 +291,16 @@ class SPDataset(data.Dataset):
         else:
             totensor = ToTensorSP(num_seg, compactness, fully_conneted)
         
-
-        self.transform = transforms.Compose([Resize(size),
-            # [RandomFlip(0.5),
-            #  RandomCrop(size, int(size*1.14)),
-             totensor])
+        if force_aug:
+            self.transform = transforms.Compose(
+                [RandomFlip(0.5),
+                 RandomCrop(size, int(size*1.14)),
+                totensor])
+        else:
+            self.transform = transforms.Compose([Resize(size),
+                # [RandomFlip(0.5),
+                #  RandomCrop(size, int(size*1.14)),
+                totensor])
         if not data_augmentation:
             self.transform = transforms.Compose([Resize(size), totensor])
 
@@ -383,6 +388,8 @@ class SPGIDataModule(pl.LightningDataModule):
         self.sigma_agen = kwargs.get('sigma_agen', None)
         self.sigma_agnn = kwargs.get('sigma_agnn', None)
         self.dilation = kwargs.get('dilation')
+        self.force_aug = kwargs.get('force_aug')
+        
         
         self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
         self.mask_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.train_dir, 'Mask'))]))
@@ -403,7 +410,7 @@ class SPGIDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.compactness, self.dataloader, True,
-                                  self.coeff, self.ignore_phase, self.fully_connected, self.dilation)
+                                  self.coeff, self.ignore_phase, self.fully_connected, self.dilation, self.force_aug)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=False)
