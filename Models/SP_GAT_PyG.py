@@ -23,7 +23,7 @@ class SP_GAT_PyG(nn.Module):
                                                                           heads=nheads, dropout=dropout, edge_dim=None,
                                                                             concat=True) for _ in range(ntfm)])
         
-        self.ln1s = nn.ModuleList([LayerNorm(nhid*nheads) for _ in range(ntfm)])
+        # self.ln1s = nn.ModuleList([LayerNorm(nhid*nheads) for _ in range(ntfm)])
 
         self.classifier = nn.Linear(nhid*nheads, 1)
         self.num_seg = num_seg
@@ -34,8 +34,8 @@ class SP_GAT_PyG(nn.Module):
     def forward(self, data):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
 
-        batch_size = x.size(0)//self.num_seg
-        batch_index = torch.arange(0, batch_size).repeat(self.num_seg).reshape(self.num_seg, -1).T.reshape(-1).cuda()
+        # batch_size = x.size(0)//self.num_seg
+        # batch_index = torch.arange(0, batch_size).repeat(self.num_seg).reshape(self.num_seg, -1).T.reshape(-1).cuda()
         pos = x[:, :2]
         x = x[:, 2:]
 
@@ -44,8 +44,7 @@ class SP_GAT_PyG(nn.Module):
         pos = self.pos_linear(pos)
         x += pos
 
-        for conv, ln1 in zip(self.convs, self.ln1s):
-            x = ln1(x, batch_index)
+        for conv in self.convs:
             x = conv(x, edge_index=edge_index, edge_attr=None)# adding edge features here
             x = self.elu(x)
 

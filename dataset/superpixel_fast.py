@@ -421,12 +421,10 @@ class SPDataset(data.Dataset):
             node_idx = np.unique(segments)-1
             neighbor_array = np.zeros([self.num_seg, self.num_seg])
             neighbor_array[node_idx[:, np.newaxis], node_idx[np.newaxis, :]] = 1
-            
-
         else:
             neighbor_array = np.load(sp_file_path_edge_index)
-            # if self.dilation != 1:
-            #     neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
+            if self.dilation != 1:
+                neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
 
             
         
