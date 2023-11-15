@@ -16,12 +16,12 @@ class SP_GAT_PyG(nn.Module):
     def __init__(self, nfeat, nhid, edge_dim, dropout, nheads, ntfm, num_seg):
         """Dense version of GAT."""
         super(SP_GAT_PyG, self).__init__()
-        self.linear1 = nn.Linear(nfeat, nhid*nheads)
+        self.linear1 = nn.Linear(nfeat, nhid)
         self.elu = nn.ReLU()
-        self.pos_linear = nn.Linear(2, nhid*nheads)
-        self.convs = nn.ModuleList([GATv2Conv(in_channels=nhid*nheads, out_channels=nhid,
+        self.pos_linear = nn.Linear(2, nhid)
+        self.convs = nn.ModuleList([GATv2Conv(in_channels=nhid, out_channels=nhid,
                                                                           heads=nheads, dropout=dropout, edge_dim=None,
-                                                                            concat=True) for _ in range(ntfm)])
+                                                                            concat=False) for _ in range(ntfm)])
         
         # self.ln1s = nn.ModuleList([LayerNorm(nhid*nheads) for _ in range(ntfm)])
 
