@@ -115,7 +115,7 @@ class PosAttention(nn.Module):
         dots = torch.matmul(q, k.transpose(-1, -2))
         zero_vec = -1e9*torch.ones_like(dots)
 
-        # adj = torch.matrix_power(adj, self.dilation).bool().int()
+        adj = torch.matrix_power(adj, self.dilation).bool().int()
         adj = adj.unsqueeze(1).bool() # B x 1 x R x R
         adj = adj.repeat(1, dots.size(1), 1, 1)
 
@@ -262,24 +262,18 @@ class PosTransformer(nn.Module):
         super().__init__()
         self.layers = nn.ModuleList([])
         for _ in range(depth):
-            self.layers.append(nn.ModuleList([nn.LayerNorm(dim),
-                PosAttention(dim, dilation, heads = heads, dim_head = dim_head, dropout = dropout),
-                nn.LayerNorm(dim),
-                FeedForward(dim, mlp_dim, dropout = dropout)
+            self.layers.append(nn.ModuleList([
+                PreNorm(dim, PosAttention(dim, dilation, heads = heads, dim_head = dim_head, dropout = dropout)),
+                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
-
     def forward(self, x, emb, adj, distances):
-        for idx, (ln1, attn, ln2, ff) in enumerate(self.layers):
+        for idx, (attn, ff) in enumerate(self.layers):
             if idx == 0:
-                x_ = ln1(x)
-                x = attn(x_, emb=emb, adj=adj, distances=distances) + x
-                x_ = ln2(x)
-                x = ff(x_) + x
+                x = attn(x, emb=emb, adj=adj, distances=distances) + x
+                x = ff(x) + x
             else:
-                x_ = ln1(x)
-                x = attn(x_, emb=emb, adj=adj, distances=None) + x
-                x_ = ln2(x)
-                x = ff(x_) + x
+                x = attn(x, emb=emb, adj=adj, distances=None) + x
+                x = ff(x) + x
         return x
 
 class GraphConvTransformer(nn.Module):
