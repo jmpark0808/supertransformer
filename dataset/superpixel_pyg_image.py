@@ -279,10 +279,11 @@ class SPDataset(data.Dataset):
             totensor = ToTensorSP(num_seg, compactness, fully_connected)
         
 
-        self.transform = transforms.Compose(
-            [RandomFlip(0.5),
-             RandomCrop(size, int(size*1.14)),
-             totensor])
+        # self.transform = transforms.Compose(
+        #     [RandomFlip(0.5),
+        #      RandomCrop(size, int(size*1.14)),
+        #      totensor])
+        self.transform = transforms.Compose([Resize(size), totensor])
         if not data_augmentation:
             self.transform = transforms.Compose([Resize(size), totensor])
 
