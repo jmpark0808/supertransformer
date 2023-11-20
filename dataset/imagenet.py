@@ -68,10 +68,13 @@ class ImageNetDatasetTest(data.Dataset):
             return np.concatenate((amp, phase))
 
         sp_file_name = self.image_list[item].split('.')[0]+'.npy'
+        sp_file_name_edge = self.image_list[item].split('.')[0]+'edge.npy'
         sp_file_folder = pathlib.Path(os.path.join(self.root_dir,'Data/CLS-LOC/sp_test'))
         if not os.path.exists(sp_file_folder):
             os.makedirs(sp_file_folder, exist_ok=True)
         sp_file_path = os.path.join(sp_file_folder, sp_file_name)
+        sp_file_path_edge_index = os.path.join(sp_file_folder, sp_file_name_edge)
+
         target = ET.parse(target_name)
         root = target.getroot()
         target = root[5][0].text
@@ -81,7 +84,8 @@ class ImageNetDatasetTest(data.Dataset):
             features = torch.tensor(np.load(sp_file_path)).float()
 
             target = torch.tensor(target)
-            return features, target
+            adj = torch.tensor(np.load(sp_file_path_edge_index))
+            return features, target, adj
         else:
 
             img = Image.open(img_name)
@@ -100,7 +104,16 @@ class ImageNetDatasetTest(data.Dataset):
             slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
             segments = slic.iterate(img_np)+1
 
+            vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
+            vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
+            vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
+            vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
+            bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
+            neighbor_array = np.zeros([self.num_seg, self.num_seg])
+            neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+            neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
 
+            np.save(sp_file_path_edge_index, neighbor_array)
             regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
                                                                                         'coords'), extra_properties=[image_stdev, fourier_descriptors])#, polarize])
 
@@ -125,7 +138,7 @@ class ImageNetDatasetTest(data.Dataset):
 
             features, target = torch.tensor(features).float(), torch.tensor(target)
 
-            return features, target
+            return features, target, torch.tensor(neighbor_array)
 
 
 
@@ -173,10 +186,13 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
             # return np.array(amp)
             return np.concatenate((amp, phase))
         sp_file_name = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'.npy'
+        sp_file_name_edge = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'edge.npy'
         sp_file_folder = os.path.join('/',*pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[:-3], 'sp_train')
         if not os.path.exists(sp_file_folder):
             os.makedirs(sp_file_folder, exist_ok=True)
         sp_file_path = os.path.join(sp_file_folder, sp_file_name)
+        sp_file_path_edge_index = os.path.join(sp_file_folder, sp_file_name_edge)
+
 
         if os.path.exists(sp_file_path):
             if self.mode == 'train':
@@ -187,8 +203,8 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
 
             else:
                 features = torch.tensor(np.load(sp_file_path)).float()
-
-            return features, torch.tensor(target)
+            adj = np.load(sp_file_path_edge_index)
+            return features, torch.tensor(target), torch.tensor(adj)
         else:
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
@@ -216,7 +232,16 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
             segments = slic.iterate(img_np)+1
             # plt.imshow(mark_boundaries(img_np, segments))
             # plt.show()
+            vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
+            vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
+            vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
+            vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
+            bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
+            neighbor_array = np.zeros([self.num_seg, self.num_seg])
+            neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+            neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
 
+            np.save(sp_file_path_edge_index, neighbor_array)
             regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
                                                                                         'coords'), extra_properties=[image_stdev, fourier_descriptors])#, polarize])
 
@@ -242,7 +267,7 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
 
             features, target = torch.tensor(features).float(), torch.tensor(target)
 
-            return features, target
+            return features, target, torch.tensor(neighbor_array)
 
         
 
