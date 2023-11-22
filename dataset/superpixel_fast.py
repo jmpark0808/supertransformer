@@ -373,7 +373,7 @@ class SPDataset(data.Dataset):
             vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
             vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
             bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
-            neighbor_array = np.zeros([self.num_seg, self.num_seg])
+            neighbor_array = np.eye(self.num_seg)
             neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
             neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
                 
