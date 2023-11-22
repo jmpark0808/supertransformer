@@ -96,13 +96,16 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         segments = batch[2]
         mask = batch[3]
 
-
+        # np.save(f'/mnt/dragon/gat_logs/features_x_{batch_idx}', features.x.detach().cpu().numpy())
+        # np.save(f'/mnt/dragon/gat_logs/features_ei_{batch_idx}', features.edge_index.detach().cpu().numpy())
+        # np.save(f'/mnt/dragon/gat_logs/seq_mask_{batch_idx}', seq_mask.detach().cpu().numpy())
         features = features.cuda()
         mask = mask.cuda()
      
         # forward pass
         
         pred = self.forward(features)
+        # np.save(f'/mnt/dragon/gat_logs/output_{batch_idx}', pred.detach().cpu().numpy())
 
         loss = self.loss(pred, seq_mask)
         

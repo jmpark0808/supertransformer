@@ -2,7 +2,7 @@ import numpy as np
 import os
 import sys
 sys.path.insert(0, '/mnt/pegasus/waterloo/supertransformer')
-from dataset.superpixel_pyg_image_backup import SPDataset as SPGIDataset
+from dataset.superpixel_pyg_image import SPDataset as SPGIDataset
 from dataset.superpixel_pyg import SPDataset as SPGDataset
 from torch_geometric.loader import DataLoader as GDL
 from torch.utils.data import DataLoader as DL
@@ -11,6 +11,7 @@ import torch.nn as nn
 from torch_geometric.nn.dense.linear import Linear
 from Models.SP_TFM_PyG import SP_TFM_PyG
 from Models.SP_TFM import SP_TFM_REL
+from Models.SP_GAT_PyG import SP_GAT_PyG
 import time
 
 
@@ -21,8 +22,8 @@ train_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TR/'
 image_list = np.array(sorted([os.path.join('{}/Image'.format(train_dir), f) for f in os.listdir('{}/Image'.format(train_dir))]))
 mask_list = np.array(sorted([os.path.join('{}/Mask'.format(train_dir), f) for f in os.listdir('{}/Mask'.format(train_dir))]))
 
-image_list = image_list[:int(len(image_list))]
-mask_list = mask_list[:int(len(mask_list))]
+image_list = image_list[:int(len(image_list)*0.01)]
+mask_list = mask_list[:int(len(mask_list)*0.01)]
 
 
 spf_dataset = SPGIDataset(image_list, mask_list, 625, 256, 10, 'SPGIFFT', True, 10, False, False, 7)
@@ -31,50 +32,86 @@ spg_dataset = SPGDataset(image_list, mask_list, 625, 256, 10, 'SPGFFT', True, 10
 spf_loader = GDL(spf_dataset, 3, False, num_workers=4)
 spg_loader = GDL(spg_dataset, 3, False, num_workers=4)
 
+pyg_gat = SP_GAT_PyG(26, 16, None, 0, 8, 6, 625)
+pyg_gat.eval()
 
 for a, b in zip(spf_loader, spg_loader):
     spgi_features = a[0]
-
-    spgi_seq_mask = spgi_features.y
-
-    spgi_node_num = a[1]
+    spgi_seq_mask = a[1]
     spgi_segments = a[2]
     spgi_mask = a[3]
    
 
     spg_features = b[0]
 
-    spg_seq_mask = spg_features.y
-
-    spg_node_num = b[1]
+    spg_seq_mask = b[1]
     spg_segments = b[2]
     spg_mask = b[3]
+
+    print(torch.sum(torch.abs(spgi_features.edge_index-spg_features.edge_index)))
 
     # features = batch[0]
     # node_num = batch[1]
     # segments = batch[2]
     # mask = batch[3]
-    print(spgi_features.x.dtype, spg_features.x.dtype)
-    print(spgi_features.edge_index.dtype,spg_features.edge_index.dtype)
-    print(spgi_seq_mask.dtype,spg_seq_mask.dtype)
-    print(spgi_segments.dtype,spg_segments.dtype)
-    print(spgi_mask.dtype,spg_mask.dtype)
-    print(spgi_node_num.dtype,spg_node_num.dtype)
+
+    # print(spgi_features.x.size(), spg_features.x.size())
+    # print(spgi_features.x.dtype, spg_features.x.dtype)
+    # print(spgi_features.edge_index.dtype,spg_features.edge_index.dtype)
+    # print(spgi_seq_mask.dtype,spg_seq_mask.dtype)
+    # print(spgi_segments.dtype,spg_segments.dtype)
+    # print(spgi_mask.dtype,spg_mask.dtype)
+
+    with torch.no_grad():
+        spgi_output = pyg_gat(spgi_features)
+        spg_output = pyg_gat(spg_features)
+        diff = torch.sum(torch.abs(spgi_output-spg_output))
+        print(diff)
+
 
     if torch.sum(torch.abs(spgi_features.x-spg_features.x)) != 0 or \
         torch.sum(torch.abs(spgi_features.edge_index-spg_features.edge_index)) != 0 or \
         torch.sum(torch.abs(spgi_seq_mask-spg_seq_mask)) != 0 or \
         torch.sum(torch.abs(spgi_segments-spg_segments)) != 0 or \
-        torch.sum(torch.abs(spgi_mask-spg_mask)) != 0 or \
-        torch.sum(torch.abs(spgi_node_num-spg_node_num)) != 0:
+        torch.sum(torch.abs(spgi_mask-spg_mask)) != 0:
 
         print(f'Feature diff {torch.sum(torch.abs(spgi_features.x-spg_features.x))}')
         print(f'EI diff {torch.sum(torch.abs(spgi_features.edge_index-spg_features.edge_index))}')
         print(f'Seq mask diff {torch.sum(torch.abs(spgi_seq_mask-spg_seq_mask))}')
         print(f'Segments diff {torch.sum(torch.abs(spgi_segments-spg_segments))}')
         print(f'Mask diff {torch.sum(torch.abs(spgi_mask-spg_mask))}')
-        print(f'Node num diff {torch.sum(torch.abs(spgi_node_num-spg_node_num))}')
         assert(0)
+
+
+
+# image_list = image_list[:1]
+# mask_list = mask_list[:1]
+
+
+# spf_dataset = SPGIDataset(image_list, mask_list, 625, 256, 10, 'SPGIFFT', True, 10, False, False, 7)
+
+# spf_loader = GDL(spf_dataset, 1, False, num_workers=4)
+
+# inputs = []
+# outputs = []
+# for _ in range(10):
+#     for a in spf_loader:
+#         spgi_features = a[0]
+#         spgi_seq_mask = a[1]
+#         spgi_segments = a[2]
+#         spgi_mask = a[3]
+
+#         inputs.append(spgi_features.x.reshape(-1))
+#         outputs.append(spgi_seq_mask)
+
+# inputs = torch.stack(inputs, dim=0)
+# outputs = torch.stack(outputs, dim=0)
+# print(inputs.size())
+# inputs = torch.std(inputs, dim=0)
+# outputs = torch.std(outputs, dim=0)
+# print(torch.sum(inputs))
+# print(torch.sum(outputs))
+    
 
 assert(0)
 
