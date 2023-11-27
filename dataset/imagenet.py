@@ -24,9 +24,10 @@ import torchvision
 import xml.etree.ElementTree as ET
 from dataset.fft_transform import *
 import pathlib
-
+import scipy
+import pickle
 class ImageNetDatasetTest(data.Dataset):
-    def __init__(self, root_dir, transforms, num_seg, coeff, class_to_idx, compactness):
+    def __init__(self, root_dir, transforms, num_seg, coeff, class_to_idx, compactness, dilation):
         self.root_dir = root_dir
         self.image_list = sorted(os.listdir('{}/Data/CLS-LOC/val'.format(root_dir)))
         self.target_list = sorted(os.listdir('{}/Annotations/CLS-LOC/val'.format(root_dir)))
@@ -35,7 +36,10 @@ class ImageNetDatasetTest(data.Dataset):
         self.num_seg = num_seg
         self.compactness = compactness
         self.coeff = coeff
+        self.dilation = dilation
+        self.adj_list = {}
 
+        
 
     def __len__(self):
         return len(self.image_list)
@@ -68,7 +72,7 @@ class ImageNetDatasetTest(data.Dataset):
             return np.concatenate((amp, phase))
 
         sp_file_name = self.image_list[item].split('.')[0]+'.npy'
-        sp_file_name_edge = self.image_list[item].split('.')[0]+'edge.npy'
+        sp_file_name_edge = self.image_list[item].split('.')[0]+'edge.pickle'
         sp_file_folder = pathlib.Path(os.path.join(self.root_dir,'Data/CLS-LOC/sp_test'))
         if not os.path.exists(sp_file_folder):
             os.makedirs(sp_file_folder, exist_ok=True)
@@ -84,7 +88,15 @@ class ImageNetDatasetTest(data.Dataset):
             features = torch.tensor(np.load(sp_file_path)).float()
 
             target = torch.tensor(target)
-            adj = torch.tensor(np.load(sp_file_path_edge_index))
+
+            adj = torch.ones(self.num_seg, self.num_seg)
+            # file = open(sp_file_path_edge_index,'rb') 
+            # S = pickle.load(file)
+
+            # adj = S.toarray()
+            # if self.dilation != 1:
+            #     adj = np.linalg.matrix_power(adj, self.dilation).astype(bool).astype(int)
+            # adj = torch.tensor(adj)
             return features, target, adj
         else:
 
@@ -143,12 +155,13 @@ class ImageNetDatasetTest(data.Dataset):
 
 
 class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
-    def __init__(self, root, num_seg, coeff, compactness, transform, mode) -> None:
+    def __init__(self, root, num_seg, coeff, compactness, transform, mode, dilation) -> None:
         super().__init__(root, transform=transform)
         self.num_seg = num_seg
         self.compactness = compactness
         self.coeff = coeff
         self.mode = mode
+        self.dilation = dilation
         
 
    
@@ -186,7 +199,7 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
             # return np.array(amp)
             return np.concatenate((amp, phase))
         sp_file_name = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'.npy'
-        sp_file_name_edge = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'edge.npy'
+        sp_file_name_edge = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'edge.pickle'
         sp_file_folder = os.path.join('/',*pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[:-3], 'sp_train')
         if not os.path.exists(sp_file_folder):
             os.makedirs(sp_file_folder, exist_ok=True)
@@ -203,7 +216,13 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
 
             else:
                 features = torch.tensor(np.load(sp_file_path)).float()
-            adj = np.load(sp_file_path_edge_index)
+            # file = open(sp_file_path_edge_index,'rb') 
+            # S = pickle.load(file)
+
+            # adj = S.toarray()
+            # if self.dilation != 1:
+            #     adj = np.linalg.matrix_power(adj, self.dilation).astype(bool).astype(int)
+            adj = torch.ones(self.num_seg, self.num_seg)
             return features, torch.tensor(target), torch.tensor(adj)
         else:
         # doing this so that it is consistent with all other datasets
@@ -240,6 +259,7 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
             neighbor_array = np.zeros([self.num_seg, self.num_seg])
             neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
             neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+            
 
             np.save(sp_file_path_edge_index, neighbor_array)
             regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
@@ -314,10 +334,12 @@ class ImageNetDatasetTestExport(data.Dataset):
             return np.concatenate((amp, phase))
 
         sp_file_name = self.image_list[item].split('.')[0]+'.npy'
-        sp_file_name_edge = self.image_list[item].split('.')[0]+'edge.npy'
+        sp_file_name_edge = self.image_list[item].split('.')[0]+'edge.pickle'
+  
    
         sp_file_path = os.path.join(self.export_dir, sp_file_name)
         sp_file_path_edge_index = os.path.join(self.export_dir, sp_file_name_edge)
+    
 
         target = ET.parse(target_name)
         root = target.getroot()
@@ -349,8 +371,11 @@ class ImageNetDatasetTestExport(data.Dataset):
         neighbor_array = np.zeros([self.num_seg, self.num_seg])
         neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
         neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+        S = scipy.sparse.csr_matrix(neighbor_array)
+        file = open(sp_file_path_edge_index,'wb') #160kb
+        pickle.dump(S, file)
 
-        np.save(sp_file_path_edge_index, neighbor_array)
+        # np.save(sp_file_path_edge_index, neighbor_array)
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
                                                                                     'coords'), extra_properties=[image_stdev, fourier_descriptors])#, polarize])
 
@@ -424,11 +449,12 @@ class ImageNetDatasetTrainExport(torchvision.datasets.ImageFolder):
             # return np.array(amp)
             return np.concatenate((amp, phase))
         sp_file_name = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'.npy'
-        sp_file_name_edge = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'edge.npy'
+        sp_file_name_edge = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'edge.pickle'
+      
 
         sp_file_path = os.path.join(self.export_dir, sp_file_name)
         sp_file_path_edge_index = os.path.join(self.export_dir, sp_file_name_edge)
-
+     
 
         
         img = Image.open(img[0])
@@ -463,8 +489,10 @@ class ImageNetDatasetTrainExport(torchvision.datasets.ImageFolder):
         neighbor_array = np.zeros([self.num_seg, self.num_seg])
         neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
         neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
-
-        np.save(sp_file_path_edge_index, neighbor_array)
+        S = scipy.sparse.csr_matrix(neighbor_array)
+        file = open(sp_file_path_edge_index,'wb') #160kb
+        pickle.dump(S, file)
+        # np.save(sp_file_path_edge_index, neighbor_array)
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
                                                                                     'coords'), extra_properties=[image_stdev, fourier_descriptors])#, polarize])
 
@@ -524,9 +552,10 @@ class SPImageNetDataModule(pl.LightningDataModule):
         self.coeff = kwargs.get('coeff', 70)
         self.compactness = kwargs.get('compactness', 10)
         self.seed = kwargs.get('seed')
+        self.dilation = kwargs.get('dilation')
         generator = torch.Generator().manual_seed(self.seed)
 
-        train_dataset = ImageNetDatasetTrain(train_dir, self.num_seg, self.coeff, self.compactness, val_test_transform, 'train')
+        train_dataset = ImageNetDatasetTrain(train_dir, self.num_seg, self.coeff, self.compactness, val_test_transform, 'train', self.dilation)
         class_to_idx = train_dataset.class_to_idx
         train_size = int(0.8*len(train_dataset))
         val_size = len(train_dataset) - train_size
@@ -534,7 +563,7 @@ class SPImageNetDataModule(pl.LightningDataModule):
         val_dataset.dataset.transform = val_test_transform
         val_dataset.mode = 'val'
 
-        test_dataset = ImageNetDatasetTest(test_dir, val_test_transform, self.num_seg, self.coeff, class_to_idx, self.compactness)
+        test_dataset = ImageNetDatasetTest(test_dir, val_test_transform, self.num_seg, self.coeff, class_to_idx, self.compactness, self.dilation)
 
         self.train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,
                                                                num_workers =self.num_workers, drop_last=True)
