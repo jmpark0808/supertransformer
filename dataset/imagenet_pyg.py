@@ -25,7 +25,10 @@ import xml.etree.ElementTree as ET
 from torch_geometric.data import Data
 from dataset.fft_transform import *
 import pathlib
+from torch_geometric.utils.convert import from_scipy_sparse_matrix
 from tqdm import tqdm
+import pickle
+import scipy
 
 class ImageNetDatasetTest(data.Dataset):
     def __init__(self, root_dir, transforms, num_seg, coeff, class_to_idx, compactness, dilation):
@@ -38,6 +41,7 @@ class ImageNetDatasetTest(data.Dataset):
         self.compactness = compactness
         self.coeff = coeff
         self.dilation = dilation
+        self.adj_list = {}
 
     def __len__(self):
         return len(self.image_list)
@@ -71,8 +75,8 @@ class ImageNetDatasetTest(data.Dataset):
             return np.concatenate((amp, phase))
 
         sp_file_name = self.image_list[item].split('.')[0]+'.npy'
-        sp_file_name_edge = self.image_list[item].split('.')[0]+'edge.npy'
-        sp_file_folder = pathlib.Path(os.path.join(self.root_dir, 'Data/CLS-LOC/sp_test_pyg'))
+        sp_file_name_edge = self.image_list[item].split('.')[0]+'edge.pickle'
+        sp_file_folder = pathlib.Path(os.path.join(self.root_dir, 'Data/CLS-LOC/sp_test'))
         if not os.path.exists(sp_file_folder):
             os.makedirs(sp_file_folder, exist_ok=True)
         sp_file_path = os.path.join(sp_file_folder, sp_file_name)
@@ -85,7 +89,21 @@ class ImageNetDatasetTest(data.Dataset):
 
         if os.path.exists(sp_file_path):
             features = torch.tensor(np.load(sp_file_path)).float()
-            edge_index = torch.tensor(np.load(sp_file_path_edge_index))
+
+            if self.dilation != 1:
+                if item in self.adj_list:
+                    edge_index, edge_weight = from_scipy_sparse_matrix(self.adj_list[item])
+                else:
+                    file = open(sp_file_path_edge_index,'rb') 
+                    S = pickle.load(file)
+                    adj = S.toarray()
+                    adj = np.linalg.matrix_power(adj, self.dilation).astype(bool).astype(int)
+                    self.adj_list[item] = scipy.sparse.csr_matrix(adj)
+                    edge_index = torch.tensor(np.array(np.nonzero(adj)))
+            else:
+                file = open(sp_file_path_edge_index,'rb') 
+                S = pickle.load(file)
+                edge_index, edge_weight = from_scipy_sparse_matrix(S)
 
             return Data(x=features, edge_index=edge_index), torch.tensor(target)
         else:
@@ -156,6 +174,7 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
         self.coeff = coeff
         self.mode = mode
         self.dilation = dilation
+        self.adj_list = {}
         
 
     def __getitem__(self, index: int):
@@ -191,7 +210,7 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
             return np.concatenate((amp, phase))
         sp_file_name = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'.npy'
         sp_file_name_edge = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'edge.npy'
-        sp_file_folder = os.path.join('/',*pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[:-3], 'sp_train_pyg')
+        sp_file_folder = os.path.join('/',*pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[:-3], 'sp_train')
         if not os.path.exists(sp_file_folder):
             os.makedirs(sp_file_folder, exist_ok=True)
         sp_file_path = os.path.join(sp_file_folder, sp_file_name)
@@ -203,12 +222,25 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
                 features_np = horizontal_flip(features_np, self.coeff, 0.5)
                 features_np = rotate(features_np, self.coeff, 30, 0.5)
                 features = torch.tensor(features_np).float()
-                edge_index = torch.tensor(np.load(sp_file_path_edge_index))
-
 
             else:
                 features = torch.tensor(np.load(sp_file_path)).float()
-                edge_index = torch.tensor(np.load(sp_file_path_edge_index))
+                
+
+            if self.dilation != 1:
+                if index in self.adj_list:
+                    edge_index, edge_weight = from_scipy_sparse_matrix(self.adj_list[index])
+                else:
+                    file = open(sp_file_path_edge_index,'rb') 
+                    S = pickle.load(file)
+                    adj = S.toarray()
+                    adj = np.linalg.matrix_power(adj, self.dilation).astype(bool).astype(int)
+                    self.adj_list[index] = scipy.sparse.csr_matrix(adj)
+                    edge_index = torch.tensor(np.array(np.nonzero(adj)))
+            else:
+                file = open(sp_file_path_edge_index,'rb') 
+                S = pickle.load(file)
+                edge_index, edge_weight = from_scipy_sparse_matrix(S)
 
             return Data(x=features, edge_index=edge_index), torch.tensor(target)
         else:
