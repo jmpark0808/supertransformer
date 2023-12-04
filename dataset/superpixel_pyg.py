@@ -21,6 +21,8 @@ from dataset.attributes import *
 from torch_geometric.loader import DataLoader
 from pathlib import Path
 from tqdm import tqdm
+import scipy
+from torch_geometric.utils.convert import from_scipy_sparse_matrix
 
 class Resize(object):
     def __init__(self, size):
@@ -316,6 +318,7 @@ class SPDataset(data.Dataset):
         self.sigma_agnn = sigma_agnn
         self.size = size
         self.dilation = dilation
+        self.adj_list = {}
         
         if dataloader == 'SPGFFT':
             totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
@@ -440,9 +443,14 @@ class SPDataset(data.Dataset):
         else:
             neighbor_array = np.load(sp_file_path_edge_index)
             if self.dilation != 1:
-                neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
-
-            edge_index = np.array(np.nonzero(neighbor_array))
+                if item in self.adj_list:
+                    edge_index, edge_weight = from_scipy_sparse_matrix(self.adj_list[item])
+                else:
+                    neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
+                    self.adj_list[item] = scipy.sparse.csr_matrix(neighbor_array)
+                    edge_index = torch.tensor(np.array(np.nonzero(neighbor_array)))
+            else:
+                edge_index = torch.tensor(np.array(np.nonzero(neighbor_array)))
 
             edge_features = np.load(sp_file_path_edge_features)
         
@@ -458,7 +466,7 @@ class SPDataset(data.Dataset):
         
         
         sample = (Data(x=torch.tensor(features).float(),
-                        edge_index=torch.tensor(edge_index),
+                        edge_index=edge_index,
                             edge_attr=torch.tensor(edge_features).float()),
                     torch.tensor(seq_mask), torch.tensor(segments), mask, self.image_list[item])
 

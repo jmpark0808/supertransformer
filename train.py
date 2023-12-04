@@ -110,6 +110,9 @@ if __name__ == "__main__":
     parser.add_argument("--resume_from_checkpoint",
                         help="Directory of pre-trained model,  \n"
                              "None --> Do not use pre-trained model. Training will start from random initialized model")
+    parser.add_argument("--pretrain",
+                        help="Directory of pre-trained model from ImageNet,  \n"
+                             "None --> Do not use pre-trained model. Training will start from random initialized model")
     parser.add_argument('--dataset_tr', help='Directory of your train Dataset', required=True, default=None)
     parser.add_argument('--dataset_test', help='Directory of your test Dataset', default=None)
     parser.add_argument('--cuda', help="'cuda' for cuda, 'cpu' for cpu, default = cuda",
@@ -144,6 +147,7 @@ if __name__ == "__main__":
                         , default=False, action="store_true")
     parser.add_argument('--sigma_agen', help='Sigma for AGEN augmentation', default=0.04, type=float)
     parser.add_argument('--sigma_agnn', help='Sigma for AGNN augmentation', default=0.1, type=float)
+
 
 
 
@@ -188,7 +192,7 @@ if __name__ == "__main__":
    
     lr_monitor = LearningRateMonitor(logging_interval='step')
     logger = TensorBoardLogger(save_dir=dict_args['logdir'], version=now+'_'+dict_args["tag"], name='lightning_logs', log_graph=True)
-    trainer = pl.Trainer(
+    trainer = pl.Trainer(accelerator="gpu",
         callbacks=[early_stopping_callback, checkpoint_callback, lr_monitor],
         val_check_interval=dict_args['val_freq'],
         deterministic=False,
