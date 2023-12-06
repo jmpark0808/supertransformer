@@ -293,6 +293,10 @@ class ToTensorSPFFT(object):
 
     def __call__(self, sample):
         img, mask = sample['image'], sample['mask']
+        # fig, ax = plt.subplots(1, 2)
+        # ax[0].imshow(img)
+        # ax[1].imshow(mask, cmap='gray')
+        # plt.show()
         img_np = np.array(img)
         mask_np = np.array(mask)/255.
 
@@ -512,9 +516,10 @@ class SPDataset(data.Dataset):
 
         self.transform = transforms.Compose(
             [RandomFlip(0.5),
-             RandomCrop(size, int(size*1.14)),
+            #  RandomCrop(size, int(size*1.14)),
              RandomAffine(30, 0.2, 0.3),
              RandomColorJitter(0.2, 0.2, 0.2, 0.2),
+             Resize(size),
              totensor])
         if not data_augmentation:
             self.transform = transforms.Compose([Resize(size), totensor])
