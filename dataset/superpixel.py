@@ -361,7 +361,6 @@ class ToTensorSPFFT(object):
       
         edge_features = torch.from_numpy(edge_features).float()
         features, neighbor_array, seq_mask, segments, mask, img = torch.tensor(features).float(), torch.tensor(neighbor_array).float(), torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
-
         return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask, 'img': img, 'neighbor_array': neighbor_array, 'edge_features': edge_features}
 
 class ToTensorSPContour(object):
