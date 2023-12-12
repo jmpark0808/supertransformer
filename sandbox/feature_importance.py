@@ -22,8 +22,8 @@ for key in list(checkpoint['state_dict'].keys()):
 model.load_state_dict(checkpoint['state_dict'])
 
 test_dir = '/mnt/hdd/Datasets/DUTS/TE'
-test_image_list = sorted([os.path.join(os.path.join(test_dir, 'Image'), f) for f in os.listdir(os.path.join(test_dir, 'Image'))])
-test_mask_list = sorted([os.path.join(os.path.join(test_dir, 'Mask'), f) for f in os.listdir(os.path.join(test_dir, 'Mask'))])
+test_image_list = sorted([os.path.join(os.path.join(test_dir, 'Image'), f) for f in os.listdir(os.path.join(test_dir, 'Image'))])[:500]
+test_mask_list = sorted([os.path.join(os.path.join(test_dir, 'Mask'), f) for f in os.listdir(os.path.join(test_dir, 'Mask'))])[:500]
 
 data_test = SPDataset(test_image_list, test_mask_list, 625, 256,  10, 'SPF', False,
                                  10, False, False, None, None,  1)
@@ -52,7 +52,7 @@ for batch in tqdm.tqdm(loader):
         summed_attributions +=  torch.sum(torch.abs(attributions), dim=(1))
         all_attributions.append(summed_attributions.detach().cpu().numpy())
         abs_delta = (abs_delta+torch.abs(delta))/2.
-        all_deltas.append(abs_delta)
+        all_deltas.append(abs_delta.detach().cpu().numpy())
 
 
 attributions = np.mean(np.stack(all_attributions, axis=0), axis=0)
@@ -60,9 +60,10 @@ delta = np.mean(np.stack(all_deltas, axis=0), axis=0)
 
 print(attributions.shape)
 print(delta.shape)
+print(attributions)
 
 import matplotlib.pyplot as plt
-plt.plot(attributions)
+plt.plot(np.squeeze(attributions))
 plt.ylabel('Importance')
 plt.xlabel('Feature Index')
 scene_var = ['Pos_x', 'Pos_y', 'Mean R', 'Mean G', 'Mean B', 'Var R', 'Var G', 'Var B', '', '',
