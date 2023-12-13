@@ -376,7 +376,7 @@ class SPDataset(data.Dataset):
             neighbor_array = np.eye(self.num_seg)
             neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
             neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
-                
+            
             np.save(sp_file_path_edge_index, neighbor_array)
 
             
@@ -416,9 +416,10 @@ class SPDataset(data.Dataset):
         mask = (mask > 0.5).float()
         img = self.resize_mask(img)
         if self.fully_connected:
-            node_idx = np.unique(segments)-1
-            neighbor_array = np.zeros([self.num_seg, self.num_seg])
-            neighbor_array[node_idx[:, np.newaxis], node_idx[np.newaxis, :]] = 1
+            # node_idx = np.unique(segments)-1
+            # neighbor_array = np.zeros([self.num_seg, self.num_seg])
+            # neighbor_array[node_idx[:, np.newaxis], node_idx[np.newaxis, :]] = 1
+            neighbor_array = np.ones([self.num_seg, self.num_seg])
             
 
         else:

@@ -1,17 +1,15 @@
+from typing import Optional
 import pytorch_lightning as pl
+from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
-from Models.SP_GAT_PyG import SP_GAT_PyG
+from Models.SP_GAT import SP_GATv3
 
 import torch.nn.functional as F
 import numpy as np
 from dataset.constants import *
-
-from fvcore.nn import FlopCountAnalysis
-from fvcore.nn import flop_count_table
-from torch_geometric.data import Data
 from util.util import get_input_dim
 
-class SP_GAT_PyG_Wrapper(pl.LightningModule):
+class SP_GATv3_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -22,20 +20,18 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         self.es_patience = kwargs.get('es_patience')
         self.dropout = kwargs.get('dropout')
         self.tfm_hp = kwargs.get('tfmhp')
+        self.coeff = kwargs.get('coeff')
+        self.dilation = kwargs.get('dilation')
+        self.dataloader = kwargs.get('dataloader')
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
-        self.model = SP_GAT_PyG(input_dim, self.tfm_hp[1], 1, self.dropout, self.tfm_hp[0], self.tfm_hp[2], self.num_seg)
-        
-        # data = Data(x=torch.ones(self.num_seg, input_dim),
-        #              edge_index=torch.ones(self.num_seg,self.num_seg),
-        #                edge_attr=torch.ones(self.num_seg,self.num_seg, 1))
-        # flops = FlopCountAnalysis(self.model, data)
-        # print(flop_count_table(flops))
+        self.supert = SP_GATv3(input_dim, self.tfm_hp[1], self.dropout, self.tfm_hp[0], self.tfm_hp[2])
         self.iteration = 0
-        self.num_thresholds = 10
         self.test_iteration = 0
+        self.num_thresholds = 10
         self.save_hyperparameters()
         
+
     def loss(self, pred, label):
         """
         Defining the loss funcition:
@@ -54,22 +50,21 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
             optimizer,
             mode='min',
             factor=0.1,
-            patience=self.es_patience-3,
+            patience=self.es_patience//2,
             min_lr=1e-8,
             verbose=True)
         return optimizer
       
 
-    def forward(self, input):
+    def forward(self, input, adj):
         """
         Forward pass through model
         :param x: Input features
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-        
-        pred = self.model(input)
-        pred = pred.reshape(-1, self.num_seg)
+
+        pred = self.supert(input, adj)
 
         return pred
 
@@ -91,29 +86,31 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         logging resources:
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
-        features = batch[0]
-        seq_mask = batch[1]
-        segments = batch[2]
-        mask = batch[3]
+        features = batch['features']
+        seq_mask = batch['seq_mask']
+        segments = batch['segments']
+        mask = batch['mask'].cpu()
+        adj = batch['neighbor_array']
 
-        # np.save(f'/mnt/dragon/gat_logs/features_x_{batch_idx}', features.x.detach().cpu().numpy())
-        # np.save(f'/mnt/dragon/gat_logs/features_ei_{batch_idx}', features.edge_index.detach().cpu().numpy())
-        # np.save(f'/mnt/dragon/gat_logs/seq_mask_{batch_idx}', seq_mask.detach().cpu().numpy())
-        # torch.save(self.model.state_dict(), f'/mnt/dragon/gat_logs/model_weight_{batch_idx}.pt')
+
+
+
         features = features.cuda()
-        mask = mask.cuda()
-     
+        seq_mask = seq_mask.cuda()
+        adj = adj.cuda()
+
+
+
         # forward pass
         
-        pred = self.forward(features)
-        # np.save(f'/mnt/dragon/gat_logs/output_{batch_idx}', pred.detach().cpu().numpy())
+        pred = self.forward(features, adj)
 
         loss = self.loss(pred, seq_mask)
         
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
-        batch_size = mask.size(0)
-        img_size = mask.size(2)
+        batch_size = mask.shape[0]
+        img_size = mask.shape[2]
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
         samples = []
@@ -121,12 +118,12 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
             plt_image = masked[labels-1].reshape([img_size, img_size])
             samples.append(plt_image)
 
-        samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
+        samples = torch.tensor(np.expand_dims(np.array(samples), 1))
+     
 
-
-        prec, recall = torch.zeros(samples.size(0), 1).cuda(), torch.zeros(samples.size(0), 1).cuda()
-        pred = samples.reshape(samples.size(0), -1)
-        mask = mask.reshape(mask.size(0), -1)
+        prec, recall = torch.zeros(samples.shape[0], 1), torch.zeros(samples.shape[0], 1)
+        pred = samples.reshape(samples.shape[0], -1)
+        mask = mask.reshape(mask.shape[0], -1)
         
         y_temp = (pred >= 0.5).float()
         tp = (y_temp * mask).sum(dim=-1)
@@ -137,7 +134,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
         f_score = f_score.sum(dim=0)
         self.train_fscores += f_score
-        self.num_samples += mask.size(0)
+        self.num_samples += features.size(0)
         self.log('loss', loss.item())
         self.iteration += 1
         return loss
@@ -147,24 +144,28 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         Compute the metrics for validation batch
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
-        tensorboard = self.logger.experiment
-        features = batch[0]
-        seq_mask = batch[1]
-        segments = batch[2]
-        mask = batch[3]
-  
+        features = batch['features']
+        seq_mask = batch['seq_mask']
+        segments = batch['segments']
+        mask = batch['mask']
+        adj = batch['neighbor_array']
+
+
 
         features = features.cuda()
+        seq_mask = seq_mask.cuda()
+        adj = adj.cuda()
+    
         mask = mask.cuda()
 
 
         # forward pass
-        pred = self.forward(features)
+        pred = self.forward(features, adj)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
-        batch_size = mask.size(0)
-        img_size = mask.size(2)
+        batch_size = mask.shape[0]
+        img_size = mask.shape[2]
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
         samples = []
@@ -173,9 +174,6 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
             samples.append(plt_image)
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
-        if batch_idx == 0:
-            tensorboard.add_images('Validation Pred', samples, self.test_iteration)
-            tensorboard.add_images('Validation GT', mask, self.test_iteration)
 
         mae = torch.mean(torch.abs(samples - mask))
         if dataloader_idx == 0:
@@ -199,8 +197,8 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         if dataloader_idx == 0:
             self.precs.append(prec)
             self.recalls.append(recall)
-            self.test_iteration += 1
             self.validation_step_outputs.append(mae)
+            self.test_iteration += 1
         elif dataloader_idx == 1:
             self.precs_test.append(prec)
             self.recalls_test.append(recall)
@@ -220,7 +218,6 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         mask = torch.cat(self.masks, 0).cuda().round().float()
         self.log('Validation MAE', torch.mean(torch.abs(pred-mask)))
 
-
         prec = torch.cat(self.precs_test, dim=0).cuda().mean(dim=0)
         recall = torch.cat(self.recalls_test, dim=0).cuda().mean(dim=0)
         beta_square = 0.3
@@ -229,8 +226,8 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         self.log('Test Max F Score', torch.max(f_score))
         self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
 
-        pred = torch.cat(self.preds_test, 0).cuda()
-        mask = torch.cat(self.masks_test, 0).cuda().round().float()
+        pred = torch.cat(self.preds_test, 0)
+        mask = torch.cat(self.masks_test, 0).round().float()
         self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
         self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
         self.validation_step_outputs.clear()
@@ -253,31 +250,35 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         self.masks = []
         self.precs = []
         self.recalls = []
-
         self.test_step_outputs = []
+
 
     def test_step(self, batch, batch_idx):
         """
         Compute the metrics for validation batch
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
-        features = batch[0]
-        seq_mask = batch[1]
-        segments = batch[2]
-        mask = batch[3]
+        features = batch['features']
+        seq_mask = batch['seq_mask']
+        segments = batch['segments']
+        mask = batch['mask']
+        adj = batch['neighbor_array']
+     
 
 
         features = features.cuda()
+        seq_mask = seq_mask.cuda()
+        adj = adj.cuda()
+    
         mask = mask.cuda()
 
-
         # forward pass
-        pred = self.forward(features)
+        pred = self.forward(features, adj)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
-        batch_size = mask.size(0)
-        img_size = mask.size(2)
+        batch_size = mask.shape[0]
+        img_size = mask.shape[2]
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
         samples = []
@@ -297,7 +298,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         prec, recall = torch.zeros(samples.size(0), 256).cuda(), torch.zeros(samples.size(0), 256).cuda()
         pred = samples.reshape(samples.size(0), -1)
         mask = mask.reshape(mask.size(0), -1)
-        thlist = torch.linspace(0, 1 - 1e-10, 256).cuda()
+        thlist = torch.linspace(0, 1 - 1e-10, 256)
         for j in range(256):
             y_temp = (pred >= thlist[j]).float()
             tp = (y_temp * mask).sum(dim=-1)
@@ -306,6 +307,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         # (batch, threshold)
         self.precs.append(prec)
         self.recalls.append(recall)
+        self.test_step_outputs.append(mae)
         self.test_iteration += 1
         return mae
     
@@ -324,6 +326,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         self.scheduler.step(torch.mean(torch.stack(self.test_step_outputs)))
                     
     
+
 
 
 

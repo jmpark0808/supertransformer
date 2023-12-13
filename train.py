@@ -33,6 +33,8 @@ from Wrappers.image_transformer import ImageTransformer
 from Wrappers.SP_GAT_PyG import SP_GAT_PyG_Wrapper
 from Wrappers.SP_TFM_PyG import SP_TFM_PyG_Wrapper
 from Wrappers.SP_GUNET_PyG import SP_GUNET_PyG_Wrapper
+from Wrappers.SP_GATv2 import SP_GATv2_Wrapper
+from Wrappers.SP_GATv3 import SP_GATv3_Wrapper
 
 
 # Import dataset modules
@@ -81,7 +83,9 @@ MODEL_DIRECTORY = {
     'SP_Baseline_LAP': SP_Baseline_LAP_Wrapper,
     'SP_GAT_PyG': SP_GAT_PyG_Wrapper,
     'SP_TFM_PyG': SP_TFM_PyG_Wrapper,
-    'SP_GUNET_PyG': SP_GUNET_PyG_Wrapper
+    'SP_GUNET_PyG': SP_GUNET_PyG_Wrapper,
+    'SP_GATv2': SP_GATv2_Wrapper,
+    'SP_GATv3': SP_GATv3_Wrapper
 }
 DATALOADER_DIRECTORY = {
     'SP': SPDataModule,

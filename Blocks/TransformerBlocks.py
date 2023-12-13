@@ -114,7 +114,7 @@ class PosAttention(nn.Module):
         
         dots = torch.matmul(q, k.transpose(-1, -2))
         # zero_vec = -1e9*torch.ones_like(dots)
-
+        
         # adj = torch.matrix_power(adj, self.dilation).bool().int()
         # adj = adj.unsqueeze(1).bool() # B x 1 x R x R
         # adj = adj.repeat(1, dots.size(1), 1, 1)

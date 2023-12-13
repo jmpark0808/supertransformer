@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-
+import time
 
 class MaxPoolingAggregator(nn.Module):
     """
@@ -152,5 +152,142 @@ class GraphConvolutionBlock(nn.Module):
         x = self.maxpool(x, adj)
         return x
 
+class GATv2(nn.Module):
+    """
+    GATv2 similar to GATv2conv from pytorch geometric
+    """
+    def __init__(self, in_channels, out_channels, dropout, nheads, negative_slope, concat):
+        super(GATv2, self).__init__()
+        self.lin = nn.Linear(in_channels, out_channels)
+        self.lin_l = nn.Linear(out_channels, nheads)
+        self.lin_r = nn.Linear(out_channels, nheads)
+        self.concat = concat
+
+        self.heads = nheads
+        self.out_channels = out_channels
+        self.leaky_relu = nn.LeakyReLU(negative_slope)
+        self.dropout = nn.Dropout(dropout)
+
+
+    def forward(self, x, adj):
+  
+        H, C = self.heads, self.out_channels
+        x = self.lin(x) #B, N, C
+        x_l = self.lin_l(x) # B, N, H
+        x_r = self.lin_r(x) # B, N, H
+        
+
+        x_l = x_l.permute(0, 2,  1).unsqueeze(-1) + x_r.permute(0, 2, 1).unsqueeze(2) # B, H, N, N
+        
+        # x = torch.matmul(x_l.permute(0, 2, 1, 3), x_r.permute(0, 2, 3, 1)) #x_l.unsqueeze(2) + x_r.unsqueeze(1) # B, H, N, N
+        x_l = self.leaky_relu(x_l)
+        # return x
+        # alpha = (x.unsqueeze(2)*self.att).sum(2) # B, H, N, N
+        
+        alpha = torch.softmax(x_l, -1) 
+
+        alpha = self.dropout(alpha)
+
+    
+        out = torch.matmul(alpha, x.unsqueeze(1).repeat(1, H, 1, 1)) # B, H, N, C
+        
+        if self.concat:
+            out = out.permute(0, 2, 1, 3) # B, N, H, C
+            out = out.reshape(out.size(0), out.size(1), -1)# B, N, H*C
+        else:
+            out = torch.mean(out, dim=1) # B, N, C
+
+        return out
+    
+
+class GATv3(nn.Module):
+    """
+    GATv2 similar to GATv2conv from pytorch geometric
+    """
+    def __init__(self, in_channels, out_channels, dropout, nheads, negative_slope, concat):
+        super().__init__()
+        self.lin_l = nn.Linear(in_channels, nheads*out_channels)
+        self.lin_r = nn.Linear(in_channels, nheads*out_channels)
+        self.att = nn.Parameter(torch.empty(1, nheads, out_channels, 1, 1))
+        self.concat = concat
+        if concat:
+            self.bias = nn.Parameter(torch.empty(1, 1, nheads*out_channels))
+        else:
+            self.bias = nn.Parameter(torch.empty(1, 1, out_channels))
+
+        self.heads = nheads
+        self.out_channels = out_channels
+        self.leaky_relu = nn.LeakyReLU(negative_slope)
+        self.dropout = nn.Dropout(dropout)
+
+
+    def forward(self, x, adj):
+  
+        H, C = self.heads, self.out_channels
+        x_l = self.lin_l(x).view(x.size(0), -1, H, C) # B, N, H, C
+        x_r = self.lin_r(x).view(x.size(0), -1, H, C) # B, N, H, C
+        
+
+        x = x_l.permute(0, 2, 3,  1).unsqueeze(-1) + x_r.permute(0, 2, 3, 1).unsqueeze(3) # B, H, C, N, N
+        
+        # x = torch.matmul(x_l.permute(0, 2, 1, 3), x_r.permute(0, 2, 3, 1)) #x_l.unsqueeze(2) + x_r.unsqueeze(1) # B, H, N, N
+        x = self.leaky_relu(x)
+        # return x
+        alpha = (x*self.att).sum(2) # B, H, N, N
+        
+        alpha = torch.softmax(alpha, -1) 
+
+        alpha = self.dropout(alpha)
+
+        out = torch.matmul(alpha, x_r.permute(0, 2, 1, 3)) # B, H, N, C
+        
+        if self.concat:
+            out = out.permute(0, 2, 1, 3) # B, N, H, C
+            out = out.reshape(out.size(0), out.size(1), -1)# B, N, H*C
+        else:
+            out = torch.mean(out, dim=1) # B, N, C
+
+        out = out + self.bias
+        return out
+    
+
+
+
+# class GATv2(nn.Module):
+#     """
+#     GATv2 similar to GATv2conv from pytorch geometric
+#     """
+#     def __init__(self, in_channels, out_channels, dropout, nheads, concat):
+#         super(GATv2, self).__init__()
+#         self.lin_q = nn.Linear(in_channels, nheads*out_channels)
+#         self.lin_k = nn.Linear(in_channels, nheads*out_channels)
+#         self.lin_v = nn.Linear(in_channels, nheads*out_channels)
+#         self.concat = concat
+
+
+#         self.heads = nheads
+#         self.out_channels = out_channels
+
+#         self.dropout = nn.Dropout(dropout)
+
+
+#     def forward(self, x, adj):
+#         H, C = self.heads, self.out_channels
+#         x_q = self.lin_q(x).view(x.size(0), -1, H, C) # B, N, H, C
+#         x_k = self.lin_k(x).view(x.size(0), -1, H, C) # B, N, H, C
+#         x_v = self.lin_v(x).view(x.size(0), -1, H, C) # B, N, H, C
+
+#         x = torch.matmul(x_q.permute(0, 2, 1, 3), x_k.permute(0, 2, 3, 1)) # B, H, N, N
+#         alpha = torch.softmax(x, -1) 
+#         alpha = self.dropout(alpha)
+        
+#         x = torch.matmul(alpha, x_v.permute(0, 2, 1, 3)) # B, H, N, C
+#         if self.concat:
+#             x = x.permute(0, 2, 1, 3) # B, N, H, C
+#             x = x.reshape(x.size(0), x.size(1), -1)# B, N, H*C
+#         else:
+#             x = torch.mean(x, dim=1) # B, N, C
+
+#         return x
 
 

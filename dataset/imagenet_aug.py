@@ -25,6 +25,7 @@ import xml.etree.ElementTree as ET
 from dataset.fft_transform import *
 import pathlib
 import scipy
+import time
 import pickle
 class ImageNetDatasetTest(data.Dataset):
     def __init__(self, root_dir, transforms, num_seg, coeff, class_to_idx, compactness, dilation):
@@ -71,86 +72,59 @@ class ImageNetDatasetTest(data.Dataset):
             # return np.array(amp)
             return np.concatenate((amp, phase))
 
-        sp_file_name = self.image_list[item].split('.')[0]+'.npy'
-        sp_file_name_edge = self.image_list[item].split('.')[0]+'edge.pickle'
-        sp_file_folder = pathlib.Path(os.path.join(self.root_dir,'Data/CLS-LOC/sp_test'))
-        if not os.path.exists(sp_file_folder):
-            os.makedirs(sp_file_folder, exist_ok=True)
-        sp_file_path = os.path.join(sp_file_folder, sp_file_name)
-        sp_file_path_edge_index = os.path.join(sp_file_folder, sp_file_name_edge)
+     
 
-        target = ET.parse(target_name)
-        root = target.getroot()
-        target = root[5][0].text
-        target = self.class_to_idx[target]
+        img = Image.open(img_name)
+        img = img.convert('RGB')
+        img = self.transform(img)
 
-        if os.path.exists(sp_file_path):
-            features = torch.tensor(np.load(sp_file_path)).float()
+        img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
 
-            target = torch.tensor(target)
+        # segments = slic(img_np, n_segments=self.num_seg,
+        #     compactness=self.compactness,
+        #     max_num_iter=3,
+        #     convert2lab=True,
+        #     enforce_connectivity=False,
+        #     slic_zero=False)
 
-            adj = torch.ones(self.num_seg, self.num_seg)
-            # file = open(sp_file_path_edge_index,'rb') 
-            # S = pickle.load(file)
+        slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
+        segments = slic.iterate(img_np)+1
 
-            # adj = S.toarray()
-            # if self.dilation != 1:
-            #     adj = np.linalg.matrix_power(adj, self.dilation).astype(bool).astype(int)
-            # adj = torch.tensor(adj)
-            return features, target, adj
-        else:
+        vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
+        vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
+        vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
+        vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
+        bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
+        neighbor_array = np.zeros([self.num_seg, self.num_seg])
+        neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+        neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
 
-            img = Image.open(img_name)
-            img = img.convert('RGB')
-            img = self.transform(img)
 
-            img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
+        regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
+                                                                                    'coords'), extra_properties=[image_stdev, fourier_descriptors])#, polarize])
 
-            # segments = slic(img_np, n_segments=self.num_seg,
-            #     compactness=self.compactness,
-            #     max_num_iter=3,
-            #     convert2lab=True,
-            #     enforce_connectivity=False,
-            #     slic_zero=False)
+        seq_len = len(regions['label'])
+        label = regions['label']
+        features = np.zeros([self.num_seg, 8+(self.coeff)*2])
+        
+        for i in range(self.coeff*2):
+            features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
-            slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
-            segments = slic.iterate(img_np)+1
+        
+        features[label-1, 0] = regions['centroid-0']
+        features[label-1, 1] = regions['centroid-1']
+        features[label-1, 2] = regions['intensity_mean-0']/255.
+        features[label-1, 3] = regions['intensity_mean-1']/255.
+        features[label-1, 4] = regions['intensity_mean-2']/255.
+        features[label-1, 5] = regions['image_stdev-0']/255.
+        features[label-1, 6] = regions['image_stdev-1']/255.
+        features[label-1, 7] = regions['image_stdev-2']/255.
 
-            vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
-            vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
-            vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
-            vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
-            bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
-            neighbor_array = np.zeros([self.num_seg, self.num_seg])
-            neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
-            neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
 
-            np.save(sp_file_path_edge_index, neighbor_array)
-            regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
-                                                                                        'coords'), extra_properties=[image_stdev, fourier_descriptors])#, polarize])
 
-            seq_len = len(regions['label'])
-            label = regions['label']
-            features = np.zeros([self.num_seg, 8+(self.coeff)*2])
-            
-            for i in range(self.coeff*2):
-                features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
+        features, target = torch.tensor(features).float(), torch.tensor(target)
 
-            
-            features[label-1, 0] = regions['centroid-0']
-            features[label-1, 1] = regions['centroid-1']
-            features[label-1, 2] = regions['intensity_mean-0']/255.
-            features[label-1, 3] = regions['intensity_mean-1']/255.
-            features[label-1, 4] = regions['intensity_mean-2']/255.
-            features[label-1, 5] = regions['image_stdev-0']/255.
-            features[label-1, 6] = regions['image_stdev-1']/255.
-            features[label-1, 7] = regions['image_stdev-2']/255.
-
-            np.save(sp_file_path, features)
-
-            features, target = torch.tensor(features).float(), torch.tensor(target)
-
-            return features, target, torch.tensor(neighbor_array)
+        return features, target, torch.tensor(neighbor_array)
 
 
 
@@ -198,96 +172,80 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
 
             # return np.array(amp)
             return np.concatenate((amp, phase))
-        sp_file_name = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'.npy'
-        sp_file_name_edge = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'edge.pickle'
-        sp_file_folder = os.path.join('/',*pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[:-3], 'sp_train')
-        if not os.path.exists(sp_file_folder):
-            os.makedirs(sp_file_folder, exist_ok=True)
-        sp_file_path = os.path.join(sp_file_folder, sp_file_name)
-        sp_file_path_edge_index = os.path.join(sp_file_folder, sp_file_name_edge)
+  
+       
+        img = Image.open(img[0])
+        img = img.convert('RGB')
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        if self.target_transform is not None:
+            target = self.target_transform(target)
 
 
-        if os.path.exists(sp_file_path):
-            if self.mode == 'train':
-                features_np = np.load(sp_file_path)
-                features_np = horizontal_flip(features_np, self.coeff, 0.5)
-                features_np = rotate(features_np, self.coeff, 30, 0.5)
-                features = torch.tensor(features_np).float()
-
-            else:
-                features = torch.tensor(np.load(sp_file_path)).float()
-            # file = open(sp_file_path_edge_index,'rb') 
-            # S = pickle.load(file)
-
-            # adj = S.toarray()
-            # if self.dilation != 1:
-            #     adj = np.linalg.matrix_power(adj, self.dilation).astype(bool).astype(int)
-            adj = torch.ones(self.num_seg, self.num_seg)
-            return features, torch.tensor(target), adj
-        else:
-        # doing this so that it is consistent with all other datasets
-        # to return a PIL Image
-            img = Image.open(img[0])
-            img = img.convert('RGB')
-
-            if self.transform is not None:
-                img = self.transform(img)
-
-            if self.target_transform is not None:
-                target = self.target_transform(target)
-
-
-            img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
-            
-
-            # segments = slic(img_np, n_segments=self.num_seg,
-            #     compactness=self.compactness,
-            #     max_num_iter=3,
-            #     convert2lab=True,
-            #     enforce_connectivity=False,
-            #     slic_zero=False,
-            #     min_size_factor=0)
-            slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
-            segments = slic.iterate(img_np)+1
-            # plt.imshow(mark_boundaries(img_np, segments))
-            # plt.show()
-            vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
-            vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
-            vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
-            vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
-            bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
-            neighbor_array = np.zeros([self.num_seg, self.num_seg])
-            neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
-            neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
-            
-
-            np.save(sp_file_path_edge_index, neighbor_array)
-            regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
-                                                                                        'coords'), extra_properties=[image_stdev, fourier_descriptors])#, polarize])
-
-            seq_len = len(regions['label'])
-            label = regions['label']
-            features = np.zeros([self.num_seg, 8+(self.coeff)*2])
+        img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
         
-            for i in range(self.coeff*2):
-                features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
-
+        start = time.time()
+        # segments = slic(img_np, n_segments=self.num_seg,
+        #     compactness=self.compactness,
+        #     max_num_iter=3,
+        #     convert2lab=True,
+        #     enforce_connectivity=False,
+        #     slic_zero=False,
+        #     min_size_factor=0)
+        slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
+        segments = slic.iterate(img_np)+1
+        # plt.imshow(mark_boundaries(img_np, segments))
+        # plt.show()
+        # vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
+        # vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
+        # vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
+        # vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
+        # bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
+        # neighbor_array = np.zeros([self.num_seg, self.num_seg])
+        # neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+        # neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+        neighbor_array = np.ones([self.num_seg, self.num_seg])
+        a = time.time()
+        labels = np.unique(segments)
+        features = np.zeros([self.num_seg, 8+(self.coeff)*2])
+        for i in labels:
+            mask = segments == i
+            coords = np.array(mask.nonzero())
+            # coords = np.argwhere(mask)
+            # x_center, y_center = coords.sum(0)/np.sum(mask)
+            # mean = np.mean(img_np[coords[:,0], coords[:, 1], :], axis=0)
+            # std = np.std(img_np[coords[:,0], coords[:, 1], :], axis=0)
             
-            features[label-1, 0] = regions['centroid-0']
-            features[label-1, 1] = regions['centroid-1']
-            features[label-1, 2] = regions['intensity_mean-0']/255.
-            features[label-1, 3] = regions['intensity_mean-1']/255.
-            features[label-1, 4] = regions['intensity_mean-2']/255.
-            features[label-1, 5] = regions['image_stdev-0']/255.
-            features[label-1, 6] = regions['image_stdev-1']/255.
-            features[label-1, 7] = regions['image_stdev-2']/255.
-
             
-            np.save(sp_file_path, features)
 
-            features, target = torch.tensor(features).float(), torch.tensor(target)
 
-            return features, target, torch.tensor(neighbor_array)
+        # regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
+        #                                                                             'coords'))#, extra_properties=[image_stdev, fourier_descriptors])#, polarize])
+        b = time.time()
+        # seq_len = len(regions['label'])
+        # label = regions['label']
+        
+    
+        # for i in range(self.coeff*2):
+        #     features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
+
+        
+        # features[label-1, 0] = regions['centroid-0']
+        # features[label-1, 1] = regions['centroid-1']
+        # features[label-1, 2] = regions['intensity_mean-0']/255.
+        # features[label-1, 3] = regions['intensity_mean-1']/255.
+        # features[label-1, 4] = regions['intensity_mean-2']/255.
+        # features[label-1, 5] = regions['image_stdev-0']/255.
+        # features[label-1, 6] = regions['image_stdev-1']/255.
+        # features[label-1, 7] = regions['image_stdev-2']/255.
+
+        c = time.time()
+        print(c-b, b-a, a-start)
+        features, target = torch.tensor(features).float(), torch.tensor(target)
+
+        return features, target, torch.tensor(neighbor_array)
 
 
 class ImageNetDatasetTestExport(data.Dataset):

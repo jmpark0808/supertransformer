@@ -15,6 +15,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 from Wrappers.SP_ImageNet_TFM import SP_ImageNet_TFM_Wrapper
 from Wrappers.SP_ImageNet_GAT_PyG import SP_ImageNet_GAT_PyG_Wrapper
+from Wrappers.SP_ImageNet_DGAT_PyG import SP_ImageNet_DGAT_PyG_Wrapper
 
 
 # Import dataset modules
@@ -30,7 +31,8 @@ from dataset.imagenet_pyg import SPGImageNetDataModule
 
 MODEL_DIRECTORY = {
     'SP_ImageNet': SP_ImageNet_TFM_Wrapper,
-    'SP_ImageNet_PyG': SP_ImageNet_GAT_PyG_Wrapper
+    'SP_ImageNet_GAT': SP_ImageNet_GAT_PyG_Wrapper,
+    'SP_ImageNet_DGAT': SP_ImageNet_DGAT_PyG_Wrapper
 
 }
 DATALOADER_DIRECTORY = {
