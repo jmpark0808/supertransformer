@@ -516,9 +516,9 @@ class SPDataset(data.Dataset):
 
         self.transform = transforms.Compose(
             [RandomFlip(0.5),
-            #  RandomCrop(size, int(size*1.14)),
-             RandomAffine(30, 0.2, 0.3),
-             RandomColorJitter(0.2, 0.2, 0.2, 0.2),
+             RandomCrop(size, int(size*1.14)),
+            #  RandomAffine(30, 0.2, 0.3),
+            #  RandomColorJitter(0.2, 0.2, 0.2, 0.2),
              Resize(size),
              totensor])
         if not data_augmentation:
