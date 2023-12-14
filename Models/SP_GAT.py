@@ -64,13 +64,41 @@ class SP_GATv2(nn.Module):
     
 class SP_GATv3(nn.Module):
     '''
-    Graph Attention Network v2
+    Graph Attention Network v3
     '''
     def __init__(self, nfeat, nhid, dropout, nheads, ntfm):
         """Dense version of GAT."""
         super(SP_GATv3, self).__init__()
         self.linear = nn.Linear(nfeat, nhid)
         self.gat = nn.ModuleList([nn.ModuleList([GATv3(nhid, nhid, dropout, nheads, 0.2, False), nn.LayerNorm(nhid)]) for _ in range(ntfm)])
+        self.pos_encoding = nn.Linear(2, nhid)
+        self.out = nn.Linear(nhid, 1)
+        self.relu = nn.ReLU()
+        
+    def forward(self, x, adj=None):
+        centroids = x[:, :, :2]
+        x = x[:, :, 2:]
+        x = self.linear(x)
+        x = self.relu(x)
+
+        x = x + self.pos_encoding(centroids)
+        for block, ln in self.gat:
+            x = ln(x)
+            x = block(x, adj)
+            x = F.relu(x)
+                
+        x = self.out(x)
+        return x
+    
+class SP_GATv4(nn.Module):
+    '''
+    Graph Attention Network v3
+    '''
+    def __init__(self, nfeat, nhid, dropout, nheads, ntfm):
+        """Dense version of GAT."""
+        super(SP_GATv4, self).__init__()
+        self.linear = nn.Linear(nfeat, nhid)
+        self.gat = nn.ModuleList([nn.ModuleList([GATv4(nhid, nhid, dropout, nheads, 0.2, False), nn.LayerNorm(nhid)]) for _ in range(ntfm)])
         self.pos_encoding = nn.Linear(2, nhid)
         self.out = nn.Linear(nhid, 1)
         self.relu = nn.ReLU()

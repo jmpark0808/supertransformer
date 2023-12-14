@@ -2,14 +2,14 @@ from typing import Optional
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
-from Models.SP_GAT import SP_GATv2
+from Models.SP_GAT import SP_GATv4
 
 import torch.nn.functional as F
 import numpy as np
 from dataset.constants import *
 from util.util import get_input_dim
 
-class SP_GATv2_Wrapper(pl.LightningModule):
+class SP_GATv4_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -25,7 +25,7 @@ class SP_GATv2_Wrapper(pl.LightningModule):
         self.dataloader = kwargs.get('dataloader')
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
-        self.supert = SP_GATv2(input_dim, self.tfm_hp[1], self.dropout, self.tfm_hp[0], self.tfm_hp[2])
+        self.supert = SP_GATv4(input_dim, self.tfm_hp[1], self.dropout, self.tfm_hp[0], self.tfm_hp[2])
         self.iteration = 0
         self.test_iteration = 0
         self.num_thresholds = 10
@@ -135,7 +135,7 @@ class SP_GATv2_Wrapper(pl.LightningModule):
         f_score = f_score.sum(dim=0)
         self.train_fscores += f_score
         self.num_samples += features.size(0)
-        self.log('loss', loss.item(), prog_bar=True)
+        self.log('loss', loss.item())
         self.iteration += 1
         return loss
 

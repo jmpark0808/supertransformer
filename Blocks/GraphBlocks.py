@@ -202,7 +202,7 @@ class GATv2(nn.Module):
 
 class GATv3(nn.Module):
     """
-    GATv2 similar to GATv2conv from pytorch geometric
+    GATv3 similar to GATv2conv from pytorch geometric
     """
     def __init__(self, in_channels, out_channels, dropout, nheads, negative_slope, concat):
         super().__init__()
@@ -250,6 +250,56 @@ class GATv3(nn.Module):
         out = out + self.bias
         return out
     
+
+class GATv4(nn.Module):
+    """
+    GATv4 similar to GATv2conv from pytorch geometric
+    """
+    def __init__(self, in_channels, out_channels, dropout, nheads, negative_slope, concat):
+        super().__init__()
+        self.lin_l = nn.Linear(in_channels, nheads*out_channels)
+        self.lin_r = nn.Linear(in_channels, nheads*out_channels)
+        # self.att = nn.Parameter(torch.empty(1, nheads, out_channels, 1, 1))
+        self.att = nn.Linear(nheads*out_channels, nheads)
+        self.concat = concat
+        if concat:
+            self.bias = nn.Parameter(torch.empty(1, 1, nheads*out_channels))
+        else:
+            self.bias = nn.Parameter(torch.empty(1, 1, out_channels))
+
+        self.heads = nheads
+        self.out_channels = out_channels
+        self.leaky_relu = nn.LeakyReLU(negative_slope)
+        self.dropout = nn.Dropout(dropout)
+
+
+    def forward(self, x, adj):
+  
+        H, C = self.heads, self.out_channels
+        x_l = self.lin_l(x) #.view(x.size(0), -1, H, C) # B, N, H*C
+        x_r = self.lin_r(x) #.view(x.size(0), -1, H, C) # B, N, H*C
+        
+
+        x = x_l.permute(0, 2, 1).unsqueeze(-1) + x_r.permute(0, 2, 1).unsqueeze(2) # B, H*C, N, N
+        
+        x = self.leaky_relu(x).permute(0, 2, 3, 1) # B, N, N, H*C
+
+        alpha = self.att(x).permute(0, 3, 1, 2) # B, H, N, N
+        
+        alpha = torch.softmax(alpha, -1) 
+
+        alpha = self.dropout(alpha)
+
+        out = torch.matmul(alpha, x_r.view(x.size(0), -1, H, C).permute(0, 2, 1, 3)) # B, H, N, C
+        
+        if self.concat:
+            out = out.permute(0, 2, 1, 3) # B, N, H, C
+            out = out.reshape(out.size(0), out.size(1), -1)# B, N, H*C
+        else:
+            out = torch.mean(out, dim=1) # B, N, C
+
+        out = out + self.bias
+        return out
 
 
 

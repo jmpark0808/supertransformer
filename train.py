@@ -35,6 +35,7 @@ from Wrappers.SP_TFM_PyG import SP_TFM_PyG_Wrapper
 from Wrappers.SP_GUNET_PyG import SP_GUNET_PyG_Wrapper
 from Wrappers.SP_GATv2 import SP_GATv2_Wrapper
 from Wrappers.SP_GATv3 import SP_GATv3_Wrapper
+from Wrappers.SP_GATv4 import SP_GATv4_Wrapper
 
 
 # Import dataset modules
@@ -85,7 +86,8 @@ MODEL_DIRECTORY = {
     'SP_TFM_PyG': SP_TFM_PyG_Wrapper,
     'SP_GUNET_PyG': SP_GUNET_PyG_Wrapper,
     'SP_GATv2': SP_GATv2_Wrapper,
-    'SP_GATv3': SP_GATv3_Wrapper
+    'SP_GATv3': SP_GATv3_Wrapper,
+    'SP_GATv4': SP_GATv4_Wrapper
 }
 DATALOADER_DIRECTORY = {
     'SP': SPDataModule,
@@ -153,7 +155,8 @@ if __name__ == "__main__":
     parser.add_argument('--sigma_agnn', help='Sigma for AGNN augmentation', default=0.1, type=float)
 
 
-
+    import torch 
+    torch.set_float32_matmul_precision('medium')
 
     args = parser.parse_args()
     dict_args = vars(args)

@@ -138,7 +138,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         f_score = f_score.sum(dim=0)
         self.train_fscores += f_score
         self.num_samples += mask.size(0)
-        self.log('loss', loss.item())
+        self.log('loss', loss.item(), prog_bar=True)
         self.iteration += 1
         return loss
 
