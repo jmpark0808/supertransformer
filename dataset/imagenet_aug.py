@@ -482,19 +482,17 @@ class ImageNetDatasetTrainExport(torchvision.datasets.ImageFolder):
 
         
 
-class SPImageNetDataModule(pl.LightningDataModule):
+class SPImageNetAugDataModule(pl.LightningDataModule):
 
     def __init__(self, **kwargs):
         super().__init__()
 
-        # train_transform = transforms.Compose(
-        #             [transforms.Resize([256, 256]),
-        #              transforms.RandomAffine(degrees=20, translate=(0.1,0.1), scale=(0.9, 1.1)),
-        #             transforms.ColorJitter(brightness=0.2, contrast=0.2),
-        #             transforms.RandomHorizontalFlip(),
-        #             transforms.RandomVerticalFlip(),
-        #             transforms.ToTensor()
-        #             ])
+        train_transform = transforms.Compose(
+                    [transforms.Resize([256, 256]),
+                     transforms.RandomAffine(degrees=20, translate=(0.1,0.1), scale=(0.9, 1.1)),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor()
+                    ])
         FFT_transform = []
         # val_test_transform = None
         
@@ -513,7 +511,7 @@ class SPImageNetDataModule(pl.LightningDataModule):
         self.dilation = kwargs.get('dilation')
         generator = torch.Generator().manual_seed(self.seed)
 
-        train_dataset = ImageNetDatasetTrain(train_dir, self.num_seg, self.coeff, self.compactness, val_test_transform, 'train', self.dilation)
+        train_dataset = ImageNetDatasetTrain(train_dir, self.num_seg, self.coeff, self.compactness, train_transform, 'train', self.dilation)
         class_to_idx = train_dataset.class_to_idx
         train_size = int(0.8*len(train_dataset))
         val_size = len(train_dataset) - train_size

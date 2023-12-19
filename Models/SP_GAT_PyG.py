@@ -3,7 +3,7 @@ from Blocks.GraphBlocks import *
 from Wrappers.PositionalEncoding import PositionalEncodingSuperPixel
 from Blocks.TransformerBlocks import *
 from dataset.constants import *
-from torch_geometric.nn.conv import GATConv
+from torch_geometric.nn.conv import GATv2Conv
 from torch_geometric.nn.norm import LayerNorm
 from torch.nn import LayerNorm as TLayerNorm
 from torch_geometric.nn.pool import global_mean_pool
@@ -23,7 +23,7 @@ class SP_GAT_PyG(nn.Module):
         self.linear1 = nn.Linear(nfeat, nhid)
         self.elu = nn.ReLU()
         self.pos_linear = nn.Linear(2, nhid)
-        self.convs = nn.ModuleList([GATConv(in_channels=nhid, out_channels=nhid,
+        self.convs = nn.ModuleList([GATv2Conv(in_channels=nhid, out_channels=nhid,
                                                                           heads=nheads, dropout=dropout, edge_dim=None,
                                                                             concat=False) for _ in range(ntfm)])
         
