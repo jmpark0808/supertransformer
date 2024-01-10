@@ -23,7 +23,7 @@ if __name__ == "__main__":
     generator = torch.Generator().manual_seed(seed)
     train_dir = dict_args['train_dir']
     test_dir = dict_args['test_dir']
-    num_seg = 625
+    num_seg = 400
     coeff = 10
     compactness = 10
     batch_size = dict_args['batch_size']

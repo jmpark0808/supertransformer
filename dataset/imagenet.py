@@ -210,8 +210,10 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
         if os.path.exists(sp_file_path):
             if self.mode == 'train':
                 features_np = np.load(sp_file_path)
-                features_np = horizontal_flip(features_np, self.coeff, 0.5)
-                features_np = rotate(features_np, self.coeff, 30, 0.5)
+                gaussian_noise = np.random.normal(1, 0.5, features_np.shape)
+                features_np = features_np*gaussian_noise
+                # features_np = horizontal_flip(features_np, self.coeff, 0.5)
+                # features_np = rotate(features_np, self.coeff, 30, 0.5)
                 features = torch.tensor(features_np).float()
 
             else:
