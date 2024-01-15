@@ -8,7 +8,7 @@ class SP_CNN_LIN(nn.Module):
     def __init__(self):
         """Dense version of GAT."""
         super(SP_CNN_LIN, self).__init__()
-        self.conv1 = nn.Conv2d(3, 128, 3, 1, 1)
+        self.conv1 = nn.Conv2d(29, 128, 3, 1, 1)
         self.bn1 = nn.BatchNorm2d(128)
         self.conv2 = nn.Conv2d(128, 256, 3, 1, 1)
         self.bn2 = nn.BatchNorm2d(256)

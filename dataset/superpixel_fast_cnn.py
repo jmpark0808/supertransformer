@@ -178,12 +178,12 @@ class ToTensorSPFFT(object):
         label = regions['label']
         features = np.zeros([3+26, self.num_seg])
                
-        features[label-1, 0] = regions['intensity_mean-0']/255.
-        features[label-1, 1] = regions['intensity_mean-1']/255.
-        features[label-1, 2] = regions['intensity_mean-2']/255.
+        features[0, label-1] = regions['intensity_mean-0']/255.
+        features[1, label-1] = regions['intensity_mean-1']/255.
+        features[2, label-1] = regions['intensity_mean-2']/255.
 
         for ind in range(24+2):
-            features[label-1, ind+3] = regions_lbp[f'lbp-{ind}']
+            features[ind+3, label-1] = regions_lbp[f'lbp-{ind}']
     
         for ind, coord in zip(regions['label'], regions['coords']):
             seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
