@@ -14,12 +14,12 @@ from skimage.measure import regionprops_table
 import os
 from fast_slic.avx2 import SlicAvx2
 
-image_path = '/mnt/dragon/Datasets/DUTS/DUTS-TR/Image/'
+image_path = '/mnt/hdd/Datasets/DUTS/TR/Image/'
 for i in os.listdir(image_path):
     img = Image.open(os.path.join(image_path, i)).convert('RGB')
     img = img.resize((300, 300))
     img = np.array(img)
-    fig, ax = plt.subplots(1, 2, figsize=(20, 10))
+    # fig, ax = plt.subplots(1, 2, figsize=(20, 10))
     # slic = SlicAvx2(num_components=625, compactness=50, min_size_factor=0.)
     # segments = slic.iterate(img, max_iter=0)+1
 
@@ -34,14 +34,17 @@ for i in os.listdir(image_path):
     x = regions['centroid-0']
     y = regions['centroid-1']
 
-    labels = regions['label']
+    labels = np.array(regions['label'])
+    labels_sorted = np.sort(labels)
+    if not np.array_equal(labels,labels_sorted):
+        assert(0)
     labels = [str(l) for l in labels]
 
     out = color.label2rgb(segments, img, kind='avg', bg_label=0)
     out = segmentation.mark_boundaries(out, segments, (0, 0, 0))
-    ax[0].imshow(out)
-    for x_, y_, l in zip(x, y, labels):
-        ax[0].text(y_, x_, l)
+    # ax[0].imshow(out)
+    # for x_, y_, l in zip(x, y, labels):
+    #     ax[0].text(y_, x_, l)
 
 
 
@@ -54,15 +57,18 @@ for i in os.listdir(image_path):
     regions = regionprops_table(segments, img, properties=('label', 'centroid'))
     x = regions['centroid-0']
     y = regions['centroid-1']
-    labels = regions['label']
+    labels = np.array(regions['label'])
+    labels_sorted = np.sort(labels)
+    if not np.array_equal(labels,labels_sorted):
+        assert(0)
     labels = [str(l) for l in labels]
 
     out = color.label2rgb(segments, img, kind='avg', bg_label=0)
     out = segmentation.mark_boundaries(out, segments, (0, 0, 0))
-    ax[1].imshow(out)
-    for x_, y_, l in zip(x, y, labels):
-        ax[1].text(y_, x_, l)
-    plt.show()
+    # ax[1].imshow(out)
+    # for x_, y_, l in zip(x, y, labels):
+    #     ax[1].text(y_, x_, l)
+    # plt.show()
 
     def merge_mean_color(graph, src, dst):
         """Callback called before merging two nodes of a mean color distance graph.

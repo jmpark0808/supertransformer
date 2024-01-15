@@ -12,7 +12,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks.lr_monitor import LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
-from Wrappers.SP_CNN_LIN import SP_CNN_LIN_Wrapper
+from Wrappers.SP_CNN import SP_CNN_Wrapper
 from Wrappers.SP_ETFM_TFM import SP_ETFM_TFM_Wrapper
 from Wrappers.SP_GCN import SP_GCN_Wrapper
 from Wrappers.SP_GTFM import SP_GTFM_Wrapper
@@ -43,6 +43,7 @@ from dataset.superpixel import DUTSDataModule,  SPDataModule
 from dataset.superpixel_pyg import SPGDataModule
 from dataset.superpixel_pyg_image import SPGIDataModule
 from dataset.superpixel_fast import SPFDataModule
+from dataset.superpixel_fast_cnn import SPFCDataModule
 
 
 # Metric logging
@@ -67,7 +68,7 @@ MODEL_DIRECTORY = {
     # "SC": SuperConvSeg,
     "SP_TFM_DIL": SP_TFM_DIL_Wrapper,
     "SP_RTFM_TFM": SP_RTFM_TFM_Wrapper,
-    "SP_CNN_LIN": SP_CNN_LIN_Wrapper,
+    "SP_CNN": SP_CNN_Wrapper,
     "SP_TFM_TFM": SP_TFM_TFM_Wrapper,
     "SP_ETFM_TFM": SP_ETFM_TFM_Wrapper,
     "SP_TFM": SP_TFM_Wrapper,
@@ -100,7 +101,8 @@ DATALOADER_DIRECTORY = {
     'SPG': SPGDataModule,
     'SPGIFFT': SPGIDataModule,
     'SPGI': SPGIDataModule,
-    'SPF': SPFDataModule
+    'SPF': SPFDataModule,
+    'SPFC': SPFCDataModule
 
 } 
 
