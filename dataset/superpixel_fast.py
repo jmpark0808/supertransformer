@@ -238,14 +238,14 @@ class ToTensorSP(object):
 
         # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
             
-        slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
-        segments = slic.iterate(img_np)+1
-        # segments = slic(img_np, n_segments=self.num_seg,
-        #     compactness=self.compactness,
-        #     max_num_iter=3,
-        #     convert2lab=True,
-        #     enforce_connectivity=False,
-        #     slic_zero=False)
+        # slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
+        # segments = slic.iterate(img_np)+1
+        segments = slic(img_np, n_segments=self.num_seg,
+            compactness=self.compactness,
+            max_num_iter=10,
+            convert2lab=True,
+            enforce_connectivity=False,
+            slic_zero=False)
 
         # plt.imshow(mark_boundaries(img_np, segments))
         # plt.show()
@@ -277,25 +277,7 @@ class ToTensorSP(object):
             seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
 
 
-        # if self.fully_connected:
-        #     neighbor_array = np.ones([self.num_seg, self.num_seg])
-        # else:
-        #     neighbor_array = np.zeros([self.num_seg, self.num_seg])
-        #     neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
-        #     neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
-        # edge_index = np.nonzero(neighbor_array)
-
-
-
-        # spatial_distances = euclidean_distances(features_centroids, features_centroids)
-        # spatial_distances = spatial_distances[edge_index]
-        
-      
-        # edge_features = np.expand_dims(spatial_distances, axis=1)
-        
-
-        # d = Data(x=torch.tensor(features).float(), edge_index=edge_index, edge_attr=edge_features)
-        # seq_mask, segments, mask = torch.tensor(seq_mask).float(), torch.tensor(segments)
+   
 
         return features, seq_mask, segments, self.tensor(mask), img_np
 
@@ -316,11 +298,11 @@ class SPDataset(data.Dataset):
         self.size = size
         self.dilation = dilation
         
-        # if dataloader == 'SPGFFT':
-        #     totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
-        # else:
-        #     totensor = ToTensorSP(num_seg, compactness, fully_conneted)
-        totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
+        if dataloader == 'SPFFFT':
+            totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
+        else:
+            totensor = ToTensorSP(num_seg, compactness, fully_conneted)
+        # totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
 
         self.transform = transforms.Compose([Resize(size),
             # [RandomFlip(0.5),
@@ -465,6 +447,7 @@ class SPFDataModule(pl.LightningDataModule):
         self.sigma_agen = kwargs.get('sigma_agen', None)
         self.sigma_agnn = kwargs.get('sigma_agnn', None)
         self.dilation = kwargs.get('dilation')
+        self.debug = kwargs.get('debug', False)
         
         self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
         self.mask_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.train_dir, 'Mask'))]))
@@ -480,6 +463,17 @@ class SPFDataModule(pl.LightningDataModule):
 
         self.test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'Image'))])
         self.test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'Mask'))])
+
+        if self.debug:
+            self.val_image_list = self.val_image_list[:100]
+            self.val_mask_list = self.val_mask_list[:100]
+
+            self.tr_image_list = self.tr_image_list[:100]
+            self.tr_mask_list = self.tr_mask_list[:100]
+
+            self.test_image_list = self.test_image_list[:100]
+            self.test_mask_list = self.test_mask_list[:100]
+           
 
         
     def train_dataloader(self):

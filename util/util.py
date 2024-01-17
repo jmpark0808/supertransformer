@@ -150,10 +150,10 @@ def resample_2d(points, N):
 
 def get_input_dim(args):
     d = args.get('dataloader')
-    if d == 'SP' or d == 'SPLAP':
+    if d == 'SP' or d == 'SPLAP' or d == 'SPF':
         return 3
     elif d == 'SPFFT' or d == 'ImageNet' or d== 'SPGFFT' or \
-    d== 'SPGIFFT' or d == 'SPF' or d == 'ImageNet_PyG':
+    d== 'SPGIFFT' or d == 'SPFFFT' or d == 'ImageNet_PyG':
         if args.get('ignore_phase'):
             return 6+(args.get('coeff'))
         else:
