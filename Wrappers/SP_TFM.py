@@ -160,7 +160,6 @@ class SP_TFM_Wrapper(pl.LightningModule):
         adj = batch['neighbor_array']
 
 
-
         features = features.cuda()
         seq_mask = seq_mask.cuda()
         adj = adj.cuda()

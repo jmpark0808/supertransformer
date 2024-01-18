@@ -169,7 +169,7 @@ class ToTensorSPFFT(object):
             slic_zero=False)
 
         lbp_np = local_binary_pattern(img_gray, 24, 8, method='uniform')
-        regions_lbp = regionprops_table(segments, intensity_image=lbp_np, extra_properties=[lbp])
+        regions_lbp = regionprops_table(segments, intensity_image=lbp_np, extra_properties=[self.lbp])
 
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'intensity_mean',
                                                                                     'coords'))

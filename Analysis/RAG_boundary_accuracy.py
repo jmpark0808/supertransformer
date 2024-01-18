@@ -64,7 +64,7 @@ def _weight_mean_color(graph, src, dst, n):
 dataset_images = '/mnt/dragon/Datasets/DUTS/DUTS-TE/Image'
 masks = '/mnt/dragon/Datasets/DUTS/DUTS-TE/Mask'
 all_ious = []
-thresholds = [5, 10, 15, 20, 25, 30]
+thresholds = [10,  20,  30]
 all_nodes = []
 for threshold in thresholds:
     IoUs = []
@@ -83,7 +83,7 @@ for threshold in thresholds:
                     compactness=10,
                     max_num_iter=10,
                     convert2lab=True,
-                    enforce_connectivity=True,
+                    enforce_connectivity=False,
                     slic_zero=False)
                     
         g = graph.rag_mean_color(img, segments)
