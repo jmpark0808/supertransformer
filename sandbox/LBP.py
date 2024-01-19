@@ -73,7 +73,7 @@ for i in sorted(os.listdir(image_path)):
                 convert2lab=True,
                 enforce_connectivity=False,
                 slic_zero=False)
-    lbp_np = local_binary_pattern(img_gray, 24, 8, method='uniform')
+    lbp_np = local_binary_pattern(img_gray, 8, 1, method='uniform')
     print(lbp_np)
     assert(0)
 

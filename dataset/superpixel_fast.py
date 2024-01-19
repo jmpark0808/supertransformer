@@ -227,11 +227,19 @@ class ToTensorSP(object):
         self.num_seg = num_seg
         self.compactness = compactness
         self.fully_connected =fully_connected
-        
+        def lbp(region, intensities):
+            (hist, _) = np.histogram(intensities[region].ravel(),
+                    bins=np.arange(0, 8+3),
+                    range=(0, 8+2))
+            hist = hist.astype("float")
+            # hist /= (hist.sum() + 1e-7)
+            return hist
+        self.lbp = lbp
 
 
     def __call__(self, sample):
         img, mask = sample['image'], sample['mask']
+        img_gray = np.array(img.convert('L'))
         img_np = np.array(img)
         mask_np = np.array(mask)/255.
         img_size = img_np.shape
@@ -246,6 +254,10 @@ class ToTensorSP(object):
             convert2lab=True,
             enforce_connectivity=False,
             slic_zero=False)
+        
+        lbp_np = local_binary_pattern(img_gray, 8, 1, method='uniform')
+        regions_lbp = regionprops_table(segments, intensity_image=lbp_np, extra_properties=[self.lbp])
+
 
         # plt.imshow(mark_boundaries(img_np, segments))
         # plt.show()
@@ -262,7 +274,7 @@ class ToTensorSP(object):
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
         
-        features = np.zeros([self.num_seg, 5])
+        features = np.zeros([self.num_seg, 5+10])
 
 
     
@@ -272,6 +284,8 @@ class ToTensorSP(object):
         features[label-1, 3] = regions['intensity_mean-1']/255.
         features[label-1, 4] = regions['intensity_mean-2']/255.      
 
+        for ind in range(8+2):
+            features[label-1, ind+5] = regions_lbp[f'lbp-{ind}']
 
         for ind, coord in zip(regions['label'], regions['coords']):
             seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0

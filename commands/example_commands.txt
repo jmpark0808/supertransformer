@@ -2,3 +2,5 @@ python train.py --model ITNMP --eval --dataloader DUTS --dataset_tr /mnt/hdd/Dat
 
 
 python train.py --model SP_CNN --eval --dataloader SPFC --dataset_tr /mnt/hdd/Datasets/DUTS/TR/ --dataset_test /mnt/hdd/Datasets/DUTS/TE/ --batch_size 24 --num_workers 12 --val_freq 1.0 --logdir /mnt/hdd/Experiments/supertransformer/ --num_seg 625 --compactness 50 --size 300 
+
+python train.py --model SP_TFM --eval --dataloader SPF --dataset_tr /mnt/dragon/Datasets/DUTS/DUTS-TR/ --dataset_test /mnt/dragon/Datasets/DUTS/DUTS-TE/ --batch_size 16 --num_workers 12 --val_freq 1.0 --logdir /mnt/hdd/Experiments/supertransformer/ --num_seg 625 --compactness 50 --size 300 --debug 
