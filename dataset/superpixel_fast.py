@@ -20,6 +20,7 @@ from dataset.attributes import *
 from torch.utils.data import DataLoader
 from pathlib import Path
 from tqdm import tqdm
+from dataset.fft_transform import *
 
 class Resize(object):
     def __init__(self, size):
@@ -193,8 +194,7 @@ class ToTensorSPFFT(object):
         features[label-1, 6] = regions['image_stdev-1']/255.
         features[label-1, 7] = regions['image_stdev-2']/255.
         
-
-
+        
         for ind, coord in zip(regions['label'], regions['coords']):
             seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
 
@@ -320,6 +320,7 @@ class SPDataset(data.Dataset):
         self.sigma_agnn = sigma_agnn
         self.size = size
         self.dilation = dilation
+        self.coeff = coeff
         
         if dataloader == 'SPFFFT':
             totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
@@ -432,7 +433,12 @@ class SPDataset(data.Dataset):
             if self.dilation != 1:
                 neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
 
-            
+        if self.dataloader == 'SPFFFT':
+            features = horizontal_flip(features, self.coeff, 0.5)
+
+            gaussian_noise = np.random.normal(1, 0.05, features.shape)
+            features = features*gaussian_noise
+
         
 
         # if self.sigma_agen is not None and self.data_augmentation:

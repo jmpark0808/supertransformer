@@ -11,7 +11,7 @@ def horizontal_flip(array, coeff, chance):
         array[:, -coeff:] = phase_flipped
 
         xs = array[:, 1]
-        mid_x = 256/2.
+        mid_x = 300/2.
         diff_x = xs-mid_x
         array[:, 1] = mid_x-diff_x
     return array
