@@ -1,4 +1,4 @@
-from dataset.imagenet_pyg_exp import SPGEImageNetDataModule
+from dataset.imagenet_pyg_exp import ImageNetDatasetTestExport, ImageNetDatasetTrainExport
 import torch
 import torchvision.transforms as transforms
 import argparse
@@ -23,16 +23,16 @@ if __name__ == "__main__":
     generator = torch.Generator().manual_seed(seed)
     train_dir = dict_args['train_dir']
     test_dir = dict_args['test_dir']
-    num_seg = 400
-    coeff = 10
+    num_seg = 625
     compactness = 10
+    coeff = 10 
     batch_size = dict_args['batch_size']
     num_workers = dict_args['num_workers']
     train_export_dir = dict_args['train_export_dir']
     test_export_dir = dict_args['test_export_dir']
 
     val_test_transform = transforms.Compose(
-                            [transforms.Resize([256, 256]),
+                            [transforms.Resize([300, 300]),
                             transforms.ToTensor()
                             ])
 
@@ -61,7 +61,7 @@ if __name__ == "__main__":
     for _ in tqdm(val_source_loader):
         pass
 
-    for _ in tqdm(test_source_loader):
+    for _ in  tqdm(test_source_loader):
         pass
 
 
