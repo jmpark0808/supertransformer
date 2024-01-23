@@ -22,6 +22,7 @@ from Wrappers.SP_ImageNet_DGAT_PyG import SP_ImageNet_DGAT_PyG_Wrapper
 from dataset.imagenet import SPImageNetDataModule
 from dataset.imagenet_pyg import SPGImageNetDataModule
 from dataset.imagenet_aug import SPImageNetAugDataModule
+from dataset.imagenet_pyg_exp import SPGEImageNetDataModule
 
 
 
@@ -39,7 +40,8 @@ MODEL_DIRECTORY = {
 DATALOADER_DIRECTORY = {
     'ImageNet': SPImageNetDataModule,
     'ImageNet_PyG': SPGImageNetDataModule,
-    'ImageNet_Aug': SPImageNetAugDataModule
+    'ImageNet_Aug': SPImageNetAugDataModule,
+    'INPE': SPGEImageNetDataModule
 } 
 
 if __name__ == "__main__":

@@ -150,7 +150,7 @@ def resample_2d(points, N):
 
 def get_input_dim(args):
     d = args.get('dataloader')
-    if d == 'SP' or d == 'SPLAP':
+    if d == 'SP' or d == 'SPLAP' or d == 'INPE':
         return 3
     elif d == 'SPF':
         return 13

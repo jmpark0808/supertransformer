@@ -255,6 +255,15 @@ class ToTensorSP(object):
             enforce_connectivity=False,
             slic_zero=False)
         
+
+        vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
+        vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
+        vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
+        vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
+        bneighbors, counts = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1, return_counts=True)
+        segments_ids = np.unique(segments)
+        centers = np.array([np.mean(np.nonzero(segments==i),axis=1) for i in segments_ids])
+        
         lbp_np = local_binary_pattern(img_gray, 8, 1, method='uniform')
         regions_lbp = regionprops_table(segments, intensity_image=lbp_np, extra_properties=[self.lbp])
 
