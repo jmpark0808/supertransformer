@@ -247,7 +247,7 @@ class ImageNetDatasetTestExport(data.Dataset):
         neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
 
         adj = scipy.sparse.csr_matrix(neighbor_array)
-        edge_index, edge_weight = from_scipy_sparse_matrix(adj)
+        
 
         scipy.sparse.save_npz(sp_file_path_edge_index, adj)
 
@@ -269,7 +269,7 @@ class ImageNetDatasetTestExport(data.Dataset):
 
         features, target = torch.tensor(features).float(), torch.tensor(target)
 
-        return Data(x=features, edge_index=torch.tensor(edge_index)), target
+        return Data(x=features), target
 
 
 
@@ -351,7 +351,7 @@ class ImageNetDatasetTrainExport(torchvision.datasets.ImageFolder):
         neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
 
         adj = scipy.sparse.csr_matrix(neighbor_array)
-        edge_index, edge_weight = from_scipy_sparse_matrix(adj)
+        
 
         scipy.sparse.save_npz(sp_file_path_edge_index, adj)
 
@@ -373,7 +373,7 @@ class ImageNetDatasetTrainExport(torchvision.datasets.ImageFolder):
         
         features, target = torch.tensor(features).float(), torch.tensor(target)
 
-        return Data(x=features, edge_index=torch.tensor(edge_index)), target
+        return Data(x=features), target
 
         
 

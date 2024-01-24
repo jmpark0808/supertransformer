@@ -12,8 +12,8 @@ from skimage.measure import regionprops_table
 from typing import List, Optional, Any
 from numpy.typing import ArrayLike
 from scipy.ndimage import gaussian_filter
-from skimage.segmentation import find_boundaries
-
+from skimage.segmentation import find_boundaries, flood, flood_fill, slic
+import cv2
 
 class magic_rag:
 
@@ -69,8 +69,12 @@ class magic_rag:
             
             # smoothing the gradient makes superpixels larger (tune sigma to your preference)
             self.wsh = magic_py.Watershed(gaussian_filter(self.grd, sigma=sigma, truncate=4), self.msk)
-            # slic = SlicAvx2(num_components=625, compactness=10)
-            # segments = slic.iterate(np.array(self.img))+1
+            # segments = slic(img, n_segments=625,
+            #     compactness=10,
+            #     max_num_iter=10,
+            #     convert2lab=True,
+            #     enforce_connectivity=False,
+            #     slic_zero=False)
             # mask = find_boundaries(segments, mode='inner')
             # segments[mask] = -2
             # self.wsh = segments
@@ -334,7 +338,7 @@ def IRGS(img, n_classes, n_iter, mask=None):
     print("Performing", str(n_iter), "IRGS iterations...")
     # for j in tqdm(range(n_iter), ncols=50):
     for j in range(n_iter):
-        # rag.irgs_step(beta1=beta1, current_iter=i+1)
+        # rag.irgs_step(beta1=, current_iter=j+1)
         rag.irgs_step(current_iter=j+1)
     
     # final_wsh = rag.wsh
@@ -359,8 +363,8 @@ def IRGS(img, n_classes, n_iter, mask=None):
 if __name__ == '__main__':
 
     
-    dataset_images = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Image'
-    masks = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Mask'
+    dataset_images = '/mnt/hdd/Datasets/DUTS/DUTS-TE/Image'
+    masks = '/mnt/hdd/Datasets/DUTS/DUTS-TE/Mask'
     IoUs = []
     for idx, i in enumerate(sorted(os.listdir(dataset_images))[:]):
         print(f'-----------------------------------{idx}------------------------------')
@@ -375,7 +379,27 @@ if __name__ == '__main__':
         img = img.convert('RGB').resize((300, 300))
         img = np.uint8(img)
 
-        segments, boundaries = IRGS(img, 4, 120)
+        # fig, ax = plt.subplots(1, 3)
+        num_classes = 10
+        segments, boundaries = IRGS(img, num_classes, 120)
+        boundaries[segments==-1] = 0
+
+        # irgs_output_colored = np.uint8(255*cm.jet(segments/num_classes))[:,:,:3]
+        # ax[0].imshow(boundaries)
+        # ax[1].imshow(irgs_output_colored)
+        
+        segments_copy = np.copy(segments)
+        running_count = 0 
+        for i in range(num_classes):
+            a = (segments == i).astype(np.int8)
+            num_labels, labels_im = cv2.connectedComponents(a)
+            for j in range(num_labels):
+                segments_copy[labels_im == j+1] = running_count
+                running_count += 1
+            
+        # irgs_output_colored = np.uint8(255*cm.jet(segments_copy/running_count))[:,:,:3]
+        # ax[2].imshow(irgs_output_colored)
+        # plt.show()
 
 
         msk = msk.convert('L').resize((300, 300))
@@ -386,14 +410,15 @@ if __name__ == '__main__':
         msk[msk>125] = 1
         
 
-        regions = regionprops_table(segments, img, properties=('label', 'centroid', 'area', 'intensity_mean',
+        regions = regionprops_table(segments_copy+1, img, properties=('label', 'centroid', 'area', 'intensity_mean',
                                                                                 'coords',))
+     
         seq_mask = np.zeros([max(regions['label'])])
 
         for ind, coord in zip(regions['label'], regions['coords']):
             seq_mask[ind-1] = np.sum(msk[coord[:, 0], coord[:, 1]])/len(coord[:, 0])
 
-        plt_image = seq_mask[segments-1].reshape([img.shape[0], img.shape[1]])
+        plt_image = seq_mask[segments_copy-1].reshape([img.shape[0], img.shape[1]])
         plt_image = np.ravel(plt_image)
             
 

@@ -3,6 +3,7 @@ import torch
 import torchvision.transforms as transforms
 import argparse
 from tqdm import tqdm
+from torch_geometric.loader import DataLoader
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
@@ -46,13 +47,13 @@ if __name__ == "__main__":
 
     test_dataset = ImageNetDatasetTestExport(test_dir, val_test_transform, num_seg, coeff, class_to_idx, compactness, test_export_dir)
 
-    train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+    train_source_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                                                             num_workers =num_workers, drop_last=False)
 
-    val_source_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
+    val_source_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
                                                             num_workers=num_workers, drop_last=False)
 
-    test_source_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
+    test_source_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
                                                             num_workers=num_workers, drop_last=False)
     
     for _ in tqdm(train_source_loader):
