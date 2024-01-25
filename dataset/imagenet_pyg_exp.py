@@ -163,7 +163,7 @@ class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
         
 
 class ImageNetDatasetTestExport(data.Dataset):
-    def __init__(self, root_dir, transforms, num_seg, coeff, class_to_idx, compactness, dilation):
+    def __init__(self, root_dir, transforms, num_seg, coeff, class_to_idx, compactness, dilation, export_dir):
         self.root_dir = root_dir
         self.image_list = sorted(os.listdir('{}/Data/CLS-LOC/val'.format(root_dir)))
         self.target_list = sorted(os.listdir('{}/Annotations/CLS-LOC/val'.format(root_dir)))
@@ -174,6 +174,7 @@ class ImageNetDatasetTestExport(data.Dataset):
         self.coeff = coeff
         self.dilation = dilation
         self.adj_list = {}
+        self.export_dir = export_dir
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
             contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -210,11 +211,9 @@ class ImageNetDatasetTestExport(data.Dataset):
 
         sp_file_name = self.image_list[item].split('.')[0]+'.npy'
         sp_file_name_edge = self.image_list[item].split('.')[0]+'edge.pickle'
-        sp_file_folder = pathlib.Path(os.path.join(self.root_dir, 'Data/CLS-LOC/sp_test'))
-        if not os.path.exists(sp_file_folder):
-            os.makedirs(sp_file_folder, exist_ok=True)
-        sp_file_path = os.path.join(sp_file_folder, sp_file_name)
-        sp_file_path_edge_index = os.path.join(sp_file_folder, sp_file_name_edge)
+        
+        sp_file_path = os.path.join(self.export_dir, sp_file_name)
+        sp_file_path_edge_index = os.path.join(self.export_dir, sp_file_name_edge)
 
         target = ET.parse(target_name)
         root = target.getroot()
@@ -274,7 +273,7 @@ class ImageNetDatasetTestExport(data.Dataset):
 
 
 class ImageNetDatasetTrainExport(torchvision.datasets.ImageFolder):
-    def __init__(self, root, num_seg, coeff, compactness, transform, mode, dilation) -> None:
+    def __init__(self, root, num_seg, coeff, compactness, transform, mode, dilation, export_dir) -> None:
         super().__init__(root, transform=transform)
         self.num_seg = num_seg
         self.compactness = compactness
@@ -282,6 +281,7 @@ class ImageNetDatasetTrainExport(torchvision.datasets.ImageFolder):
         self.mode = mode
         self.dilation = dilation
         self.adj_list = {}
+        self.export_dir = export_dir
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
             contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -319,11 +319,9 @@ class ImageNetDatasetTrainExport(torchvision.datasets.ImageFolder):
         
         sp_file_name = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'.npy'
         sp_file_name_edge = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'edge.npy'
-        sp_file_folder = os.path.join('/',*pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[:-3], 'sp_train')
-        if not os.path.exists(sp_file_folder):
-            os.makedirs(sp_file_folder, exist_ok=True)
-        sp_file_path = os.path.join(sp_file_folder, sp_file_name)
-        sp_file_path_edge_index = os.path.join(sp_file_folder, sp_file_name_edge)
+       
+        sp_file_path = os.path.join(self.export_dir, sp_file_name)
+        sp_file_path_edge_index = os.path.join(self.export_dir, sp_file_name_edge)
 
         
         img = Image.open(img[0])
