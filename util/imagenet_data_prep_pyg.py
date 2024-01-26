@@ -37,7 +37,7 @@ if __name__ == "__main__":
                             transforms.ToTensor()
                             ])
 
-    train_dataset = ImageNetDatasetTrainExport(train_dir, num_seg, coeff, compactness, val_test_transform, 'train', train_export_dir)
+    train_dataset = ImageNetDatasetTrainExport(train_dir, num_seg, coeff, compactness, val_test_transform, 'train', None, train_export_dir)
     class_to_idx = train_dataset.class_to_idx
     train_size = int(0.8*len(train_dataset))
     val_size = len(train_dataset) - train_size
@@ -45,7 +45,7 @@ if __name__ == "__main__":
     val_dataset.dataset.transform = val_test_transform
     val_dataset.mode = 'val'
 
-    test_dataset = ImageNetDatasetTestExport(test_dir, val_test_transform, num_seg, coeff, class_to_idx, compactness, test_export_dir)
+    test_dataset = ImageNetDatasetTestExport(test_dir, val_test_transform, num_seg, coeff, class_to_idx, compactness, None, test_export_dir)
 
     train_source_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                                                             num_workers =num_workers, drop_last=False)

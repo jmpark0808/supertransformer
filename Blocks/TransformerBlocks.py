@@ -88,18 +88,22 @@ class Attention(nn.Module):
         return self.to_out(out)
 
 class PosAttention(nn.Module):
-    def __init__(self, dim, dilation, heads = 8, dim_head = 64, dropout = 0.):
+    def __init__(self, dim, dilation, heads = 8, dim_head = 64, dropout = 0., edge_dim=1):
         super().__init__()
         inner_dim = dim_head *  heads
         project_out = not (heads == 1 and dim_head == dim)
 
         self.heads = heads
+        self.dim = dim_head
         self.scale = dim_head ** -0.5
         self.dilation = dilation
 
         self.attend = nn.Softmax(dim = -1)
         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
         self.distances_linear = nn.Linear(2, dim_head)
+
+        self.lin_edge = nn.Linear(edge_dim, inner_dim)
+        
         # self.distances_1 = nn.Linear(dim_head*heads, 1)
 
 
@@ -108,11 +112,15 @@ class PosAttention(nn.Module):
             nn.Dropout(dropout)
         ) if project_out else nn.Identity()
 
-    def forward(self, x, emb, adj, distances):
+    def forward(self, x, emb, adj, edge_attr):
         qkv = self.to_qkv(x).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
-        
+
+        edge_attr = self.lin_edge(edge_attr).reshape(q.size(0), self.heads, -1, self.dim)
+        k = k + edge_attr
+        v = v + edge_attr
         dots = torch.matmul(q, k.transpose(-1, -2))
+        
         # zero_vec = -1e9*torch.ones_like(dots)
         
         # adj = torch.matrix_power(adj, self.dilation).bool().int()

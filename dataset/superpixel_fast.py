@@ -161,12 +161,16 @@ class ToTensorSPFFT(object):
         # plt.imshow(mark_boundaries(img_np, segments))
         # plt.show()
 
-        # vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
-        # vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
-        # vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
-        # vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
-        # bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
-    
+        vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
+        vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
+        bneighbors, counts = np.unique(np.hstack([vs_right, vs_below]), axis=1, return_counts=True)
+        
+        
+        edge_attr = np.zeros([self.num_seg, self.num_seg])
+        for i in range(bneighbors.shape[1]):
+            if bneighbors[0,i] != bneighbors[1,i]:
+                edge_attr[bneighbors[0,i]-1, bneighbors[1,i]-1] = counts[i]
+                
 
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
                                                                                     'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
@@ -219,7 +223,7 @@ class ToTensorSPFFT(object):
         # d = Data(x=torch.tensor(features).float(), edge_index=edge_index, edge_attr=edge_features)
         # seq_mask, segments, mask = torch.tensor(seq_mask).float(), torch.tensor(segments)
 
-        return features, seq_mask, segments, self.tensor(mask), img_np
+        return features, seq_mask, segments, self.tensor(mask), img_np, edge_attr
     
 class ToTensorSP(object):
     def __init__(self, num_seg, compactness, fully_connected):
@@ -258,11 +262,13 @@ class ToTensorSP(object):
 
         vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
         vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
-        vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
-        vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
-        bneighbors, counts = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1, return_counts=True)
-        segments_ids = np.unique(segments)
-        centers = np.array([np.mean(np.nonzero(segments==i),axis=1) for i in segments_ids])
+        bneighbors, counts = np.unique(np.hstack([vs_right, vs_below]), axis=1, return_counts=True)
+        
+        
+        edge_attr = np.zeros([self.num_seg, self.num_seg])
+        for i in range(bneighbors.shape[1]):
+            if bneighbors[0,i] != bneighbors[1,i]:
+                edge_attr[bneighbors[0,i]-1, bneighbors[1,i]-1] = counts[i]
         
         lbp_np = local_binary_pattern(img_gray, 8, 1, method='uniform')
         regions_lbp = regionprops_table(segments, intensity_image=lbp_np, extra_properties=[self.lbp])
@@ -302,7 +308,7 @@ class ToTensorSP(object):
 
    
 
-        return features, seq_mask, segments, self.tensor(mask), img_np
+        return features, seq_mask, segments, self.tensor(mask), img_np, edge_attr
 
 
 
@@ -372,6 +378,8 @@ class SPDataset(data.Dataset):
 
             segments = sample[2]
             features = sample[0]
+            edge_attr = sample[5]
+            
      
             
             vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
