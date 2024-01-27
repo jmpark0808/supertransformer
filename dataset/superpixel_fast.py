@@ -350,7 +350,7 @@ class SPDataset(data.Dataset):
 
             sp_file_name_features = image.split('/')[-1].split('.')[0]+'_features.npy'
             sp_file_name_edge_index = image.split('/')[-1].split('.')[0]+'_edge_index.npy'
-            
+            sp_file_name_edge_attr = image.split('/')[-1].split('.')[0]+'_edge_attr.npy'
             sp_file_name_seq_mask = image.split('/')[-1].split('.')[0]+'_seq_mask.npy'
             sp_file_name_segments = image.split('/')[-1].split('.')[0]+'_segments.npy'
 
@@ -359,7 +359,7 @@ class SPDataset(data.Dataset):
 
             sp_file_path_features = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_features )
             sp_file_path_edge_index = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_edge_index )
-        
+            sp_file_path_edge_attr = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_edge_attr )
             sp_file_path_seq_mask = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_seq_mask )
             sp_file_path_segments = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_segments )
             if os.path.exists(sp_file_path_features):
@@ -377,7 +377,6 @@ class SPDataset(data.Dataset):
             np.save(sp_file_path_segments, sample[2])
 
             segments = sample[2]
-            features = sample[0]
             edge_attr = sample[5]
             
      
@@ -392,6 +391,7 @@ class SPDataset(data.Dataset):
             neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
             
             np.save(sp_file_path_edge_index, neighbor_array)
+            sp.save_npz(sp_file_path_edge_attr, sp.csr_matrix(edge_attr))
 
             
 
@@ -404,7 +404,7 @@ class SPDataset(data.Dataset):
 
         sp_file_name_features = self.image_list[item].split('/')[-1].split('.')[0]+'_features.npy'
         sp_file_name_edge_index = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_index.npy'
-        sp_file_name_edge_features = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_features.npy'
+        sp_file_name_edge_attr = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_attr.npy.npz'
         sp_file_name_seq_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_seq_mask.npy'
         sp_file_name_segments = self.image_list[item].split('/')[-1].split('.')[0]+'_segments.npy'
 
@@ -413,7 +413,7 @@ class SPDataset(data.Dataset):
 
         sp_file_path_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_features )
         sp_file_path_edge_index = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_index )
-        sp_file_path_edge_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_features )
+        sp_file_path_edge_attr = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_attr )
         sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_seq_mask )
         sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_segments )
 
@@ -426,6 +426,7 @@ class SPDataset(data.Dataset):
         features = np.load(sp_file_path_features)
         seq_mask = np.load(sp_file_path_seq_mask)
         segments = np.load(sp_file_path_segments)
+        edge_attr = sp.load_npz(sp_file_path_edge_attr).toarray().astype(np.float32)
         mask = self.resize_mask(mask)
         mask = (mask > 0.5).float()
         img = self.resize_mask(img)
@@ -461,7 +462,7 @@ class SPDataset(data.Dataset):
     
         return {'features': torch.tensor(features).float(), 'seq_mask': torch.tensor(seq_mask),
                  'segments': torch.tensor(segments), 'mask': mask, 'img': img, 'neighbor_array': neighbor_array,
-                   'edge_features': neighbor_array, 'file_name':self.image_list[item]}
+                   'edge_features': neighbor_array, 'file_name':self.image_list[item], 'edge_attr': edge_attr}
 
 
 

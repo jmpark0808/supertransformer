@@ -54,7 +54,7 @@ class SP_TFM_REL(nn.Module):
         # pos = self.pos_linear2(pos)
         # pos = self.pos_encoding(pos)
         x += pos
-        x = self.transformer_enc(x, None, adj, None)
+        x = self.transformer_enc(x, None, adj, distances)
 
         x = self.out(x)
         return x
