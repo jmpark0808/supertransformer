@@ -36,6 +36,7 @@ from Wrappers.SP_GUNET_PyG import SP_GUNET_PyG_Wrapper
 from Wrappers.SP_GATv2 import SP_GATv2_Wrapper
 from Wrappers.SP_GATv3 import SP_GATv3_Wrapper
 from Wrappers.SP_GATv4 import SP_GATv4_Wrapper
+from Wrappers.SP_CTFM import SP_CTFM_Wrapper
 
 
 # Import dataset modules
@@ -72,6 +73,7 @@ MODEL_DIRECTORY = {
     "SP_TFM_TFM": SP_TFM_TFM_Wrapper,
     "SP_ETFM_TFM": SP_ETFM_TFM_Wrapper,
     "SP_TFM": SP_TFM_Wrapper,
+    "SP_CTFM": SP_CTFM_Wrapper,
     "SP_GCN": SP_GCN_Wrapper,
     "SP_TFM_NP": SP_TFM_NP_Wrapper,
     "SP_TFM_AP": SP_TFM_AP_Wrapper,
@@ -88,7 +90,7 @@ MODEL_DIRECTORY = {
     'SP_GUNET_PyG': SP_GUNET_PyG_Wrapper,
     'SP_GATv2': SP_GATv2_Wrapper,
     'SP_GATv3': SP_GATv3_Wrapper,
-    'SP_GATv4': SP_GATv4_Wrapper
+    'SP_GATv4': SP_GATv4_Wrapper,
 }
 DATALOADER_DIRECTORY = {
     'SP': SPDataModule,

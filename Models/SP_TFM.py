@@ -59,6 +59,48 @@ class SP_TFM_REL(nn.Module):
         x = self.out(x)
         return x
     
+class SP_Cross_TFM(nn.Module):
+    '''
+    Pure Global aggregation using transformers
+    Deterministic Positional Encoding 
+    '''
+    def __init__(self, nfeat_pixel, nfeat_fd, dilation, nhid, nheads, ntfm, dropout):
+        """Dense version of GAT."""
+        super().__init__()
+        self.linear_pixel = nn.Linear(nfeat_pixel, nhid * nheads)
+        self.pos_linear = nn.Linear(2, nhid*nheads)
+        self.linear_fd = nn.Linear(nfeat_fd, nhid * nheads)
+        self.relu = nn.ReLU()
+
+        self.transformer_enc = PosTransformer(nhid * nheads, dilation, ntfm, nheads, nhid, nhid*nheads, dropout)
+        self.dec = nn.TransformerDecoderLayer(d_model=nhid*nheads, nhead=nheads, dropout=dropout, dim_feedforward=nhid*nheads, batch_first=True )
+        self.transformer_dec = nn.TransformerDecoder(self.dec, num_layers=ntfm)
+        # self.encoder = nn.TransformerEncoderLayer(d_model=nhid*nheads, nhead=nheads, dropout=dropout, dim_feedforward=nhid*nheads, batch_first=True)
+        # self.transformer_enc = nn.TransformerEncoder(self.encoder, num_layers=ntfm)
+
+        self.out = nn.Linear(nhid * nheads, 1)
+
+    def forward(self, x, adj, distances):
+        pos = x[:, :, :2]
+        x_pix = x[:, :, 2:8]
+        x_fd = x[:, :, 8:]
+
+        x_pix = self.linear_pixel(x_pix)
+        x_pix = self.relu(x_pix)
+        x_fd = self.linear_fd(x_fd)
+        x_fd = self.relu(x_fd)
+
+        pos = self.pos_linear(pos)
+        
+        x_pix = x_pix + pos
+        x_fd = x_fd + pos
+
+        x_pix = self.transformer_enc(x_pix, None, None, None)
+        x_out = self.transformer_dec(x_fd, x_pix)
+
+        x_out = self.out(x_out)
+        return x_out
+    
 class SP_TFM_REL_test(nn.Module):
     '''
     Pure Global aggregation using transformers

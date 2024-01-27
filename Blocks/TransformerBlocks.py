@@ -116,32 +116,12 @@ class PosAttention(nn.Module):
         qkv = self.to_qkv(x).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
 
-        edge_attr = self.lin_edge(edge_attr).reshape(q.size(0), self.heads, -1, self.dim)
-        k = k + edge_attr
-        v = v + edge_attr
+        if edge_attr is not None:
+            edge_attr = self.lin_edge(edge_attr).reshape(q.size(0), self.heads, -1, self.dim)
+            k = k + edge_attr
+            v = v + edge_attr
         dots = torch.matmul(q, k.transpose(-1, -2))
         
-        # zero_vec = -1e9*torch.ones_like(dots)
-        
-        # adj = torch.matrix_power(adj, self.dilation).bool().int()
-        # adj = adj.unsqueeze(1).bool() # B x 1 x R x R
-        # adj = adj.repeat(1, dots.size(1), 1, 1)
-
-        # if emb is not None:
-        #     Er_t = emb.transpose(1, 2).unsqueeze(1)
-        #     QEr = torch.matmul(q, Er_t)
-        #     Srel = self.skew(QEr)
-        #     attention = torch.where(adj > 0, dots+Srel, zero_vec)
-        # # elif distances is not None:
-        # #     distances = torch.relu(self.distances_linear(distances))
-        # #     distances = self.distances_1(distances).reshape(distances.size(0), 1, distances.size(1), distances.size(2))
-        # #     # QEr = torch.einsum('abcd,aced->abce', q, distances)
-        # #     # attention = torch.where(adj > 0, dots+QEr, zero_vec)
-        # #     attention = torch.where(adj > 0, dots+distances, zero_vec)
-        # else:
-        #     attention = torch.where(adj > 0, dots, zero_vec)
-
-
         attn = self.attend((dots)*self.scale)
         
 
@@ -277,12 +257,14 @@ class PosTransformer(nn.Module):
             ]))
     def forward(self, x, emb, adj, distances):
         for idx, (attn, ff) in enumerate(self.layers):
-            if idx == 0:
-                x = attn(x, emb=emb, adj=adj, distances=distances) + x
-                x = ff(x) + x
-            else:
-                x = attn(x, emb=emb, adj=adj, distances=None) + x
-                x = ff(x) + x
+            x = attn(x, emb=emb, adj=adj, edge_attr=distances) + x
+            x = ff(x) + x
+            # if idx == 0:
+            #     x = attn(x, emb=emb, adj=adj, edge_attr=distances) + x
+            #     x = ff(x) + x
+            # else:
+            #     x = attn(x, emb=emb, adj=adj, edge_attr=None) + x
+            #     x = ff(x) + x
         return x
 
 class GraphConvTransformer(nn.Module):
