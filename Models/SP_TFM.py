@@ -67,9 +67,9 @@ class SP_Cross_TFM(nn.Module):
     def __init__(self, nfeat_pixel, nfeat_fd, dilation, nhid, nheads, ntfm, dropout):
         """Dense version of GAT."""
         super().__init__()
-        self.linear_pixel = nn.Linear(nfeat_pixel, nhid * nheads)
+        self.linear_pixel = nn.Linear(nfeat_fd, nhid * nheads)
         self.pos_linear = nn.Linear(2, nhid*nheads)
-        self.linear_fd = nn.Linear(nfeat_fd, nhid * nheads)
+        self.linear_fd = nn.Linear(nfeat_pixel, nhid * nheads)
         self.relu = nn.ReLU()
 
         self.transformer_enc = PosTransformer(nhid * nheads, dilation, ntfm, nheads, nhid, nhid*nheads, dropout)
@@ -82,8 +82,8 @@ class SP_Cross_TFM(nn.Module):
 
     def forward(self, x, adj, distances):
         pos = x[:, :, :2]
-        x_pix = x[:, :, 2:8]
-        x_fd = x[:, :, 8:]
+        x_pix = x[:, :, 8:]
+        x_fd = x[:, :, 2:8]
 
         x_pix = self.linear_pixel(x_pix)
         x_pix = self.relu(x_pix)

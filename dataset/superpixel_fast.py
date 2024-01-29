@@ -315,15 +315,14 @@ class ToTensorSP(object):
 class SPDataset(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, compactness,
                   dataloader, data_augmentation=True, coeff=None,
-                    ignore_phase=False, fully_conneted=False, sigma_agen=None, sigma_agnn=None, dilation=1):
+                    ignore_phase=False, fully_conneted=False, sigma=None, dilation=1):
         self.image_list = image_list
         self.mask_list = mask_list
         self.fully_connected = fully_conneted
         self.resize_mask = ResizeMask(size)
         self.num_seg = num_seg
         self.dataloader = dataloader
-        self.sigma_agen = sigma_agen
-        self.sigma_agnn = sigma_agnn
+        self.sigma = sigma
         self.size = size
         self.dilation = dilation
         self.coeff = coeff
@@ -442,10 +441,10 @@ class SPDataset(data.Dataset):
             if self.dilation != 1:
                 neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
 
-        if self.dataloader == 'SPFFFT':
+        if self.dataloader == 'SPFFFT' and self.sigma is not None:
             features = horizontal_flip(features, self.coeff, 0.5)
 
-            gaussian_noise = np.random.normal(1, 0.05, features.shape)
+            gaussian_noise = np.random.normal(1, self.sigma, features.shape)
             features = features*gaussian_noise
 
         
@@ -482,8 +481,7 @@ class SPFDataModule(pl.LightningDataModule):
         self.compactness = kwargs.get('compactness')
         self.ignore_phase = kwargs.get('ignore_phase')
         self.fully_connected = kwargs.get('fully_connected', False)
-        self.sigma_agen = kwargs.get('sigma_agen', None)
-        self.sigma_agnn = kwargs.get('sigma_agnn', None)
+        self.sigma = kwargs.get('sigma', None)
         self.dilation = kwargs.get('dilation')
         self.debug = kwargs.get('debug', False)
         
@@ -517,7 +515,7 @@ class SPFDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.compactness, self.dataloader, True,
-                                  self.coeff, self.ignore_phase, self.fully_connected, None, None, self.dilation)
+                                  self.coeff, self.ignore_phase, self.fully_connected, self.sigma, self.dilation)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=False)
@@ -525,10 +523,10 @@ class SPFDataModule(pl.LightningDataModule):
     def val_dataloader(self):
         data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg,
                               self.res, self.compactness, self.dataloader,False,
-                                self.coeff, self.ignore_phase, self.fully_connected, None, None, self.dilation)
+                                self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
         data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.dataloader,False, 
-                               self.coeff, self.ignore_phase, self.fully_connected, None, None, self.dilation)
+                               self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
         val_dataloader = DataLoader(
                 data_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
@@ -540,7 +538,7 @@ class SPFDataModule(pl.LightningDataModule):
     def test_dataloader(self):
         data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.dataloader, False,
-                                 self.coeff, self.ignore_phase, self.fully_connected, None, None,  self.dilation)
+                                 self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)

@@ -173,9 +173,9 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
             samples.append(plt_image)
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
-        if batch_idx == 0:
-            tensorboard.add_images('Validation Pred', samples, self.test_iteration)
-            tensorboard.add_images('Validation GT', mask, self.test_iteration)
+        # if batch_idx == 0:
+        #     tensorboard.add_images('Validation Pred', samples, self.test_iteration)
+        #     tensorboard.add_images('Validation GT', mask, self.test_iteration)
 
         mae = torch.mean(torch.abs(samples - mask))
         if dataloader_idx == 0:
