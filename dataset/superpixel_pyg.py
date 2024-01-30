@@ -382,6 +382,11 @@ class SPDataset(data.Dataset):
                 neighbor_array = np.zeros([self.num_seg, self.num_seg])
                 neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
                 neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+                if self.dilation != 1:
+                    neighbor_array = (np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int) - \
+                            np.linalg.matrix_power(neighbor_array, self.dilation-1).astype(bool).astype(int) + \
+                            neighbor_array).astype(bool).astype(int)
+                
                 
             edge_index = np.array(np.nonzero(neighbor_array))    
             np.save(sp_file_path_edge_index, neighbor_array)
@@ -442,15 +447,17 @@ class SPDataset(data.Dataset):
 
         else:
             neighbor_array = np.load(sp_file_path_edge_index)
-            if self.dilation != 1:
-                if item in self.adj_list:
-                    edge_index, edge_weight = from_scipy_sparse_matrix(self.adj_list[item])
-                else:
-                    neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
-                    self.adj_list[item] = scipy.sparse.csr_matrix(neighbor_array)
-                    edge_index = torch.tensor(np.array(np.nonzero(neighbor_array)))
-            else:
-                edge_index = torch.tensor(np.array(np.nonzero(neighbor_array)))
+            # if self.dilation != 1:
+            #     if item in self.adj_list:
+            #         edge_index, edge_weight = from_scipy_sparse_matrix(self.adj_list[item])
+            #     else:
+            #         neighbor_array = (np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int) - \
+            #             np.linalg.matrix_power(neighbor_array, self.dilation-1).astype(bool).astype(int) + \
+            #             neighbor_array).astype(bool).astype(int)
+            #         self.adj_list[item] = scipy.sparse.csr_matrix(neighbor_array)
+            #         edge_index = torch.tensor(np.array(np.nonzero(neighbor_array)))
+            # else:
+            edge_index = torch.tensor(np.array(np.nonzero(neighbor_array)))
 
             edge_features = np.load(sp_file_path_edge_features)
         
@@ -494,6 +501,7 @@ class SPGDataModule(pl.LightningDataModule):
         self.sigma_agen = kwargs.get('sigma_agen', None)
         self.sigma_agnn = kwargs.get('sigma_agnn', None)
         self.dilation = kwargs.get('dilation')
+        self.debug = kwargs.get('debug', False)
         
         self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
         self.mask_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.train_dir, 'Mask'))]))
@@ -509,6 +517,16 @@ class SPGDataModule(pl.LightningDataModule):
 
         self.test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'Image'))])
         self.test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'Mask'))])
+
+        if self.debug:
+            self.val_image_list = self.val_image_list[:100]
+            self.val_mask_list = self.val_mask_list[:100]
+
+            self.tr_image_list = self.tr_image_list[:100]
+            self.tr_mask_list = self.tr_mask_list[:100]
+
+            self.test_image_list = self.test_image_list[:100]
+            self.test_mask_list = self.test_mask_list[:100]
 
         
     def train_dataloader(self):
