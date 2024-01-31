@@ -76,8 +76,11 @@ class SP_Cross_TFM(nn.Module):
         self.relu = nn.ReLU()
 
         # self.transformer_enc = PosTransformer(nhid * nheads, dilation, ntfm, nheads, nhid, nhid*nheads, dropout)
-        self.dec = nn.ModuleList([nn.TransformerDecoderLayer(d_model=nhid*nheads, nhead=nheads, dropout=dropout, dim_feedforward=nhid*nheads, batch_first=True ) for _ in range(ntfm)])
-        # self.transformer_dec = nn.TransformerDecoder(self.dec, num_layers=ntfm)
+
+        self.enc = nn.TransformerEncoderLayer(d_model=nhid*nheads, nhead=nheads, dropout=dropout, dim_feedforward=nhid*nheads, batch_first=True )
+        self.transformer_enc = nn.TransformerEncoder(self.enc, num_layers=ntfm)
+        self.dec = nn.TransformerDecoderLayer(d_model=nhid*nheads, nhead=nheads, dropout=dropout, dim_feedforward=nhid*nheads, batch_first=True )
+        self.transformer_dec = nn.TransformerDecoder(self.dec, num_layers=ntfm)
         
 
         
@@ -108,9 +111,8 @@ class SP_Cross_TFM(nn.Module):
         x_fd = x_fd + pos
 
         
-        # x_out = self.transformer_dec(x_fd, x_pix)
-        for layer in self.dec:
-            x_pix = layer(x_pix, x_fd)
+        x_fd = self.transformer_enc(x_fd)
+        x_pix = self.transformer_dec(x_pix, x_fd)
         x_out = self.out(x_pix)
         return x_out
     
