@@ -140,9 +140,19 @@ class ToTensorSPFFT(object):
 
         self.fourier_descriptors = fourier_descriptors
 
+        def lbp(region, intensities):
+            (hist, _) = np.histogram(intensities[region].ravel(),
+                    bins=np.arange(0, 8+3),
+                    range=(0, 8+2))
+            hist = hist.astype("float")
+            # hist /= (hist.sum() + 1e-7)
+            return hist
+        self.lbp = lbp
+
 
     def __call__(self, sample):
         img, mask = sample['image'], sample['mask']
+        img_gray = np.array(img.convert('L'))
         img_np = np.array(img)
         mask_np = np.array(mask)/255.
         img_size = img_np.shape
@@ -171,6 +181,8 @@ class ToTensorSPFFT(object):
             if bneighbors[0,i] != bneighbors[1,i]:
                 edge_attr[bneighbors[0,i]-1, bneighbors[1,i]-1] = counts[i]
                 
+        lbp_np = local_binary_pattern(img_gray, 8, 1, method='uniform')
+        regions_lbp = regionprops_table(segments, intensity_image=lbp_np, extra_properties=[self.lbp])
 
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
                                                                                     'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
@@ -178,7 +190,7 @@ class ToTensorSPFFT(object):
         seq_len = len(regions['label'])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
-        features = np.zeros([self.num_seg, 8+(self.coeff)*2])
+        features = np.zeros([self.num_seg, 8+(self.coeff)*2+10])
         if self.ignore_phase:
             features = np.zeros([self.num_seg, 8+self.coeff])
             for i in range(self.coeff):
@@ -197,6 +209,9 @@ class ToTensorSPFFT(object):
         features[label-1, 5] = regions['image_stdev-0']/255.
         features[label-1, 6] = regions['image_stdev-1']/255.
         features[label-1, 7] = regions['image_stdev-2']/255.
+
+        for ind in range(8+2):
+            features[label-1, ind+8+(self.coeff)*2] = regions_lbp[f'lbp-{ind}']
         
         
         for ind, coord in zip(regions['label'], regions['coords']):

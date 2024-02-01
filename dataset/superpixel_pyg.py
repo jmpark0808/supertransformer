@@ -383,9 +383,16 @@ class SPDataset(data.Dataset):
                 neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
                 neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
                 if self.dilation != 1:
-                    neighbor_array = (np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int) - \
-                            np.linalg.matrix_power(neighbor_array, self.dilation-1).astype(bool).astype(int) + \
-                            neighbor_array).astype(bool).astype(int)
+                    if self.num_seg != 625:
+                        assert False, 'Only works for num seg 625'
+                    grid = np.arange(625).reshape([25, 25])
+                    midpoint_indices = []
+                    for row in range(4):
+                        for column in range(4):
+                            midpoint_indices.append(grid[row*5+4, column*5+4])
+
+                    neighbor_array[midpoint_indices, :] = 1
+                    neighbor_array[:, midpoint_indices] = 1
                 
                 
             edge_index = np.array(np.nonzero(neighbor_array))    
