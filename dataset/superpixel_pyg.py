@@ -302,7 +302,127 @@ class ToTensorSP(object):
 
         return features, seq_mask, segments, self.tensor(mask)
 
+class SPDatasetExport(data.Dataset):
+    def __init__(self, image_list, mask_list, num_seg, size, compactness,
+                  dataloader, data_augmentation=True, coeff=None,
+                    ignore_phase=False, fully_conneted=False, sigma_agen=None, sigma_agnn=None, dilation=1):
+        self.image_list = image_list
+        self.mask_list = mask_list
+        self.fully_connected = fully_conneted
+        self.resize_mask = ResizeMask(size)
+        self.num_seg = num_seg
+        self.dataloader = dataloader
+        self.sigma_agen = sigma_agen
+        self.sigma_agnn = sigma_agnn
+        self.size = size
+        self.dilation = dilation
+        self.adj_list = {}
+        
+        if dataloader == 'SPGFFT':
+            totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
+        else:
+            totensor = ToTensorSP(num_seg, compactness, fully_conneted)
+        
 
+        self.transform = transforms.Compose([Resize(size),
+            # [RandomFlip(0.5),
+            #  RandomCrop(size, int(size*1.14)),
+             totensor])
+        if not data_augmentation:
+            self.transform = transforms.Compose([Resize(size), totensor])
+
+
+        self.data_augmentation = data_augmentation
+        os.makedirs(os.path.join(str(Path(self.image_list[0]).parents[1]),self.dataloader), exist_ok=True)
+
+    def __len__(self):
+        return len(self.image_list)
+
+    def __getitem__(self, item):
+        image = self.image_list[item]
+        mask = self.mask_list[item]
+        
+        
+
+        sp_file_name_features = image.split('/')[-1].split('.')[0]+'_features.npy'
+        sp_file_name_edge_index = image.split('/')[-1].split('.')[0]+'_edge_index.npy'
+        sp_file_name_edge_features = image.split('/')[-1].split('.')[0]+'_edge_features.npy'
+        sp_file_name_seq_mask = image.split('/')[-1].split('.')[0]+'_seq_mask.npy'
+        sp_file_name_segments = image.split('/')[-1].split('.')[0]+'_segments.npy'
+
+        sp_file_path_features = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_features )
+        sp_file_path_edge_index = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_edge_index )
+        sp_file_path_edge_features = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_edge_features )
+        sp_file_path_seq_mask = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_seq_mask )
+        sp_file_path_segments = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_segments )
+        if os.path.exists(sp_file_path_features):
+            return torch.empty(0)
+        img = Image.open(image)
+        img = img.convert('RGB')
+        mask = Image.open(mask)
+        mask = mask.convert('L')
+
+        sample = {'image': img, 'mask': mask}
+
+        sample = self.transform(sample)
+        np.save(sp_file_path_features, sample[0])
+        np.save(sp_file_path_seq_mask, sample[1])
+        np.save(sp_file_path_segments, sample[2])
+
+        segments = sample[2]
+        features = sample[0]
+    
+        if self.fully_connected:
+            neighbor_array = np.ones([self.num_seg, self.num_seg])
+        else:
+            vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
+            vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
+            vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
+            vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
+            bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
+            neighbor_array = np.zeros([self.num_seg, self.num_seg])
+            neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+            neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+            if self.dilation != 1:
+                #--------------- Global aggregation -------------#
+                # if self.num_seg != 625:
+                #     assert False, 'Only works for num seg 625'
+                # grid = np.arange(625).reshape([25, 25])
+                # midpoint_indices = []
+                # for row in range(4):
+                #     for column in range(4):
+                #         midpoint_indices.append(grid[row*5+4, column*5+4])
+
+                # neighbor_array[midpoint_indices, :] = 1
+                # neighbor_array[:, midpoint_indices] = 1
+
+                #---------------- dilation connected --------------#
+
+                neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
+
+                #---------------- dilated convolution -------------#
+                #neighbor_array = (np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int) - \
+                #            np.linalg.matrix_power(neighbor_array, self.dilation-1).astype(bool).astype(int) + \
+                #            neighbor_array).astype(bool).astype(int)
+
+            
+            
+        edge_index = np.array(np.nonzero(neighbor_array))    
+        np.save(sp_file_path_edge_index, neighbor_array)
+
+        features_centroids = features[:, :2]/self.size
+        spatial_distances_x = (features_centroids[:, 0:1] - features_centroids[:, 0:1].T)
+        spatial_distances_x = spatial_distances_x[edge_index[0], edge_index[1]]
+        spatial_distances_y = (features_centroids[:, 1:2] - features_centroids[:, 1:2].T)
+        spatial_distances_y = spatial_distances_y[edge_index[0], edge_index[1]]
+        spatial_distances = np.stack((spatial_distances_x, spatial_distances_y), axis=1)
+        
+        edge_features = spatial_distances
+        np.save(sp_file_path_edge_features, edge_features)
+
+        
+        return torch.empty(0)
+        
 
 class SPDataset(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, compactness,
@@ -336,77 +456,6 @@ class SPDataset(data.Dataset):
 
         self.data_augmentation = data_augmentation
 
-        for image, mask in tqdm(zip(self.image_list, self.mask_list)):
-            os.makedirs(os.path.join(str(Path(image).parents[1]),dataloader), exist_ok=True)
-            
-
-            sp_file_name_features = image.split('/')[-1].split('.')[0]+'_features.npy'
-            sp_file_name_edge_index = image.split('/')[-1].split('.')[0]+'_edge_index.npy'
-            sp_file_name_edge_features = image.split('/')[-1].split('.')[0]+'_edge_features.npy'
-            sp_file_name_seq_mask = image.split('/')[-1].split('.')[0]+'_seq_mask.npy'
-            sp_file_name_segments = image.split('/')[-1].split('.')[0]+'_segments.npy'
-
-
-
-
-            sp_file_path_features = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_features )
-            sp_file_path_edge_index = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_edge_index )
-            sp_file_path_edge_features = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_edge_features )
-            sp_file_path_seq_mask = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_seq_mask )
-            sp_file_path_segments = os.path.join(str(Path(image).parents[1]),dataloader,sp_file_name_segments )
-            if os.path.exists(sp_file_path_features):
-                continue
-            img = Image.open(image)
-            img = img.convert('RGB')
-            mask = Image.open(mask)
-            mask = mask.convert('L')
-
-            sample = {'image': img, 'mask': mask}
-
-            sample = self.transform(sample)
-            np.save(sp_file_path_features, sample[0])
-            np.save(sp_file_path_seq_mask, sample[1])
-            np.save(sp_file_path_segments, sample[2])
-
-            segments = sample[2]
-            features = sample[0]
-     
-            if self.fully_connected:
-                neighbor_array = np.ones([self.num_seg, self.num_seg])
-            else:
-                vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
-                vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
-                vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
-                vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
-                bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
-                neighbor_array = np.zeros([self.num_seg, self.num_seg])
-                neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
-                neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
-                if self.dilation != 1:
-                    if self.num_seg != 625:
-                        assert False, 'Only works for num seg 625'
-                    grid = np.arange(625).reshape([25, 25])
-                    midpoint_indices = []
-                    for row in range(4):
-                        for column in range(4):
-                            midpoint_indices.append(grid[row*5+4, column*5+4])
-
-                    neighbor_array[midpoint_indices, :] = 1
-                    neighbor_array[:, midpoint_indices] = 1
-                
-                
-            edge_index = np.array(np.nonzero(neighbor_array))    
-            np.save(sp_file_path_edge_index, neighbor_array)
-
-            features_centroids = features[:, :2]/self.size
-            spatial_distances_x = (features_centroids[:, 0:1] - features_centroids[:, 0:1].T)
-            spatial_distances_x = spatial_distances_x[edge_index[0], edge_index[1]]
-            spatial_distances_y = (features_centroids[:, 1:2] - features_centroids[:, 1:2].T)
-            spatial_distances_y = spatial_distances_y[edge_index[0], edge_index[1]]
-            spatial_distances = np.stack((spatial_distances_x, spatial_distances_y), axis=1)
-            
-            edge_features = spatial_distances
-            np.save(sp_file_path_edge_features, edge_features)
 
     def __len__(self):
         return len(self.image_list)
@@ -535,7 +584,42 @@ class SPGDataModule(pl.LightningDataModule):
             self.test_image_list = self.test_image_list[:100]
             self.test_mask_list = self.test_mask_list[:100]
 
+        dummy_tr = SPDatasetExport(self.tr_image_list, self.tr_mask_list, self.num_seg,
+                                self.res, self.compactness, self.dataloader, True,
+                                  self.coeff, self.ignore_phase, self.fully_connected, None, None, self.dilation)
+        dummy_tr_loader = DataLoader(
+                dummy_tr, batch_size=self.batch_size, 
+                num_workers=self.num_workers, shuffle=False, pin_memory=False)
         
+        for batch in tqdm(dummy_tr_loader):
+            pass
+
+        del dummy_tr, dummy_tr_loader
+
+        dummy_val = SPDatasetExport(self.val_image_list, self.val_mask_list, self.num_seg,
+                              self.res, self.compactness, self.dataloader,False,
+                                self.coeff, self.ignore_phase, self.fully_connected, None, None, self.dilation)
+        dummy_test = SPDatasetExport(self.test_image_list, self.test_mask_list, self.num_seg,
+                               self.res,  self.compactness, self.dataloader,False, 
+                               self.coeff, self.ignore_phase, self.fully_connected, None, None, self.dilation)
+        dummy_val_loader = DataLoader(
+                dummy_val, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=False)
+        dummy_test_loader = DataLoader(
+                dummy_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=False)
+        
+        for batch in tqdm(dummy_val_loader):
+            pass
+
+        del dummy_val, dummy_val_loader
+
+        for batch in tqdm(dummy_test_loader):
+            pass
+
+        del dummy_test, dummy_test_loader, batch
+
+
     def train_dataloader(self):
         data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.compactness, self.dataloader, True,
