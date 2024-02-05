@@ -324,7 +324,7 @@ def Map_labels(labels):
             c += 1
     return aux_id
 
-def IRGS(img, n_classes, n_iter, mask=None):
+def IRGS(img, n_classes, n_iter, beta1=3, beta2=0.4, mask=None):
     # --- RUN IRGS --- #
     rag = None
     if mask is None:
@@ -339,7 +339,7 @@ def IRGS(img, n_classes, n_iter, mask=None):
     # for j in tqdm(range(n_iter), ncols=50):
     for j in range(n_iter):
         # rag.irgs_step(beta1=, current_iter=j+1)
-        rag.irgs_step(current_iter=j+1)
+        rag.irgs_step(K=1.1, beta1=beta1, beta2=beta2, current_iter=j+1)
     
     # final_wsh = rag.wsh
 
@@ -380,13 +380,14 @@ if __name__ == '__main__':
         img = np.uint8(img)
 
         # fig, ax = plt.subplots(1, 3)
-        num_classes = 10
-        segments, boundaries = IRGS(img, num_classes, 120)
+        num_classes = 50
+        segments, boundaries = IRGS(img, num_classes, 120, beta1=3, beta2=0.4 )
         boundaries[segments==-1] = 0
 
         # irgs_output_colored = np.uint8(255*cm.jet(segments/num_classes))[:,:,:3]
         # ax[0].imshow(boundaries)
         # ax[1].imshow(irgs_output_colored)
+
         
         segments_copy = np.copy(segments)
         running_count = 0 

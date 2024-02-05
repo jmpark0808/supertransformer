@@ -22,15 +22,15 @@ for i in os.listdir(image_path):
     img = np.array(img)
 
     
-    # slic = SlicAvx2(num_components=625, compactness=50, min_size_factor=0.)
-    # segments = slic.iterate(img, max_iter=0)+1
+    slic = SlicAvx2(num_components=625, compactness=10)
+    segments = slic.iterate(img, max_iter=0)+1
 
-    segments = slic(img, n_segments=625,
-                compactness=10,
-                max_num_iter=10,
-                convert2lab=True,
-                enforce_connectivity=False,
-                slic_zero=False)
+    # segments = slic(img, n_segments=625,
+    #             compactness=10,
+    #             max_num_iter=10,
+    #             convert2lab=True,
+    #             enforce_connectivity=False,
+    #             slic_zero=False)
     
     vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
     vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
@@ -42,18 +42,18 @@ for i in os.listdir(image_path):
     neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
     neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
 
-    # neighbor_array = (np.linalg.matrix_power(neighbor_array, 7).astype(bool).astype(int) - \
-    #                         np.linalg.matrix_power(neighbor_array, 7-1).astype(bool).astype(int) + \
-    #                         neighbor_array).astype(bool).astype(int)
+    neighbor_array = (np.linalg.matrix_power(neighbor_array, 7).astype(bool).astype(int) - \
+                            np.linalg.matrix_power(neighbor_array, 7-1).astype(bool).astype(int) + \
+                            neighbor_array).astype(bool).astype(int)
 
-    grid = np.arange(625).reshape([25, 25])
-    midpoint_indices = []
-    for row in range(4):
-        for column in range(4):
-            midpoint_indices.append(grid[row*5+4, column*5+4])
+    # grid = np.arange(625).reshape([25, 25])
+    # midpoint_indices = []
+    # for row in range(4):
+    #     for column in range(4):
+    #         midpoint_indices.append(grid[row*5+4, column*5+4])
 
-    neighbor_array[midpoint_indices, :] = 1
-    neighbor_array[:, midpoint_indices] = 1
+    # neighbor_array[midpoint_indices, :] = 1
+    # neighbor_array[:, midpoint_indices] = 1
 
 
 
@@ -74,7 +74,8 @@ for i in os.listdir(image_path):
             
         ax1.imshow(out_)
         ax1.set_title(f'Global + Local Aggregation {i}')
-        fig1.savefig(f'/home/eddie/Downloads/gif/{i}')
+        plt.show()
+        # fig1.savefig(f'/home/eddie/Downloads/gif/{i}')
         
     
 

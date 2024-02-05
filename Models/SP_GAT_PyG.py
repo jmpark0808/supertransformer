@@ -27,7 +27,7 @@ class SP_GAT_PyG(nn.Module):
                                                                           heads=nheads, dropout=dropout, edge_dim=None,
                                                                             concat=False) for _ in range(ntfm)])
         
-        # self.ln1s = nn.ModuleList([LayerNorm(nhid*nheads) for _ in range(ntfm)])
+        # self.ln1s = nn.ModuleList([LayerNorm(nhid, mode='node') for _ in range(ntfm)])
 
         self.classifier = nn.Linear(nhid, 1)
         self.num_seg = num_seg
