@@ -398,12 +398,12 @@ class SPDatasetExport(data.Dataset):
 
                 #---------------- dilation connected --------------#
 
-                # neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
+                neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
 
                 #---------------- dilated convolution -------------#
-                neighbor_array = (np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int) - \
-                           np.linalg.matrix_power(neighbor_array, self.dilation-1).astype(bool).astype(int) + \
-                           neighbor_array).astype(bool).astype(int)
+                # neighbor_array = (np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int) - \
+                #            np.linalg.matrix_power(neighbor_array, self.dilation-1).astype(bool).astype(int) + \
+                #            neighbor_array).astype(bool).astype(int)
 
             
             

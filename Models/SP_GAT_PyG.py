@@ -35,7 +35,7 @@ class SP_GAT_PyG(nn.Module):
 
 
         
-    def forward(self, data):
+    def forward(self, data, return_attention=False):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
         
         batch_size = x.size(0)//self.num_seg
@@ -48,16 +48,32 @@ class SP_GAT_PyG(nn.Module):
         pos = self.pos_linear(pos)
         x += pos
 
+        att_weights = []
         for ln, conv in zip(self.ln1s, self.convs):
             h = x
-            x = conv(x, edge_index=edge_index, edge_attr=None)# adding edge features here
+            if return_attention:
+                x, (ei, att) = conv(x, edge_index=edge_index, edge_attr=None, return_attention_weights=return_attention)# adding edge features here
+                att_weights.append(att)
+            else:
+                x = conv(x, edge_index=edge_index, edge_attr=None)
             x = ln(x, batch=batch_index)
             x = self.elu(x) + h
+        # for conv in self.convs:
+        #     if return_attention:
+        #         x, (ei, att) = conv(x, edge_index=edge_index, edge_attr=None, return_attention_weights=return_attention)# adding edge features here
+        #         att_weights.append(att)
+        #     else:
+        #         x = conv(x, edge_index=edge_index, edge_attr=None)# adding edge features here
+            
+        #     x = self.elu(x)
 
       
         # x = self.convs[-1](x, edge_index, edge_attr=edge_attr)
         x = self.classifier(x)
-        return x
+        if return_attention:
+            return x, att_weights
+        else:
+            return x
     
 
 class SP_GAT_IN(nn.Module):

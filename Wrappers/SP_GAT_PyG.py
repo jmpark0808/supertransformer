@@ -9,6 +9,7 @@ from dataset.constants import *
 from fvcore.nn import FlopCountAnalysis
 from fvcore.nn import flop_count_table
 from torch_geometric.data import Data
+from torch_geometric.utils import dropout_edge
 from util.util import get_input_dim
 
 class SP_GAT_PyG_Wrapper(pl.LightningModule):
@@ -22,6 +23,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         self.es_patience = kwargs.get('es_patience')
         self.dropout = kwargs.get('dropout')
         self.tfm_hp = kwargs.get('tfmhp')
+        self.dropout_edge = kwargs.get('dropout_edge')
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
         self.model = SP_GAT_PyG(input_dim, self.tfm_hp[1], 1, self.dropout, self.tfm_hp[0], self.tfm_hp[2], self.num_seg)
@@ -104,7 +106,8 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         mask = mask.cuda()
      
         # forward pass
-        
+        edge_index, edge_mask = dropout_edge(features.edge_index, p=self.dropout_edge)
+        features.edge_index = edge_index
         pred = self.forward(features)
         # np.save(f'/mnt/dragon/gat_logs/output_{batch_idx}', pred.detach().cpu().numpy())
 

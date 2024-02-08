@@ -138,6 +138,7 @@ if __name__ == "__main__":
     parser.add_argument('--lr', help='learning_rate for pose. default = 0.0001', default=0.0001, type=float)
     parser.add_argument('--num_seg', help='Approximate number of segmentations', default=600, type=int)
     parser.add_argument('--dropout', help='Dropout for Transformers', default=0., type=float)
+    parser.add_argument('--dropout_edge', help='Dropout for dropout_edge', default=0., type=float)
     parser.add_argument('--seed', help='Seed for reproduceability', 
                         default=42, type=int)
     parser.add_argument('--clip_grad_norm', help='Clipping gradient norm, 0 means no clipping', type=float, default=0.)
@@ -151,8 +152,6 @@ if __name__ == "__main__":
                     nargs=3, metavar=('Heads', 'Hidden Dim', 'Number of Layers'),
                     type=int, help='Hyperparameters for Transformer')
     parser.add_argument('--ignore_phase', help='Whether or not to use phase of FFT'
-                        , default=False, action="store_true")
-    parser.add_argument('--fully_connected', help='Whether or not to use fully connected graphs'
                         , default=False, action="store_true")
     parser.add_argument('--force_aug', help='Force data augmentation on select dataloaders'
                         , default=False, action="store_true")
