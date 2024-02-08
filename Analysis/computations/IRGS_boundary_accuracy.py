@@ -333,7 +333,7 @@ def IRGS(img, n_classes, n_iter, beta1=3, beta2=0.4, mask=None):
         rag = magic_rag(img, msk=mask, N_class=n_classes, verbose=True)
 
     print("Initializing k-means with", n_classes, "classes")
-    rag.initialize_kmeans()
+    # rag.initialize_kmeans()
 
     print("Performing", str(n_iter), "IRGS iterations...")
     # for j in tqdm(range(n_iter), ncols=50):
@@ -341,7 +341,8 @@ def IRGS(img, n_classes, n_iter, beta1=3, beta2=0.4, mask=None):
         # rag.irgs_step(beta1=, current_iter=j+1)
         rag.irgs_step(K=1.1, beta1=beta1, beta2=beta2, current_iter=j+1)
     
-    # final_wsh = rag.wsh
+    final_wsh = rag.wsh
+    
 
     irgs_output = rag.result_image
     # irgs_output = rag.result_image_with_boundaries
@@ -379,14 +380,54 @@ if __name__ == '__main__':
         img = img.convert('RGB').resize((300, 300))
         img = np.uint8(img)
 
-        # fig, ax = plt.subplots(1, 3)
-        num_classes = 50
+        fig, ax = plt.subplots(1, 6)
+        num_classes = 5
+        segments, boundaries = IRGS(img, num_classes, 120, beta1=3, beta2=0.04 )
+        boundaries[segments==-1] = 0
+
+        irgs_output_colored = np.uint8(255*cm.jet(segments/num_classes))[:,:,:3]
+        ax[0].imshow(img)
+        ax[1].imshow(irgs_output_colored)
+        ax[1].set_title(f'Beta2 {0.04}')
+
         segments, boundaries = IRGS(img, num_classes, 120, beta1=3, beta2=0.4 )
         boundaries[segments==-1] = 0
 
-        # irgs_output_colored = np.uint8(255*cm.jet(segments/num_classes))[:,:,:3]
-        # ax[0].imshow(boundaries)
-        # ax[1].imshow(irgs_output_colored)
+        irgs_output_colored = np.uint8(255*cm.jet(segments/num_classes))[:,:,:3]
+        ax[2].imshow(irgs_output_colored)
+        ax[2].set_title(f'Beta2 {0.4}')
+
+        segments, boundaries = IRGS(img, num_classes, 120, beta1=3, beta2=4 )
+        boundaries[segments==-1] = 0
+
+        irgs_output_colored = np.uint8(255*cm.jet(segments/num_classes))[:,:,:3]
+        ax[3].imshow(irgs_output_colored)
+        ax[3].set_title(f'Beta2 {4}')
+
+        segments, boundaries = IRGS(img, num_classes, 120, beta1=3, beta2=40 )
+        boundaries[segments==-1] = 0
+
+        irgs_output_colored = np.uint8(255*cm.jet(segments/num_classes))[:,:,:3]
+        ax[4].imshow(irgs_output_colored)
+        ax[4].set_title(f'Beta2 {40}')
+
+        segments, boundaries = IRGS(img, num_classes, 120, beta1=3, beta2=400 )
+        boundaries[segments==-1] = 0
+
+        irgs_output_colored = np.uint8(255*cm.jet(segments/num_classes))[:,:,:3]
+        ax[5].imshow(irgs_output_colored)
+        ax[5].set_title(f'Beta2 {400}')
+        plt.show()
+
+
+
+
+
+
+
+
+
+
 
         
         segments_copy = np.copy(segments)
@@ -398,10 +439,12 @@ if __name__ == '__main__':
                 segments_copy[labels_im == j+1] = running_count
                 running_count += 1
             
-        # irgs_output_colored = np.uint8(255*cm.jet(segments_copy/running_count))[:,:,:3]
-        # ax[2].imshow(irgs_output_colored)
-        # plt.show()
-
+        irgs_output_colored = np.uint8(255*cm.jet(segments_copy/running_count))[:,:,:3]
+        ax[2].imshow(irgs_output_colored)
+        plt.show()
+  
+        slic_ = SlicAvx2(num_components=625, compactness=10)
+        segments = slic_.iterate(img)+1
 
         msk = msk.convert('L').resize((300, 300))
 
@@ -410,6 +453,7 @@ if __name__ == '__main__':
         msk[msk<=125] = 0
         msk[msk>125] = 1
         
+        #------------------------ IRGS ----------------------#
 
         regions = regionprops_table(segments_copy+1, img, properties=('label', 'centroid', 'area', 'intensity_mean',
                                                                                 'coords',))
@@ -417,20 +461,55 @@ if __name__ == '__main__':
         seq_mask = np.zeros([max(regions['label'])])
 
         for ind, coord in zip(regions['label'], regions['coords']):
-            seq_mask[ind-1] = np.sum(msk[coord[:, 0], coord[:, 1]])/len(coord[:, 0])
+            seq_mask[ind-1] = 1 if np.sum(msk[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
 
-        plt_image = seq_mask[segments_copy-1].reshape([img.shape[0], img.shape[1]])
+        plt_image = seq_mask[segments_copy].reshape([img.shape[0], img.shape[1]])
+        plt_image_1 = np.copy(plt_image)
         plt_image = np.ravel(plt_image)
             
 
-        msk = np.ravel(msk)
+        msk_ = np.ravel(msk)
         y_temp = (plt_image >= 0.5).astype(np.float)
-        tp = np.sum((y_temp * msk))
+        tp = np.sum((y_temp * msk_))
         # avoid prec becomes 0
-        prec, recall = (tp + 1e-10) / (np.sum(y_temp) + 1e-10), (tp + 1e-10) / (np.sum(msk) + 1e-10)
+        prec, recall = (tp + 1e-10) / (np.sum(y_temp) + 1e-10), (tp + 1e-10) / (np.sum(msk_) + 1e-10)
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
         IoUs.append(f_score)
+        #------------------------ SLIC ----------------------#
+
+        # regions = regionprops_table(segments, img, properties=('label', 'centroid', 'area', 'intensity_mean',
+        #                                                                         'coords',))
+     
+        # seq_mask = np.zeros([max(regions['label'])])
+
+        # for ind, coord in zip(regions['label'], regions['coords']):
+        #     seq_mask[ind-1] = 1 if np.sum(msk[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
+
+        # plt_image = seq_mask[segments-1].reshape([img.shape[0], img.shape[1]])
+        # plt_image_2 = np.copy(plt_image)
+        # plt_image = np.ravel(plt_image)
+            
+
+        # msk_ = np.ravel(msk)
+        # y_temp = (plt_image >= 0.5).astype(np.float)
+        # tp = np.sum((y_temp * msk_))
+        # # avoid prec becomes 0
+        # prec, recall = (tp + 1e-10) / (np.sum(y_temp) + 1e-10), (tp + 1e-10) / (np.sum(msk_) + 1e-10)
+        # beta_square = 0.3
+        # f_score_ = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
+
+        # if f_score_ - f_score > 0.2:
+        #     fig, ax = plt.subplots(1, 5)
+        #     ax[0].imshow(img)
+        #     ax[1].imshow(plt_image_1, cmap='gray')
+        #     ax[1].set_title(f"F score {f_score}")
+        #     ax[2].imshow(boundaries, cmap='gray')
+        #     ax[3].imshow(plt_image_2, cmap='gray')
+        #     ax[3].set_title(f"F score {f_score_}")
+        #     ax[4].imshow(find_boundaries(segments), cmap='gray')
+        #     plt.show()
+        
         
 
     print(np.mean(IoUs))
