@@ -23,6 +23,7 @@ from pathlib import Path
 from tqdm import tqdm
 import scipy
 from torch_geometric.utils.convert import from_scipy_sparse_matrix
+from dataset.fft_transform import *
 
 class Resize(object):
     def __init__(self, size):
@@ -141,10 +142,19 @@ class ToTensorSPFFT(object):
             return np.concatenate((amp, phase))
 
         self.fourier_descriptors = fourier_descriptors
+        def lbp(region, intensities):
+            (hist, _) = np.histogram(intensities[region].ravel(),
+                    bins=np.arange(0, 8+3),
+                    range=(0, 8+2))
+            hist = hist.astype("float")
+            # hist /= (hist.sum() + 1e-7)
+            return hist
+        self.lbp = lbp
 
 
     def __call__(self, sample):
         img, mask = sample['image'], sample['mask']
+        img_gray = np.array(img.convert('L'))
         img_np = np.array(img)
         mask_np = np.array(mask)/255.
         img_size = img_np.shape
@@ -169,6 +179,8 @@ class ToTensorSPFFT(object):
         # vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
         # bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
     
+        lbp_np = local_binary_pattern(img_gray, 8, 1, method='uniform')
+        regions_lbp = regionprops_table(segments, intensity_image=lbp_np, extra_properties=[self.lbp])
 
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
                                                                                     'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
@@ -176,7 +188,7 @@ class ToTensorSPFFT(object):
         seq_len = len(regions['label'])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
-        features = np.zeros([self.num_seg, 8+(self.coeff)*2])
+        features = np.zeros([self.num_seg, 8+(self.coeff)*2+10])
         if self.ignore_phase:
             features = np.zeros([self.num_seg, 8+self.coeff])
             for i in range(self.coeff):
@@ -196,7 +208,9 @@ class ToTensorSPFFT(object):
         features[label-1, 6] = regions['image_stdev-1']/255.
         features[label-1, 7] = regions['image_stdev-2']/255.
         
-
+        for ind in range(8+2):
+            features[label-1, ind+8+(self.coeff)*2] = regions_lbp[f'lbp-{ind}']
+        
 
         for ind, coord in zip(regions['label'], regions['coords']):
             seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
@@ -427,18 +441,18 @@ class SPDatasetExport(data.Dataset):
 class SPDataset(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, compactness,
                   dataloader, data_augmentation=True, coeff=None,
-                    ignore_phase=False, fully_conneted=False, sigma_agen=None, sigma_agnn=None, dilation=1):
+                    ignore_phase=False, fully_conneted=False, sigma=None, dilation=1):
         self.image_list = image_list
         self.mask_list = mask_list
         self.fully_connected = fully_conneted
         self.resize_mask = ResizeMask(size)
         self.num_seg = num_seg
         self.dataloader = dataloader
-        self.sigma_agen = sigma_agen
-        self.sigma_agnn = sigma_agnn
+        self.sigma = sigma
         self.size = size
         self.dilation = dilation
         self.adj_list = {}
+        self.coeff = coeff
         
         if dataloader == 'SPGFFT':
             totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
@@ -519,15 +533,10 @@ class SPDataset(data.Dataset):
             edge_features = np.load(sp_file_path_edge_features)
         
 
-        # if self.sigma_agen is not None and self.data_augmentation:
-        #     agen_noise = np.random.normal(0, self.sigma_agen, edge_features.shape)
-        #     edge_features += agen_noise
-
-        # if self.sigma_agnn is not None and self.data_augmentation:
-        #     agnn_noise = np.random.normal(0, self.sigma_agnn, features[:, 2:5].shape)
-        #     features[:, 2:5] += agnn_noise
-        #     features[:, 2:5] = np.clip(features[:, 2:5], 0, 1)
-        
+        if self.sigma is not None and self.dataloader == 'SPGFFT':
+            features = horizontal_flip(features, self.coeff, 0.5)
+            gaussian_noise = np.random.normal(1, self.sigma, features.shape)
+            features = features*gaussian_noise
         
         sample = (Data(x=torch.tensor(features).float(),
                         edge_index=edge_index,
@@ -555,8 +564,7 @@ class SPGDataModule(pl.LightningDataModule):
         self.compactness = kwargs.get('compactness')
         self.ignore_phase = kwargs.get('ignore_phase')
         self.fully_connected = kwargs.get('fully_connected', False)
-        self.sigma_agen = kwargs.get('sigma_agen', None)
-        self.sigma_agnn = kwargs.get('sigma_agnn', None)
+        self.sigma = kwargs.get('sigma', None)
         self.dilation = kwargs.get('dilation')
         self.debug = kwargs.get('debug', False)
         
@@ -587,7 +595,7 @@ class SPGDataModule(pl.LightningDataModule):
 
         dummy_tr = SPDatasetExport(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.compactness, self.dataloader, True,
-                                  self.coeff, self.ignore_phase, self.fully_connected, None, None, self.dilation)
+                                  self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
         dummy_tr_loader = DataLoader(
                 dummy_tr, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=False, pin_memory=False)
@@ -599,10 +607,10 @@ class SPGDataModule(pl.LightningDataModule):
 
         dummy_val = SPDatasetExport(self.val_image_list, self.val_mask_list, self.num_seg,
                               self.res, self.compactness, self.dataloader,False,
-                                self.coeff, self.ignore_phase, self.fully_connected, None, None, self.dilation)
+                                self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
         dummy_test = SPDatasetExport(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.dataloader,False, 
-                               self.coeff, self.ignore_phase, self.fully_connected, None, None, self.dilation)
+                               self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
         dummy_val_loader = DataLoader(
                 dummy_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
@@ -624,7 +632,7 @@ class SPGDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.compactness, self.dataloader, True,
-                                  self.coeff, self.ignore_phase, self.fully_connected, None, None, self.dilation)
+                                  self.coeff, self.ignore_phase, self.fully_connected, self.sigma, self.dilation)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=False)
@@ -632,10 +640,10 @@ class SPGDataModule(pl.LightningDataModule):
     def val_dataloader(self):
         data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg,
                               self.res, self.compactness, self.dataloader,False,
-                                self.coeff, self.ignore_phase, self.fully_connected, None, None, self.dilation)
+                                self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
         data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.dataloader,False, 
-                               self.coeff, self.ignore_phase, self.fully_connected, None, None, self.dilation)
+                               self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
         val_dataloader = DataLoader(
                 data_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
@@ -647,7 +655,7 @@ class SPGDataModule(pl.LightningDataModule):
     def test_dataloader(self):
         data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.dataloader, False,
-                                 self.coeff, self.ignore_phase, self.fully_connected, None, None, self.dilation)
+                                 self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
