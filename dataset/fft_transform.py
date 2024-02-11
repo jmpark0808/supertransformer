@@ -1,17 +1,17 @@
 import numpy as np
 import math
 
-def horizontal_flip(array, coeff, chance):
+def horizontal_flip(array, coeff, chance, size):
     if np.random.random() < chance:
-        phase = array[:, -coeff:]
+        phase = array[:, 8+coeff:8+coeff+coeff]
         mask = phase > 0
         phase_flipped = np.empty_like(phase)
         phase_flipped[mask] = np.pi - phase[mask]
         phase_flipped[~mask] = -np.pi - phase[~mask]
-        array[:, -coeff:] = phase_flipped
+        array[:, 8+coeff:8+coeff+coeff] = phase_flipped
 
         xs = array[:, 1]
-        mid_x = 300/2.
+        mid_x = size/2.
         diff_x = xs-mid_x
         array[:, 1] = mid_x-diff_x
     return array
