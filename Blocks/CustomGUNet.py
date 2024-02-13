@@ -5,8 +5,12 @@ from torch import Tensor
 
 from torch_geometric.nn import GATv2Conv, TopKPooling
 from torch_geometric.nn.resolver import activation_resolver
-from torch_geometric.typing import OptTensor, PairTensor, SparseTensor
-from torch_geometric.utils import add_self_loops, remove_self_loops
+from torch_geometric.typing import OptTensor, PairTensor
+from torch_geometric.utils import (
+    add_self_loops,
+    remove_self_loops,
+    to_torch_csr_tensor,
+)
 from torch_geometric.utils.repeat import repeat
 
 
@@ -34,12 +38,11 @@ class GraphUNet(torch.nn.Module):
         hidden_channels: int,
         out_channels: int,
         depth: int,
-        heads: int, 
         pool_ratios: Union[float, List[float]] = 0.5,
         sum_res: bool = True,
-        dropout: float = 0.,
-        edge_dim: int = None,
         act: Union[str, Callable] = 'relu',
+        dropout: float = 0, 
+        heads: int = 8,
     ):
         super().__init__()
         assert depth >= 1
@@ -55,17 +58,17 @@ class GraphUNet(torch.nn.Module):
 
         self.down_convs = torch.nn.ModuleList()
         self.pools = torch.nn.ModuleList()
-        self.down_convs.append(GATv2Conv(in_channels, channels, heads, dropout=dropout, edge_dim=edge_dim, concat=False))
+        self.down_convs.append(GATv2Conv(in_channels, channels, heads=heads, concat=False, dropout=dropout, edge_dim=None))
         for i in range(depth):
             self.pools.append(TopKPooling(channels, self.pool_ratios[i]))
-            self.down_convs.append(GATv2Conv(channels, channels, heads, dropout=dropout, edge_dim=edge_dim, concat=False))
+            self.down_convs.append(GATv2Conv(channels, channels, heads=heads, concat=False, dropout=dropout, edge_dim=None))
 
         in_channels = channels if sum_res else 2 * channels
 
         self.up_convs = torch.nn.ModuleList()
         for i in range(depth - 1):
-            self.up_convs.append(GATv2Conv(in_channels, channels, heads, dropout=dropout, edge_dim=edge_dim, concat=False))
-        self.up_convs.append(GATv2Conv(in_channels, out_channels, heads, dropout=dropout, edge_dim=edge_dim, concat=False))
+            self.up_convs.append(GATv2Conv(in_channels, channels, heads=heads, concat=False, dropout=dropout, edge_dim=None))
+        self.up_convs.append(GATv2Conv(in_channels, out_channels, heads=heads, concat=False, dropout=dropout, edge_dim=None))
 
         self.reset_parameters()
 
@@ -78,34 +81,36 @@ class GraphUNet(torch.nn.Module):
         for conv in self.up_convs:
             conv.reset_parameters()
 
-    def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor, 
+
+    def forward(self, x: Tensor, edge_index: Tensor,
                 batch: OptTensor = None) -> Tensor:
-        """"""
+        """"""  # noqa: D419
         if batch is None:
             batch = edge_index.new_zeros(x.size(0))
         edge_weight = x.new_ones(edge_index.size(1))
 
-        x = self.down_convs[0](x, edge_index, edge_attr = edge_attr)
+        x = self.down_convs[0](x, edge_index)
         x = self.act(x)
 
         xs = [x]
         edge_indices = [edge_index]
-        edge_attrs = [edge_attr]
+        edge_weights = [edge_weight]
         perms = []
 
         for i in range(1, self.depth + 1):
-            edge_index, edge_attr = self.augment_adj(edge_index, edge_attr,
+            edge_index, edge_weight = self.augment_adj(edge_index, edge_weight,
                                                        x.size(0))
-            x, edge_index, edge_attr, batch, perm, _ = self.pools[i - 1](
-                x, edge_index, edge_attr, batch)
+            
+            x, edge_index, edge_weight, batch, perm, _ = self.pools[i - 1](
+                x, edge_index, edge_weight, batch)
 
-            x = self.down_convs[i](x, edge_index, edge_attr = edge_attr)
+            x = self.down_convs[i](x, edge_index)
             x = self.act(x)
 
             if i < self.depth:
                 xs += [x]
                 edge_indices += [edge_index]
-                edge_attrs += [edge_attr]
+                edge_weights += [edge_weight]
             perms += [perm]
 
         for i in range(self.depth):
@@ -113,30 +118,30 @@ class GraphUNet(torch.nn.Module):
 
             res = xs[j]
             edge_index = edge_indices[j]
-            edge_attr = edge_attrs[j]
+            edge_weight = edge_weights[j]
             perm = perms[j]
 
             up = torch.zeros_like(res)
             up[perm] = x
             x = res + up if self.sum_res else torch.cat((res, up), dim=-1)
 
-            x = self.up_convs[i](x, edge_index, edge_attr = edge_attr)
+            x = self.up_convs[i](x, edge_index)
             x = self.act(x) if i < self.depth - 1 else x
 
         return x
 
-    def augment_adj(self, edge_index: Tensor, edge_attr: Tensor,
+
+    def augment_adj(self, edge_index: Tensor, edge_weight: Tensor,
                     num_nodes: int) -> PairTensor:
-        edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
-        edge_index, edge_attr = add_self_loops(edge_index, edge_attr,
-                                                 num_nodes=num_nodes, fill_value='mean')
-        # adj = SparseTensor.from_edge_index(edge_index, edge_attr,
-        #                                    sparse_sizes=(num_nodes, num_nodes))
-        # adj = adj @ adj
-        # row, col, edge_attr = adj.coo()
-        # edge_index = torch.stack([row, col], dim=0)
-        # edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
-        return edge_index, edge_attr
+        edge_index, edge_weight = remove_self_loops(edge_index, edge_weight)
+        edge_index, edge_weight = add_self_loops(edge_index, edge_weight,
+                                                 num_nodes=num_nodes)
+        adj = to_torch_csr_tensor(edge_index, edge_weight,
+                                  size=(num_nodes, num_nodes))
+        adj = (adj @ adj).to_sparse_coo()
+        edge_index, edge_weight = adj.indices(), adj.values()
+        # edge_index, edge_weight = remove_self_loops(edge_index, edge_weight)
+        return edge_index, edge_weight
 
     def __repr__(self) -> str:
         return (f'{self.__class__.__name__}({self.in_channels}, '
