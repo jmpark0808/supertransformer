@@ -3,7 +3,7 @@ from Blocks.GraphBlocks import *
 from Blocks.TransformerBlocks import *
 from dataset.constants import *
 from Blocks.GraphTransformer import TransformerConv
-from torch_geometric.nn.norm import LayerNorm
+from torch_geometric.nn.norm import GraphNorm
 from Blocks.TransformerBlocks import FeedForward 
 
 
@@ -16,40 +16,54 @@ class SP_TFM_PyG(nn.Module):
         """Dense version of GAT."""
         super(SP_TFM_PyG, self).__init__()
         self.linear1 = nn.Linear(nfeat, nhid*nheads)
-        self.elu = nn.ELU()
+        self.elu = nn.ReLU()
         self.pos_linear = nn.Linear(2, nhid*nheads)
         self.convs = nn.ModuleList([TransformerConv(in_channels=nhid*nheads, out_channels=nhid,
                                                                           heads=nheads, dropout=dropout, edge_dim=None,
                                                                             concat=True, root_weight=False) for _ in range(ntfm)])
-        self.ffs = nn.ModuleList([FeedForward(nhid*nheads, nhid*nheads, dropout) for _ in range(ntfm)])
-        self.ln1s = nn.ModuleList([LayerNorm(nhid*nheads, mode='node') for _ in range(ntfm)])
-        self.ln2s = nn.ModuleList([LayerNorm(nhid*nheads, mode='node') for _ in range(ntfm)])
+        self.ln1s = nn.ModuleList([GraphNorm(nhid*nheads) for _ in range(ntfm)])
         self.classifier = nn.Linear(nhid*nheads, 1)
         self.num_seg = num_seg
         
 
 
         
-    def forward(self, data, batch_ind):
+    def forward(self, data, return_attention=False):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
-
+        
+        batch_size = x.size(0)//self.num_seg
+        batch_index = torch.arange(0, batch_size).repeat(self.num_seg).reshape(self.num_seg, -1).T.reshape(-1).cuda()
         pos = x[:, :2]
         x = x[:, 2:]
-        
-        x = self.linear1(x)
 
+        x = self.linear1(x)
+        
         pos = self.pos_linear(pos)
         x += pos
-        
-        for conv, ff, ln1, ln2 in zip(self.convs, self.ffs, self.ln1s, self.ln2s):
-            x_ = ln1(x, batch_ind)
-            x = conv(x_, edge_index=edge_index, edge_attr=None) #+ x# adding edge features here
-            x = ff(ln2(x, batch_ind)) + x
-        
-        # for conv, ln1 in zip(self.convs, self.ln1s):
-        #     x = ln1(x, batch_index)
-        #     x = conv(x, edge_index=edge_index, edge_attr=None)# adding edge features here
+
+        att_weights = []
+        for ln, conv in zip(self.ln1s, self.convs):
+            h = x
+            if return_attention:
+                x, (ei, att) = conv(x, edge_index=edge_index, edge_attr=None, return_attention_weights=return_attention)# adding edge features here
+                att_weights.append(att)
+            else:
+                x = conv(x, edge_index=edge_index, edge_attr=None)
+            x = ln(x, batch=batch_index)
+            x = self.elu(x) + h
+        # for conv in self.convs:
+        #     if return_attention:
+        #         x, (ei, att) = conv(x, edge_index=edge_index, edge_attr=None, return_attention_weights=return_attention)# adding edge features here
+        #         att_weights.append(att)
+        #     else:
+        #         x = conv(x, edge_index=edge_index, edge_attr=None)# adding edge features here
+            
         #     x = self.elu(x)
+
       
+        # x = self.convs[-1](x, edge_index, edge_attr=edge_attr)
         x = self.classifier(x)
-        return x
+        if return_attention:
+            return x, att_weights
+        else:
+            return x

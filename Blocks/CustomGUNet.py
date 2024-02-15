@@ -4,6 +4,7 @@ import torch
 from torch import Tensor
 
 from torch_geometric.nn import GATv2Conv, TopKPooling
+from torch_geometric.nn.norm import GraphNorm
 from torch_geometric.nn.resolver import activation_resolver
 from torch_geometric.typing import OptTensor, PairTensor
 from torch_geometric.utils import (
@@ -58,16 +59,21 @@ class GraphUNet(torch.nn.Module):
 
         self.down_convs = torch.nn.ModuleList()
         self.pools = torch.nn.ModuleList()
+        self.norms = torch.nn.ModuleList()
         self.down_convs.append(GATv2Conv(in_channels, channels, heads=heads, concat=False, dropout=dropout, edge_dim=None))
+        self.norms.append(GraphNorm(channels))
         for i in range(depth):
             self.pools.append(TopKPooling(channels, self.pool_ratios[i]))
             self.down_convs.append(GATv2Conv(channels, channels, heads=heads, concat=False, dropout=dropout, edge_dim=None))
+            self.norms.append(GraphNorm(channels))
 
         in_channels = channels if sum_res else 2 * channels
 
         self.up_convs = torch.nn.ModuleList()
+        self.up_norms = torch.nn.ModuleList()
         for i in range(depth - 1):
             self.up_convs.append(GATv2Conv(in_channels, channels, heads=heads, concat=False, dropout=dropout, edge_dim=None))
+            self.up_norms.append(GraphNorm(channels))
         self.up_convs.append(GATv2Conv(in_channels, out_channels, heads=heads, concat=False, dropout=dropout, edge_dim=None))
 
         self.reset_parameters()
@@ -87,30 +93,36 @@ class GraphUNet(torch.nn.Module):
         """"""  # noqa: D419
         if batch is None:
             batch = edge_index.new_zeros(x.size(0))
+    
+        
         edge_weight = x.new_ones(edge_index.size(1))
 
         x = self.down_convs[0](x, edge_index)
+        x = self.norms[0](x, batch=batch)
         x = self.act(x)
 
         xs = [x]
         edge_indices = [edge_index]
         edge_weights = [edge_weight]
+        batches = [batch]
         perms = []
 
         for i in range(1, self.depth + 1):
             edge_index, edge_weight = self.augment_adj(edge_index, edge_weight,
                                                        x.size(0))
-            
+
             x, edge_index, edge_weight, batch, perm, _ = self.pools[i - 1](
                 x, edge_index, edge_weight, batch)
 
             x = self.down_convs[i](x, edge_index)
+            x = self.norms[i](x, batch=batch)
             x = self.act(x)
 
             if i < self.depth:
                 xs += [x]
                 edge_indices += [edge_index]
                 edge_weights += [edge_weight]
+                batches += [batch]
             perms += [perm]
 
         for i in range(self.depth):
@@ -120,15 +132,17 @@ class GraphUNet(torch.nn.Module):
             edge_index = edge_indices[j]
             edge_weight = edge_weights[j]
             perm = perms[j]
+            batch = batches[j]
 
             up = torch.zeros_like(res)
             up[perm] = x
             x = res + up if self.sum_res else torch.cat((res, up), dim=-1)
 
             x = self.up_convs[i](x, edge_index)
+            x = self.up_norms[i](x, batch=batch) if i < self.depth - 1 else x
             x = self.act(x) if i < self.depth - 1 else x
 
-        return x
+        return x, perms, edge_indices
 
 
     def augment_adj(self, edge_index: Tensor, edge_weight: Tensor,

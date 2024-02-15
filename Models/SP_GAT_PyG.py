@@ -37,7 +37,7 @@ class SP_GAT_PyG(nn.Module):
         
     def forward(self, data, return_attention=False):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
-        
+
         batch_size = x.size(0)//self.num_seg
         batch_index = torch.arange(0, batch_size).repeat(self.num_seg).reshape(self.num_seg, -1).T.reshape(-1).cuda()
         pos = x[:, :2]

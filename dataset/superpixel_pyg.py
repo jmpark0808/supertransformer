@@ -319,15 +319,14 @@ class ToTensorSP(object):
 class SPDatasetExport(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, compactness,
                   dataloader, data_augmentation=True, coeff=None,
-                    ignore_phase=False, fully_conneted=False, sigma_agen=None, sigma_agnn=None, dilation=1):
+                    ignore_phase=False, fully_conneted=False, sigma=None,  dilation=1):
         self.image_list = image_list
         self.mask_list = mask_list
         self.fully_connected = fully_conneted
         self.resize_mask = ResizeMask(size)
         self.num_seg = num_seg
         self.dataloader = dataloader
-        self.sigma_agen = sigma_agen
-        self.sigma_agnn = sigma_agnn
+        self.sigma = None
         self.size = size
         self.dilation = dilation
         self.adj_list = {}
@@ -421,7 +420,7 @@ class SPDatasetExport(data.Dataset):
 
             
             
-        edge_index = np.array(np.nonzero(neighbor_array))    
+        edge_index = np.array(np.nonzero(neighbor_array)) 
         np.save(sp_file_path_edge_index, neighbor_array)
 
         features_centroids = features[:, :2]/self.size
@@ -533,10 +532,10 @@ class SPDataset(data.Dataset):
             edge_features = np.load(sp_file_path_edge_features)
         
 
-        if self.sigma is not None and self.dataloader == 'SPGFFT':
-            features = horizontal_flip(features, self.coeff, 0.5, self.size)
-            gaussian_noise = np.random.normal(1, self.sigma, features.shape)
-            features = features*gaussian_noise
+        # if self.sigma is not None and self.dataloader == 'SPGFFT':
+        #     features = horizontal_flip(features, self.coeff, 0.5, self.size)
+        #     gaussian_noise = np.random.normal(1, self.sigma, features.shape)
+        #     features = features*gaussian_noise
         
         sample = (Data(x=torch.tensor(features).float(),
                         edge_index=edge_index,

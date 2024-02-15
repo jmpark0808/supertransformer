@@ -9,6 +9,7 @@ from dataset.constants import *
 from fvcore.nn import FlopCountAnalysis
 from fvcore.nn import flop_count_table
 from torch_geometric.data import Data
+from torch_geometric.utils import dropout_edge
 from util.util import get_input_dim
 
 class SP_TFM_PyG_Wrapper(pl.LightningModule):
@@ -22,6 +23,7 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         self.es_patience = kwargs.get('es_patience')
         self.dropout = kwargs.get('dropout')
         self.tfm_hp = kwargs.get('tfmhp')
+        self.dropout_edge = kwargs.get('dropout_edge')
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
         self.model = SP_TFM_PyG(input_dim, self.tfm_hp[1], 1, self.dropout, self.tfm_hp[0], self.tfm_hp[2],
@@ -61,7 +63,7 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         return optimizer
       
 
-    def forward(self, input, batch_ind):
+    def forward(self, input):
         """
         Forward pass through model
         :param x: Input features
@@ -69,7 +71,8 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
         
-        pred = self.model(input, batch_ind)
+        pred = self.model(input)
+        pred = pred.reshape(-1, self.num_seg)
         
         return pred
 
@@ -92,36 +95,35 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
         features = batch[0]
-        node_num = batch[1]
+        seq_mask = batch[1]
         segments = batch[2]
         mask = batch[3]
-        img_lists = batch[4]
 
-        batch_ind = []
-        for idx, node in enumerate(node_num):
-            batch_ind += [idx]*node
-
+        # np.save(f'/mnt/dragon/gat_logs/features_x_{batch_idx}', features.x.detach().cpu().numpy())
+        # np.save(f'/mnt/dragon/gat_logs/features_ei_{batch_idx}', features.edge_index.detach().cpu().numpy())
+        # np.save(f'/mnt/dragon/gat_logs/seq_mask_{batch_idx}', seq_mask.detach().cpu().numpy())
+        # torch.save(self.model.state_dict(), f'/mnt/dragon/gat_logs/model_weight_{batch_idx}.pt')
         features = features.cuda()
         mask = mask.cuda()
      
         # forward pass
-        
-        pred = self.forward(features, torch.tensor(batch_ind).cuda())
+        edge_index, edge_mask = dropout_edge(features.edge_index, p=self.dropout_edge)
+        features.edge_index = edge_index
+        pred = self.forward(features)
+        # np.save(f'/mnt/dragon/gat_logs/output_{batch_idx}', pred.detach().cpu().numpy())
 
-        loss = self.loss(pred, features.y)
+        loss = self.loss(pred, seq_mask)
         
-        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # sum(node_num), 1
-        
+        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
+        seq_mask_numpy = seq_mask.detach().cpu().numpy()
         batch_size = mask.size(0)
         img_size = mask.size(2)
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
         samples = []
-        node_ind = 0
-        for nodes, labels in zip(node_num, segments.cpu().numpy()):
-            plt_image = pred_numpy[node_ind:node_ind+nodes][labels-1].reshape([img_size, img_size])
+        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+            plt_image = masked[labels-1].reshape([img_size, img_size])
             samples.append(plt_image)
-            node_ind += nodes
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
 
@@ -140,7 +142,7 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         f_score = f_score.sum(dim=0)
         self.train_fscores += f_score
         self.num_samples += mask.size(0)
-        self.log('loss', loss.item())
+        self.log('loss', loss.item(), prog_bar=True)
         self.iteration += 1
         return loss
 
@@ -151,37 +153,33 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         """
         tensorboard = self.logger.experiment
         features = batch[0]
-        node_num = batch[1]
+        seq_mask = batch[1]
         segments = batch[2]
         mask = batch[3]
   
-        batch_ind = []
-        for idx, node in enumerate(node_num):
-            batch_ind += [idx]*node
+
         features = features.cuda()
         mask = mask.cuda()
 
 
         # forward pass
-        pred = self.forward(features, torch.tensor(batch_ind).cuda())
+        pred = self.forward(features)
 
-        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # sum(node_num), 1
-
+        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
+        seq_mask_numpy = seq_mask.detach().cpu().numpy()
         batch_size = mask.size(0)
         img_size = mask.size(2)
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
         samples = []
-        node_ind = 0
-        for nodes, labels in zip(node_num, segments.cpu().numpy()):
-            plt_image = pred_numpy[node_ind:node_ind+nodes][labels-1].reshape([img_size, img_size])
+        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+            plt_image = masked[labels-1].reshape([img_size, img_size])
             samples.append(plt_image)
-            node_ind += nodes
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
-        if batch_idx == 0:
-            tensorboard.add_images('Validation Pred', samples, self.test_iteration)
-            tensorboard.add_images('Validation GT', mask, self.test_iteration)
+        # if batch_idx == 0:
+        #     tensorboard.add_images('Validation Pred', samples, self.test_iteration)
+        #     tensorboard.add_images('Validation GT', mask, self.test_iteration)
 
         mae = torch.mean(torch.abs(samples - mask))
         if dataloader_idx == 0:
@@ -259,7 +257,7 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         self.masks = []
         self.precs = []
         self.recalls = []
-
+        self.test_step_outputs = []
        
 
     def test_step(self, batch, batch_idx):
@@ -268,32 +266,28 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
         features = batch[0]
-        node_num = batch[1]
+        seq_mask = batch[1]
         segments = batch[2]
         mask = batch[3]
-        batch_ind = []
-        for idx, node in enumerate(node_num):
-            batch_ind += [idx]*node
+
 
         features = features.cuda()
         mask = mask.cuda()
 
 
         # forward pass
-        pred = self.forward(features, torch.tensor(batch_ind).cuda())
+        pred = self.forward(features)
 
-        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # sum(node_num), 1
-
+        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
+        seq_mask_numpy = seq_mask.detach().cpu().numpy()
         batch_size = mask.size(0)
         img_size = mask.size(2)
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
         samples = []
-        node_ind = 0
-        for nodes, labels in zip(node_num, segments.cpu().numpy()):
-            plt_image = pred_numpy[node_ind:node_ind+nodes][labels-1].reshape([img_size, img_size])
+        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+            plt_image = masked[labels-1].reshape([img_size, img_size])
             samples.append(plt_image)
-            node_ind += nodes
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
         # tensorboard.add_images('Test Pred', samples, self.test_iteration)
@@ -317,7 +311,6 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         self.precs.append(prec)
         self.recalls.append(recall)
         self.test_iteration += 1
-       
         return mae
     
     def on_test_epoch_end(self):
@@ -332,7 +325,8 @@ class SP_TFM_PyG_Wrapper(pl.LightningModule):
         pred = torch.cat(self.preds, 0).cuda()
         mask = torch.cat(self.masks, 0).cuda().round().float()
         self.log('Final Test MAE', torch.mean(torch.abs(pred-mask)))
-      
+        self.scheduler.step(torch.mean(torch.stack(self.test_step_outputs)))
+        
                     
     
 
