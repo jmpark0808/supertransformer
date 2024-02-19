@@ -532,10 +532,10 @@ class SPDataset(data.Dataset):
             edge_features = np.load(sp_file_path_edge_features)
         
 
-        # if self.sigma is not None and self.dataloader == 'SPGFFT':
-        #     features = horizontal_flip(features, self.coeff, 0.5, self.size)
-        #     gaussian_noise = np.random.normal(1, self.sigma, features.shape)
-        #     features = features*gaussian_noise
+        if self.sigma is not None and self.dataloader == 'SPGFFT':
+            features = horizontal_flip(features, self.coeff, 0.5, self.size)
+            gaussian_noise = np.random.normal(1, self.sigma, features.shape)
+            features = features*gaussian_noise
         
         sample = (Data(x=torch.tensor(features).float(),
                         edge_index=edge_index,

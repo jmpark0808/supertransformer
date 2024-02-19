@@ -21,18 +21,17 @@ class SP_GUNET_PyG(nn.Module):
         self.num_seg = num_seg
         
     def forward(self, data, return_perms=False):
-        x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+       
+        data.pos = data.x[:, :2]
+        data.x = data.x[:, 2:]
 
-        pos = x[:, :2]
-        x = x[:, 2:]
-
-        x = self.linear1(x)
-        batch_size = x.size(0)//self.num_seg
+        data.x = self.linear1(data.x)
+        batch_size = data.x.size(0)//self.num_seg
         batch_index = torch.arange(0, batch_size).repeat(self.num_seg).reshape(self.num_seg, -1).T.reshape(-1).cuda()
-        pos = self.pos_linear(pos)
-        x += pos
+        pos = self.pos_linear(data.pos)
+        data.x += pos
 
-        x, perms, edge_indices = self.gunet(x, edge_index, batch_index)
+        x, perms, edge_indices = self.gunet(data, batch_index)
         if return_perms:
             return x, perms, edge_indices
         return x

@@ -3,7 +3,7 @@ from typing import Callable, List, Union
 import torch
 from torch import Tensor
 
-from torch_geometric.nn import GATv2Conv, TopKPooling
+from torch_geometric.nn import GATv2Conv, TopKPooling, graclus#, max_pool
 from torch_geometric.nn.norm import GraphNorm
 from torch_geometric.nn.resolver import activation_resolver
 from torch_geometric.typing import OptTensor, PairTensor
@@ -13,6 +13,19 @@ from torch_geometric.utils import (
     to_torch_csr_tensor,
 )
 from torch_geometric.utils.repeat import repeat
+from torch_geometric.utils import normalized_cut
+import torch_geometric.transforms as T
+from Blocks.GraphPool import max_pool
+
+
+transform = T.Cartesian(cat=False)
+def normalized_cut_2d(edge_index, pos):
+    row, col = edge_index
+    edge_attr = torch.norm(pos[row] - pos[col], p=2, dim=1)
+    return normalized_cut(edge_index, edge_attr, num_nodes=pos.size(0))
+
+
+
 
 
 class GraphUNet(torch.nn.Module):
@@ -88,41 +101,42 @@ class GraphUNet(torch.nn.Module):
             conv.reset_parameters()
 
 
-    def forward(self, x: Tensor, edge_index: Tensor,
+    def forward(self, data,
                 batch: OptTensor = None) -> Tensor:
         """"""  # noqa: D419
         if batch is None:
-            batch = edge_index.new_zeros(x.size(0))
-    
+            batch = edge_index.new_zeros(data.x.size(0))
+
         
-        edge_weight = x.new_ones(edge_index.size(1))
+        data.x = self.down_convs[0](data.x, data.edge_index)
+        data.x = self.norms[0](data.x, batch=batch)
+        data.x = self.act(data.x)
 
-        x = self.down_convs[0](x, edge_index)
-        x = self.norms[0](x, batch=batch)
-        x = self.act(x)
-
-        xs = [x]
-        edge_indices = [edge_index]
-        edge_weights = [edge_weight]
+        xs = [data.x]
+        edge_indices = [data.edge_index]
         batches = [batch]
         perms = []
+        
 
         for i in range(1, self.depth + 1):
-            edge_index, edge_weight = self.augment_adj(edge_index, edge_weight,
-                                                       x.size(0))
+            # edge_index, edge_weight = self.augment_adj(edge_index, edge_weight,
+            #                                            x.size(0))
+         
+            weight = normalized_cut_2d(data.edge_index, data.pos)
+            cluster = graclus(data.edge_index, weight, data.x.size(0))
+            data.edge_attr = None
+            data, perm = max_pool(cluster, data, transform=transform)
+            # x, edge_index, edge_weight, batch, perm, _ = self.pools[i - 1](
+            #     x, edge_index, edge_weight, batch)
 
-            x, edge_index, edge_weight, batch, perm, _ = self.pools[i - 1](
-                x, edge_index, edge_weight, batch)
-
-            x = self.down_convs[i](x, edge_index)
-            x = self.norms[i](x, batch=batch)
-            x = self.act(x)
+            data.x = self.down_convs[i](data.x, data.edge_index)
+            data.x = self.norms[i](data.x, batch=data.batch)
+            data.x = self.act(data.x)
 
             if i < self.depth:
-                xs += [x]
-                edge_indices += [edge_index]
-                edge_weights += [edge_weight]
-                batches += [batch]
+                xs += [data.x]
+                batches += [data.batch]
+            edge_indices += [data.edge_index]
             perms += [perm]
 
         for i in range(self.depth):
@@ -130,19 +144,18 @@ class GraphUNet(torch.nn.Module):
 
             res = xs[j]
             edge_index = edge_indices[j]
-            edge_weight = edge_weights[j]
             perm = perms[j]
             batch = batches[j]
 
             up = torch.zeros_like(res)
-            up[perm] = x
-            x = res + up if self.sum_res else torch.cat((res, up), dim=-1)
+            up[perm] = data.x
+            data.x = res + up if self.sum_res else torch.cat((res, up), dim=-1)
 
-            x = self.up_convs[i](x, edge_index)
-            x = self.up_norms[i](x, batch=batch) if i < self.depth - 1 else x
-            x = self.act(x) if i < self.depth - 1 else x
+            data.x = self.up_convs[i](data.x, edge_index)
+            data.x = self.up_norms[i](data.x, batch=batch) if i < self.depth - 1 else data.x
+            data.x = self.act(data.x) if i < self.depth - 1 else data.x
 
-        return x, perms, edge_indices
+        return data.x, perms, edge_indices
 
 
     def augment_adj(self, edge_index: Tensor, edge_weight: Tensor,

@@ -33,12 +33,12 @@ spg_dataset = SPGDataset(image_list, mask_list, 625, 300, 10, 'SPGFFT', True, 10
 spg_loader = GDL(spg_dataset, 1, False, num_workers=4)
 
 
-state_dict = torch.load('/mnt/hdd/Experiments/garbage/models/state_dict/0214-090034_/epoch=174-step=49175.ckpt')
+state_dict = torch.load('/mnt/hdd/Experiments/garbage/models/state_dict/0216-171823_/epoch=1-step=562.ckpt')
 
 for key in list(state_dict['state_dict'].keys()):
     state_dict['state_dict'][key.replace('model.', '')] = state_dict['state_dict'].pop(key)
 
-pyg = SP_GUNET_PyG(36, 16, 8, 625, 3, 0).cuda()
+pyg = SP_GUNET_PyG(36, 16, 8, 625, 6, 0).cuda()
 pyg.load_state_dict(state_dict['state_dict'])
 pyg.eval()
 
@@ -80,7 +80,7 @@ for batch in spg_loader:
                 ind = np.argwhere(segmentation.find_boundaries(segments-1 == p, mode='inner'))
                 out_[ind[:, 0], ind[:, 1]] = [0, 255, 0]
 
-            centroids = features.x[:, :2]
+            centroids = features.pos
             for e in edge.T:
                 y0, x0 = centroids[initial_perm[e.detach().cpu().numpy()[0]]].detach().cpu().numpy()
                 y1, x1 = centroids[initial_perm[e.detach().cpu().numpy()[1]]].detach().cpu().numpy()
