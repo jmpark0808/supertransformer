@@ -161,7 +161,7 @@ class ToTensorSPFFT(object):
 
         # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
             
-        slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
+        slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness, min_size_factor=0)
         segments = slic.iterate(img_np)+1
         # segments = slic(img_np, n_segments=self.num_seg,
         #     compactness=self.compactness,
@@ -398,20 +398,20 @@ class SPDatasetExport(data.Dataset):
             neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
             if self.dilation != 1:
                 #--------------- Global aggregation -------------#
-                # if self.num_seg != 625:
-                #     assert False, 'Only works for num seg 625'
-                # grid = np.arange(625).reshape([25, 25])
-                # midpoint_indices = []
-                # for row in range(4):
-                #     for column in range(4):
-                #         midpoint_indices.append(grid[row*5+4, column*5+4])
+                if self.num_seg != 625:
+                    assert False, 'Only works for num seg 625'
+                grid = np.arange(625).reshape([25, 25])
+                midpoint_indices = []
+                for row in range(4):
+                    for column in range(4):
+                        midpoint_indices.append(grid[row*5+4, column*5+4])
 
-                # neighbor_array[midpoint_indices, :] = 1
-                # neighbor_array[:, midpoint_indices] = 1
+                neighbor_array[midpoint_indices, :] = 1
+                neighbor_array[:, midpoint_indices] = 1
 
                 #---------------- dilation connected --------------#
 
-                neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
+                # neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
 
                 #---------------- dilated convolution -------------#
                 # neighbor_array = (np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int) - \
