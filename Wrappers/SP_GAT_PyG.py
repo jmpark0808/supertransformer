@@ -24,9 +24,12 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         self.dropout = kwargs.get('dropout')
         self.tfm_hp = kwargs.get('tfmhp')
         self.dropout_edge = kwargs.get('dropout_edge')
+        self.dilation_mode = kwargs.get('dilation_mode')
+        self.dilation = kwargs.get('dilation')
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
-        self.model = SP_GAT_PyG(input_dim, self.tfm_hp[1], 1, self.dropout, self.tfm_hp[0], self.tfm_hp[2], self.num_seg)
+        self.model = SP_GAT_PyG(input_dim, self.tfm_hp[1], 1, self.dropout, self.tfm_hp[0],
+                                 self.tfm_hp[2], self.num_seg, self.dilation_mode, self.dilation)
         
         # data = Data(x=torch.ones(self.num_seg, input_dim),
         #              edge_index=torch.ones(self.num_seg,self.num_seg),
@@ -62,7 +65,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         return optimizer
       
 
-    def forward(self, input):
+    def forward(self, input, dropout_edge=0):
         """
         Forward pass through model
         :param x: Input features
@@ -70,7 +73,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
         
-        pred = self.model(input)
+        pred = self.model(input, edge_dropout=dropout_edge)
         pred = pred.reshape(-1, self.num_seg)
 
         return pred
@@ -106,9 +109,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
         mask = mask.cuda()
      
         # forward pass
-        edge_index, edge_mask = dropout_edge(features.edge_index, p=self.dropout_edge)
-        features.edge_index = edge_index
-        pred = self.forward(features)
+        pred = self.forward(features, self.dropout_edge)
         # np.save(f'/mnt/dragon/gat_logs/output_{batch_idx}', pred.detach().cpu().numpy())
 
         loss = self.loss(pred, seq_mask)

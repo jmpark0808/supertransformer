@@ -158,6 +158,8 @@ if __name__ == "__main__":
     parser.add_argument('--sigma', help='Sigma for feature augmentation', default=0.04, type=float)
     parser.add_argument('--debug', help='Whether or not to switch to debug mode, only runs on 100 samples'
                         , default=False, action="store_true")
+    parser.add_argument('--dilation_mode', help='Dilation mode, 0 for fully connected, 1 for spotted global', default=0, type=int)
+    
 
 
     import torch 

@@ -110,13 +110,14 @@ class RandomColorJitter(object):
 
 
 class ToTensorSPFFT(object):
-    def __init__(self, num_seg, compactness, coeff, ignore_phase, fully_connected):
+    def __init__(self, num_seg, compactness, coeff, ignore_phase, fully_connected, dilation_mode):
         self.tensor = transforms.ToTensor()
         self.num_seg = num_seg
         self.coeff = coeff
         self.compactness = compactness
         self.ignore_phase = ignore_phase
         self.fully_connected = fully_connected
+        self.dilation_mode = dilation_mode
         
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
@@ -160,8 +161,14 @@ class ToTensorSPFFT(object):
         img_size = img_np.shape
 
         # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
-            
-        slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness, min_size_factor=0)
+        if self.dilation_mode == 0:
+            slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
+        elif self.dilation_mode == 1:
+            slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness, min_size_factor=0)
+        else:
+            raise 'Incorrect dilation mode'
+
+        
         segments = slic.iterate(img_np)+1
         # segments = slic(img_np, n_segments=self.num_seg,
         #     compactness=self.compactness,
@@ -319,7 +326,7 @@ class ToTensorSP(object):
 class SPDatasetExport(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, compactness,
                   dataloader, data_augmentation=True, coeff=None,
-                    ignore_phase=False, fully_conneted=False, sigma=None,  dilation=1):
+                    ignore_phase=False, fully_conneted=False, sigma=None,  dilation=1, dilation_mode=0):
         self.image_list = image_list
         self.mask_list = mask_list
         self.fully_connected = fully_conneted
@@ -329,10 +336,11 @@ class SPDatasetExport(data.Dataset):
         self.sigma = None
         self.size = size
         self.dilation = dilation
+        self.dilation_mode = dilation_mode
         self.adj_list = {}
         
         if dataloader == 'SPGFFT':
-            totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
+            totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted, dilation_mode)
         else:
             totensor = ToTensorSP(num_seg, compactness, fully_conneted)
         
@@ -398,20 +406,21 @@ class SPDatasetExport(data.Dataset):
             neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
             if self.dilation != 1:
                 #--------------- Global aggregation -------------#
-                if self.num_seg != 625:
-                    assert False, 'Only works for num seg 625'
-                grid = np.arange(625).reshape([25, 25])
-                midpoint_indices = []
-                for row in range(4):
-                    for column in range(4):
-                        midpoint_indices.append(grid[row*5+4, column*5+4])
+                if self.dilation_mode == 1:
+                    if self.num_seg != 625:
+                        assert False, 'Only works for num seg 625'
+                    grid = np.arange(625).reshape([25, 25])
+                    midpoint_indices = []
+                    for row in range(4):
+                        for column in range(4):
+                            midpoint_indices.append(grid[row*5+4, column*5+4])
 
-                neighbor_array[midpoint_indices, :] = 1
-                neighbor_array[:, midpoint_indices] = 1
-
+                    neighbor_array[midpoint_indices, :] = 1
+                    neighbor_array[:, midpoint_indices] = 1
                 #---------------- dilation connected --------------#
-
-                # neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
+                elif self.dilation_mode == 0:
+                    global_neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int) - neighbor_array
+                    neighbor_array = np.stack([neighbor_array, global_neighbor_array], axis=0)
 
                 #---------------- dilated convolution -------------#
                 # neighbor_array = (np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int) - \
@@ -440,7 +449,7 @@ class SPDatasetExport(data.Dataset):
 class SPDataset(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, compactness,
                   dataloader, data_augmentation=True, coeff=None,
-                    ignore_phase=False, fully_conneted=False, sigma=None, dilation=1):
+                    ignore_phase=False, fully_conneted=False, sigma=None, dilation=1, dilation_mode=0):
         self.image_list = image_list
         self.mask_list = mask_list
         self.fully_connected = fully_conneted
@@ -452,21 +461,10 @@ class SPDataset(data.Dataset):
         self.dilation = dilation
         self.adj_list = {}
         self.coeff = coeff
+        self.dilation_mode = dilation_mode
         
-        if dataloader == 'SPGFFT':
-            totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
-        else:
-            totensor = ToTensorSP(num_seg, compactness, fully_conneted)
         
-
-        self.transform = transforms.Compose([Resize(size),
-            # [RandomFlip(0.5),
-            #  RandomCrop(size, int(size*1.14)),
-             totensor])
-        if not data_augmentation:
-            self.transform = transforms.Compose([Resize(size), totensor])
-
-
+       
         self.data_augmentation = data_augmentation
 
 
@@ -502,34 +500,18 @@ class SPDataset(data.Dataset):
         segments = np.load(sp_file_path_segments)
         mask = self.resize_mask(mask)
         mask = (mask > 0.5).float()
-        if self.fully_connected:
-            node_idx = np.unique(segments)-1
-            neighbor_array = np.zeros([self.num_seg, self.num_seg])
-            neighbor_array[node_idx[:, np.newaxis], node_idx[np.newaxis, :]] = 1
-            edge_index = np.array(np.nonzero(neighbor_array))
-            features_centroids = features[:, :2]
-            spatial_distances = euclidean_distances(features_centroids, features_centroids)
-            spatial_distances = spatial_distances[edge_index[0], edge_index[1]]
-
         
-            edge_features = np.expand_dims(spatial_distances, axis=1)
+        neighbor_array = np.load(sp_file_path_edge_index)
+
+        if self.dilation_mode == 0 and self.dilation != 1:
+            local_neighbor_array = torch.tensor(np.array(np.nonzero(neighbor_array[0])))
+            global_neighbor_array = torch.tensor(np.array(np.nonzero(neighbor_array[1])))
+            edge_index = (local_neighbor_array, global_neighbor_array)
 
         else:
-            neighbor_array = np.load(sp_file_path_edge_index)
-
-            # if self.dilation != 1:
-            #     if item in self.adj_list:
-            #         edge_index, edge_weight = from_scipy_sparse_matrix(self.adj_list[item])
-            #     else:
-            #         neighbor_array = (np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int) - \
-            #             np.linalg.matrix_power(neighbor_array, self.dilation-1).astype(bool).astype(int) + \
-            #             neighbor_array).astype(bool).astype(int)
-            #         self.adj_list[item] = scipy.sparse.csr_matrix(neighbor_array)
-            #         edge_index = torch.tensor(np.array(np.nonzero(neighbor_array)))
-            # else:
             edge_index = torch.tensor(np.array(np.nonzero(neighbor_array)))
 
-            edge_features = np.load(sp_file_path_edge_features)
+        edge_features = np.load(sp_file_path_edge_features)
         
 
         if self.sigma is not None and self.dataloader == 'SPGFFT':
@@ -566,6 +548,7 @@ class SPGDataModule(pl.LightningDataModule):
         self.sigma = kwargs.get('sigma', None)
         self.dilation = kwargs.get('dilation')
         self.debug = kwargs.get('debug', False)
+        self.dilation_mode = kwargs.get('dilation_mode', 0)
         
         self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
         self.mask_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.train_dir, 'Mask'))]))
@@ -594,7 +577,7 @@ class SPGDataModule(pl.LightningDataModule):
 
         dummy_tr = SPDatasetExport(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.compactness, self.dataloader, True,
-                                  self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
+                                  self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation, self.dilation_mode)
         dummy_tr_loader = DataLoader(
                 dummy_tr, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=False, pin_memory=False)
@@ -606,10 +589,10 @@ class SPGDataModule(pl.LightningDataModule):
 
         dummy_val = SPDatasetExport(self.val_image_list, self.val_mask_list, self.num_seg,
                               self.res, self.compactness, self.dataloader,False,
-                                self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
+                                self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation, self.dilation_mode)
         dummy_test = SPDatasetExport(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.dataloader,False, 
-                               self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
+                               self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation, self.dilation_mode)
         dummy_val_loader = DataLoader(
                 dummy_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)

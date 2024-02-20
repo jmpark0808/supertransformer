@@ -9,6 +9,7 @@ from torch.nn import LayerNorm as TLayerNorm
 from torch_geometric.nn.pool import global_mean_pool
 from torch_geometric.nn.dense import DenseGATConv
 from torch_sparse import SparseTensor
+from torch_geometric.utils import dropout_edge
 
 
 
@@ -17,7 +18,7 @@ class SP_GAT_PyG(nn.Module):
     Pure Global aggregation using transformers
     Deterministic Positional Encoding 
     '''
-    def __init__(self, nfeat, nhid, edge_dim, dropout, nheads, ntfm, num_seg):
+    def __init__(self, nfeat, nhid, edge_dim, dropout, nheads, ntfm, num_seg, dilation_mode, dilation):
         """Dense version of GAT."""
         super(SP_GAT_PyG, self).__init__()
         self.linear1 = nn.Linear(nfeat, nhid)
@@ -31,11 +32,13 @@ class SP_GAT_PyG(nn.Module):
 
         self.classifier = nn.Linear(nhid, 1)
         self.num_seg = num_seg
+        self.dilation_mode = dilation_mode
+        self.dilation = dilation
         
 
 
         
-    def forward(self, data, return_attention=False):
+    def forward(self, data, return_attention=False, edge_dropout=0):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
 
         batch_size = x.size(0)//self.num_seg
@@ -51,11 +54,19 @@ class SP_GAT_PyG(nn.Module):
         att_weights = []
         for ln, conv in zip(self.ln1s, self.convs):
             h = x
+            if self.dilation_mode == 0: 
+                if self.dilation != 1:
+                    edge_index_, edge_mask_ = dropout_edge(edge_index[1], p=edge_dropout)
+                    edge_index_ = torch.cat([edge_index[0], edge_index_], dim=1)
+                else:
+                    edge_index_, edge_mask_ = dropout_edge(edge_index, p=edge_dropout)
+            else:
+                edge_index_ = edge_index
             if return_attention:
-                x, (ei, att) = conv(x, edge_index=edge_index, edge_attr=None, return_attention_weights=return_attention)# adding edge features here
+                x, (ei, att) = conv(x, edge_index=edge_index_, edge_attr=None, return_attention_weights=return_attention)# adding edge features here
                 att_weights.append(att)
             else:
-                x = conv(x, edge_index=edge_index, edge_attr=None)
+                x = conv(x, edge_index=edge_index_, edge_attr=None)
             x = ln(x, batch=batch_index)
             x = self.elu(x) + h
         # for conv in self.convs:
