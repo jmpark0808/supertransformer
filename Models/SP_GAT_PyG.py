@@ -40,7 +40,7 @@ class SP_GAT_PyG(nn.Module):
         
     def forward(self, data, return_attention=False, edge_dropout=0):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
-
+        
         batch_size = x.size(0)//self.num_seg
         batch_index = torch.arange(0, batch_size).repeat(self.num_seg).reshape(self.num_seg, -1).T.reshape(-1).cuda()
         pos = x[:, :2]
@@ -66,6 +66,7 @@ class SP_GAT_PyG(nn.Module):
                 x, (ei, att) = conv(x, edge_index=edge_index_, edge_attr=None, return_attention_weights=return_attention)# adding edge features here
                 att_weights.append(att)
             else:
+                
                 x = conv(x, edge_index=edge_index_, edge_attr=None)
             x = ln(x, batch=batch_index)
             x = self.elu(x) + h
