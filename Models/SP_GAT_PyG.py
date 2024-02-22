@@ -10,7 +10,7 @@ from torch_geometric.nn.pool import global_mean_pool
 from torch_geometric.nn.dense import DenseGATConv
 from torch_sparse import SparseTensor
 from torch_geometric.utils import dropout_edge
-
+from torch_geometric.nn.pool import TopKPooling
 
 
 class SP_GAT_PyG(nn.Module):

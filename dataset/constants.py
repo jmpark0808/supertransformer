@@ -16,3 +16,4 @@ LBP_POINTS = 8
 
 ## MODEL parameters ##
 FEATURE_DIM = 9+LBP_RADIUS*LBP_POINTS+2
+

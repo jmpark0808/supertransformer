@@ -17,6 +17,8 @@ from skimage import segmentation
 import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib.lines import Line2D
+from skimage.measure import regionprops_table
+from skimage import data, io, segmentation, color
 
 train_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TR/'
 
@@ -33,12 +35,12 @@ spg_dataset = SPGDataset(image_list, mask_list, 625, 300, 10, 'SPGFFT', True, 10
 spg_loader = GDL(spg_dataset, 1, False, num_workers=4)
 
 
-state_dict = torch.load('/mnt/hdd/Experiments/garbage/models/state_dict/0216-171823_/epoch=383-step=107904.ckpt')
+state_dict = torch.load('/mnt/hdd/Experiments/garbage/models/state_dict/0222-165614_/epoch=1-step=562.ckpt')
 
 for key in list(state_dict['state_dict'].keys()):
     state_dict['state_dict'][key.replace('model.', '')] = state_dict['state_dict'].pop(key)
 
-pyg = SP_GUNET_PyG(36, 16, 8, 625, 6, 0).cuda()
+pyg = SP_GUNET_PyG(36, 64, 4, 625, 4, 0).cuda()
 pyg.load_state_dict(state_dict['state_dict'])
 pyg.eval()
 
@@ -65,6 +67,19 @@ for batch in spg_loader:
     dense_adj = np.squeeze(torch_geometric.utils.to_dense_adj(features.edge_index).cpu().detach().numpy())
     
     segments = np.squeeze(segments.cpu().detach().numpy())
+
+    # regions = regionprops_table(segments, intensity_image=img, properties=('label', 'centroid', 'intensity_mean',
+    #                                                                                 'coords'))
+    
+
+    # out = color.label2rgb(segments, img, kind='avg', bg_label=0)
+    # out = segmentation.mark_boundaries(out, segments, (0, 0, 0))
+    
+    # plt.imshow(out)
+    # for x, y, l in zip(regions['centroid-0'], regions['centroid-1'], regions['label']):
+    #     plt.text(y, x, str(l))
+    # plt.show()
+    # assert(0)
     # forward pass
     with torch.no_grad():
 

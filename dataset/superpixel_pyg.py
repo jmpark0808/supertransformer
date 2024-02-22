@@ -161,21 +161,15 @@ class ToTensorSPFFT(object):
         img_size = img_np.shape
 
         # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
-        if self.dilation_mode == 0:
-            slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
-        elif self.dilation_mode == 1:
-            slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness, min_size_factor=0)
-        else:
-            raise 'Incorrect dilation mode'
-
         
-        segments = slic.iterate(img_np)+1
-        # segments = slic(img_np, n_segments=self.num_seg,
-        #     compactness=self.compactness,
-        #     max_num_iter=10,
-        #     convert2lab=True,
-        #     enforce_connectivity=False,
-        #     slic_zero=False)
+        # slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness, min_size_factor=0)
+        # segments = slic.iterate(img_np)+1
+        segments = slic(img_np, n_segments=self.num_seg,
+            compactness=self.compactness,
+            max_num_iter=10,
+            convert2lab=True,
+            enforce_connectivity=False,
+            slic_zero=False)
 
         # plt.imshow(mark_boundaries(img_np, segments))
         # plt.show()
@@ -419,8 +413,8 @@ class SPDatasetExport(data.Dataset):
                     neighbor_array[:, midpoint_indices] = 1
                 #---------------- dilation connected --------------#
                 elif self.dilation_mode == 0:
-                    global_neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int) - neighbor_array
-                    neighbor_array = np.stack([neighbor_array, global_neighbor_array], axis=0)
+                    neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
+                    
 
                 #---------------- dilated convolution -------------#
                 # neighbor_array = (np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int) - \
@@ -503,13 +497,7 @@ class SPDataset(data.Dataset):
         
         neighbor_array = np.load(sp_file_path_edge_index)
 
-        if self.dilation_mode == 0 and self.dilation != 1:
-            local_neighbor_array = torch.tensor(np.array(np.nonzero(neighbor_array[0])))
-            global_neighbor_array = torch.tensor(np.array(np.nonzero(neighbor_array[1])))
-            edge_index = (local_neighbor_array, global_neighbor_array)
-
-        else:
-            edge_index = torch.tensor(np.array(np.nonzero(neighbor_array)))
+        edge_index = torch.tensor(np.array(np.nonzero(neighbor_array)))
 
         edge_features = np.load(sp_file_path_edge_features)
         

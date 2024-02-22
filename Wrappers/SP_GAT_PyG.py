@@ -165,6 +165,7 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
 
 
         # forward pass
+        print(features.edge_index.size())
         pred = self.forward(features)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1

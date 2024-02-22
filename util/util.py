@@ -187,3 +187,33 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+
+
+def create_batch_grid(rows, cols):
+    grid = torch.zeros([rows, cols], device='cuda')
+    col_starter = 0 
+    for i in range(rows):
+        shifter = 0 
+        for j in range(cols):
+            grid[i, j] = col_starter+shifter
+            if j % 2 == 1:
+                shifter += 1
+        if i%2 == 1:
+            col_starter += cols
+    
+    return grid.long()
+
+def create_edge_index(rows, cols):
+    grid = torch.arange(0, rows*cols).reshape(rows, cols)
+    edge_index = []
+    for i in range(rows):
+        for j in range(cols):
+            seed_node = grid[i, j]
+            for h, v in [[-1, 0], [1, 0], [0, -1], [0, 1]]:
+                if 0<=i+h<rows and 0<=j+v<cols:
+                    edge_index.append([seed_node, grid[i+h, j+v]])
+    edge_index = torch.tensor(edge_index, dtype=torch.int64, device='cuda').permute(1, 0)
+
+    del grid
+    return edge_index
+
