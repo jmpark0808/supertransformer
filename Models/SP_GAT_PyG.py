@@ -38,7 +38,7 @@ class SP_GAT_PyG(nn.Module):
 
 
         
-    def forward(self, data, return_attention=False, edge_dropout=0):
+    def forward(self, data, return_attention=False):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
         
         batch_size = x.size(0)//self.num_seg
@@ -54,20 +54,12 @@ class SP_GAT_PyG(nn.Module):
         att_weights = []
         for ln, conv in zip(self.ln1s, self.convs):
             h = x
-            if self.dilation_mode == 0: 
-                if self.dilation != 1:
-                    edge_index_, edge_mask_ = dropout_edge(edge_index[1], p=edge_dropout)
-                    edge_index_ = torch.cat([edge_index[0], edge_index_], dim=1)
-                else:
-                    edge_index_, edge_mask_ = dropout_edge(edge_index, p=edge_dropout)
-            else:
-                edge_index_ = edge_index
             if return_attention:
-                x, (ei, att) = conv(x, edge_index=edge_index_, edge_attr=None, return_attention_weights=return_attention)# adding edge features here
+                x, (ei, att) = conv(x, edge_index=edge_index, edge_attr=None, return_attention_weights=return_attention)# adding edge features here
                 att_weights.append(att)
             else:
                 
-                x = conv(x, edge_index=edge_index_, edge_attr=None)
+                x = conv(x, edge_index=edge_index, edge_attr=None)
             x = ln(x, batch=batch_index)
             x = self.elu(x) + h
         # for conv in self.convs:
