@@ -387,54 +387,55 @@ class SPDatasetExport(data.Dataset):
         segments = sample[2]
         features = sample[0]
     
-        if self.fully_connected:
-            neighbor_array = np.ones([self.num_seg, self.num_seg])
-        else:
-            vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
-            vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
-            vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
-            vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
-            bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
-            neighbor_array = np.zeros([self.num_seg, self.num_seg])
-            neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
-            neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
-            if self.dilation != 1:
-                #--------------- Global aggregation -------------#
-                if self.dilation_mode == 1:
-                    if self.num_seg != 625:
-                        assert False, 'Only works for num seg 625'
-                    grid = np.arange(625).reshape([25, 25])
-                    midpoint_indices = []
-                    for row in range(4):
-                        for column in range(4):
-                            midpoint_indices.append(grid[row*5+4, column*5+4])
+        
+        vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
+        vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
+        vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
+        vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
+        bneighbors, counts = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1, return_counts=True)
+        neighbor_array = np.zeros([self.num_seg, self.num_seg])
+        feature_array = np.zeros([self.num_seg, self.num_seg])
+        neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+        neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+        feature_array[bneighbors[0]-1, bneighbors[1]-1] = counts
+        feature_array[bneighbors[1]-1, bneighbors[0]-1] = counts
+        if self.dilation != 1:
+            #--------------- Global aggregation -------------#
+            if self.dilation_mode == 1:
+                if self.num_seg != 625:
+                    assert False, 'Only works for num seg 625'
+                grid = np.arange(625).reshape([25, 25])
+                midpoint_indices = []
+                for row in range(4):
+                    for column in range(4):
+                        midpoint_indices.append(grid[row*5+4, column*5+4])
 
-                    neighbor_array[midpoint_indices, :] = 1
-                    neighbor_array[:, midpoint_indices] = 1
-                #---------------- dilation connected --------------#
-                elif self.dilation_mode == 0:
-                    neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
-                    
+                neighbor_array[midpoint_indices, :] = 1
+                neighbor_array[:, midpoint_indices] = 1
+            #---------------- dilation connected --------------#
+            elif self.dilation_mode == 0:
+                neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
+                
 
-                #---------------- dilated convolution -------------#
-                # neighbor_array = (np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int) - \
-                #            np.linalg.matrix_power(neighbor_array, self.dilation-1).astype(bool).astype(int) + \
-                #            neighbor_array).astype(bool).astype(int)
+            #---------------- dilated convolution -------------#
+            # neighbor_array = (np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int) - \
+            #            np.linalg.matrix_power(neighbor_array, self.dilation-1).astype(bool).astype(int) + \
+            #            neighbor_array).astype(bool).astype(int)
 
             
             
         edge_index = np.array(np.nonzero(neighbor_array)) 
         np.save(sp_file_path_edge_index, neighbor_array)
 
-        features_centroids = features[:, :2]/self.size
-        spatial_distances_x = (features_centroids[:, 0:1] - features_centroids[:, 0:1].T)
-        spatial_distances_x = spatial_distances_x[edge_index[0], edge_index[1]]
-        spatial_distances_y = (features_centroids[:, 1:2] - features_centroids[:, 1:2].T)
-        spatial_distances_y = spatial_distances_y[edge_index[0], edge_index[1]]
-        spatial_distances = np.stack((spatial_distances_x, spatial_distances_y), axis=1)
+        # features_centroids = features[:, :2]/self.size
+        # spatial_distances_x = (features_centroids[:, 0:1] - features_centroids[:, 0:1].T)
+        # spatial_distances_x = spatial_distances_x[edge_index[0], edge_index[1]]
+        # spatial_distances_y = (features_centroids[:, 1:2] - features_centroids[:, 1:2].T)
+        # spatial_distances_y = spatial_distances_y[edge_index[0], edge_index[1]]
+        # spatial_distances = np.stack((spatial_distances_x, spatial_distances_y), axis=1)
         
-        edge_features = spatial_distances
-        np.save(sp_file_path_edge_features, edge_features)
+        # edge_features = spatial_distances
+        np.save(sp_file_path_edge_features, feature_array)
 
         
         return torch.empty(0)
