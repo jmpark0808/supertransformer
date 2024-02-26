@@ -2,7 +2,7 @@ from typing import Callable, List, Union
 
 import torch
 from torch import Tensor
-
+import torch.nn as nn
 from torch_geometric.nn import GATv2Conv, TopKPooling, graclus#, max_pool
 from torch_geometric.nn.norm import GraphNorm
 from torch_geometric.nn.resolver import activation_resolver
@@ -70,12 +70,20 @@ class GraphUNet(torch.nn.Module):
 
         channels = hidden_channels
 
+        self.convs = nn.ModuleList([GATv2Conv(in_channels=channels, out_channels=channels,
+                                                                          heads=heads, dropout=dropout, edge_dim=None,
+                                                                            concat=False) for _ in range(depth-1)])
+    
+        self.ln1s = nn.ModuleList([GraphNorm(channels) for _ in range(depth-1)])
+
+
+
         self.down_convs = torch.nn.ModuleList()
         self.pools = torch.nn.ModuleList()
         self.norms = torch.nn.ModuleList()
         self.down_convs.append(GATv2Conv(in_channels, channels, heads=heads, concat=False, dropout=dropout, edge_dim=None))
         self.norms.append(GraphNorm(channels))
-        for i in range(depth):
+        for i in range(4):
             self.pools.append(TopKPooling(channels, 1))
             self.down_convs.append(GATv2Conv(channels, channels, heads=heads, concat=False, dropout=dropout, edge_dim=None))
             self.norms.append(GraphNorm(channels))
@@ -84,7 +92,7 @@ class GraphUNet(torch.nn.Module):
 
         self.up_convs = torch.nn.ModuleList()
         self.up_norms = torch.nn.ModuleList()
-        for i in range(depth - 1):
+        for i in range(4 - 1):
             self.up_convs.append(GATv2Conv(in_channels, channels, heads=heads, concat=False, dropout=dropout, edge_dim=None))
             self.up_norms.append(GraphNorm(channels))
         self.up_convs.append(GATv2Conv(in_channels, out_channels, heads=heads, concat=False, dropout=dropout, edge_dim=None))
@@ -128,6 +136,13 @@ class GraphUNet(torch.nn.Module):
         data.x = self.norms[0](data.x, batch=batch)
         data.x = self.act(data.x)
 
+        for ln, conv in zip(self.ln1s, self.convs):
+            h = data.x
+            data.x = conv(data.x, edge_index=data.edge_index, edge_attr=None)
+            data.x = ln(data.x, batch=batch)
+            data.x = self.act(data.x) + h
+
+
         batch_size = data.x.size(0)//625
         batches_layer1 = torch.cat([(i*625)+self.batches_layer1 for i in range(batch_size)], dim=0)
         batches_layer2 = torch.cat([(i*13*13)+self.batches_layer2 for i in range(batch_size)], dim=0)
@@ -142,7 +157,7 @@ class GraphUNet(torch.nn.Module):
         perms = []
         edge_index_ = data.edge_index
 
-        for i in range(1, self.depth + 1):
+        for i in range(1, 4 + 1):
             # edge_index, edge_weight = self.augment_adj(edge_index, edge_weight,
             #                                            x.size(0))
          
@@ -161,14 +176,14 @@ class GraphUNet(torch.nn.Module):
             data.x = self.norms[i](data.x, batch=batch)
             data.x = self.act(data.x)
 
-            if i < self.depth:
+            if i < 4:
                 xs += [data.x]
                 batches += [batch]
             edge_indices += [edge_index_]
             perms += [perm]
 
-        for i in range(self.depth):
-            j = self.depth - 1 - i
+        for i in range(4):
+            j = 4 - 1 - i
 
             res = xs[j]
             edge_index = edge_indices[j]
@@ -180,8 +195,8 @@ class GraphUNet(torch.nn.Module):
             data.x = res + up if self.sum_res else torch.cat((res, up), dim=-1)
 
             data.x = self.up_convs[i](data.x, edge_index)
-            data.x = self.up_norms[i](data.x, batch=batch) if i < self.depth - 1 else data.x
-            data.x = self.act(data.x) if i < self.depth - 1 else data.x
+            data.x = self.up_norms[i](data.x, batch=batch) if i < 4 - 1 else data.x
+            data.x = self.act(data.x) if i < 4 - 1 else data.x
 
         return data.x, perms, edge_indices
 
