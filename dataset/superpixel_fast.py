@@ -457,7 +457,7 @@ class SPDataset(data.Dataset):
                 neighbor_array = np.linalg.matrix_power(neighbor_array, self.dilation).astype(bool).astype(int)
 
         if self.dataloader == 'SPFFFT' and self.sigma is not None:
-            features = horizontal_flip(features, self.coeff, 0.5)
+            features = horizontal_flip(features, self.coeff, 0.5, self.size)
 
             gaussian_noise = np.random.normal(1, self.sigma, features.shape)
             features = features*gaussian_noise
