@@ -40,7 +40,7 @@ state_dict = torch.load('/mnt/hdd/Experiments/garbage/models/state_dict/0222-165
 for key in list(state_dict['state_dict'].keys()):
     state_dict['state_dict'][key.replace('model.', '')] = state_dict['state_dict'].pop(key)
 
-pyg = SP_GUNET_PyG(36, 64, 4, 625, 4, 0).cuda()
+pyg = SP_GUNET_PyG(36, 64, 4, 625, 4, 0, 'nothing').cuda()
 pyg.load_state_dict(state_dict['state_dict'])
 pyg.eval()
 
