@@ -25,10 +25,11 @@ for batch in tqdm(dummy_test_loader):
 
 
 dataset = SPDataset(image_list, mask_list, 625, 300, 10, 'SPGFFT', True, 10, False, False, 0, 1, 0)
-loader = DataLoader(dataset, batch_size=128, shuffle=True, pin_memory=False, num_workers=4)
+loader = DataLoader(dataset, batch_size=128, shuffle=True, pin_memory=False, num_workers=12)
 
 start = time.time()
-for ind, batch in enumerate(loader):
-    print(time.time()-start)
-    start = time.time()
+for _ in range(100):
+    for ind, batch in tqdm(enumerate(loader)):
+        # print(time.time()-start)
+        start = time.time()
     
