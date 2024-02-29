@@ -12,13 +12,13 @@ class SP_GUNET_PyG(nn.Module):
     Pure Global aggregation using transformers
     Deterministic Positional Encoding 
     '''
-    def __init__(self, nfeat, nhid, nheads, num_seg, ntfm, dropout, mode):
+    def __init__(self, nfeat, nhid, nheads, num_seg, ntfm, dropout, mode, dropout_edge):
         """Dense version of GAT."""
         super(SP_GUNET_PyG, self).__init__()
         self.linear1 = nn.Linear(nfeat, nhid)
         self.pos_linear = nn.Linear(2, nhid)
         if mode == 'graclus':
-            self.gunet = GraphUNet_G(nhid, nhid, 1, depth_pool=ntfm, depth_conv=ntfm, pool_ratios=0.75, dropout=dropout, heads=nheads, sum_res=False)
+            self.gunet = GraphUNet_G(nhid, nhid, 1, depth_pool=ntfm, depth_conv=ntfm, pool_ratios=0.75, dropout=dropout, heads=nheads, sum_res=False, dropout_edge=dropout_edge)
         else:
             self.gunet = GraphUNet(nhid, nhid, 1, depth=ntfm, pool_ratios=0.75, dropout=dropout, heads=nheads, sum_res=False)
 

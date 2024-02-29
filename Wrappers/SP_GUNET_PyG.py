@@ -24,9 +24,10 @@ class SP_GUNET_PyG_Wrapper(pl.LightningModule):
         self.tfm_hp = kwargs.get('tfmhp')
         self.num_seg = kwargs.get('num_seg')
         self.mode = kwargs.get('gunet_mode')
+        self.dropout_edge = kwargs.get('dropout_edge')
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
-        self.model = SP_GUNET_PyG(input_dim, self.tfm_hp[1], self.tfm_hp[0], self.num_seg, self.tfm_hp[2], self.dropout, self.mode)
+        self.model = SP_GUNET_PyG(input_dim, self.tfm_hp[1], self.tfm_hp[0], self.num_seg, self.tfm_hp[2], self.dropout, self.mode, self.dropout_edge)
         
         # data = Data(x=torch.ones(self.num_seg, input_dim),
         #              edge_index=torch.ones(self.num_seg,self.num_seg),
@@ -102,6 +103,7 @@ class SP_GUNET_PyG_Wrapper(pl.LightningModule):
         # np.save(f'/mnt/dragon/gat_logs/features_ei_{batch_idx}', features.edge_index.detach().cpu().numpy())
         # np.save(f'/mnt/dragon/gat_logs/seq_mask_{batch_idx}', seq_mask.detach().cpu().numpy())
         # torch.save(self.model.state_dict(), f'/mnt/dragon/gat_logs/model_weight_{batch_idx}.pt')
+        
         features = features.cuda()
         mask = mask.cuda()
      

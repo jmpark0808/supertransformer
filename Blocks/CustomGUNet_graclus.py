@@ -16,7 +16,7 @@ from torch_geometric.utils.repeat import repeat
 from torch_geometric.utils import normalized_cut
 import torch_geometric.transforms as T
 from Blocks.GraphPool import max_pool
-
+from torch_geometric.utils import dropout_edge
 
 transform = T.Cartesian(cat=False)
 def normalized_cut_2d(edge_index, pos):
@@ -58,6 +58,7 @@ class GraphUNet(torch.nn.Module):
         act: Union[str, Callable] = 'relu',
         dropout: float = 0, 
         heads: int = 8,
+        dropout_edge: float = 0, 
     ):
         super().__init__()
         assert depth_pool >= 1
@@ -68,6 +69,7 @@ class GraphUNet(torch.nn.Module):
         self.pool_ratios = repeat(pool_ratios, depth_pool)
         self.act = activation_resolver(act)
         self.sum_res = sum_res
+        self.dropout_edge = dropout_edge
 
         channels = hidden_channels
 
@@ -114,14 +116,17 @@ class GraphUNet(torch.nn.Module):
         if batch is None:
             batch = edge_index.new_zeros(data.x.size(0))
 
+        edge_index_, edge_mask = dropout_edge(data.edge_index, p=self.dropout_edge, training=self.training)
         
-        data.x = self.down_convs[0](data.x, data.edge_index)
+
+        data.x = self.down_convs[0](data.x, edge_index_)
         data.x = self.norms[0](data.x, batch=batch)
         data.x = self.act(data.x)
 
         for ln, conv in zip(self.ln1s, self.convs):
             h = data.x
-            data.x = conv(data.x, edge_index=data.edge_index, edge_attr=None)
+            edge_index_, edge_mask = dropout_edge(data.edge_index, p=self.dropout_edge, training=self.training)
+            data.x = conv(data.x, edge_index=edge_index_, edge_attr=None)
             data.x = ln(data.x, batch=batch)
             data.x = self.act(data.x) + h
 
@@ -132,8 +137,10 @@ class GraphUNet(torch.nn.Module):
         
 
         for i in range(1, self.depth_pool + 1):
-            # edge_index, edge_weight = self.augment_adj(edge_index, edge_weight,
-            #                                            x.size(0))
+            # edge_weight = data.x.new_ones(data.edge_index.size(1))
+            # data.edge_index, edge_weight = self.augment_adj(data.edge_index, edge_weight,
+            #                                            data.x.size(0))
+            
          
             weight = normalized_cut_2d(data.edge_index, data.pos)
             cluster = graclus(data.edge_index, weight, data.x.size(0))
@@ -142,7 +149,8 @@ class GraphUNet(torch.nn.Module):
             # x, edge_index, edge_weight, batch, perm, _ = self.pools[i - 1](
             #     x, edge_index, edge_weight, batch)
 
-            data.x = self.down_convs[i](data.x, data.edge_index)
+            edge_index_, edge_mask = dropout_edge(data.edge_index, p=self.dropout_edge, training=self.training)
+            data.x = self.down_convs[i](data.x, edge_index_)
             data.x = self.norms[i](data.x, batch=data.batch)
             data.x = self.act(data.x)
 
