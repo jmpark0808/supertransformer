@@ -25,7 +25,7 @@ class SP_GAT_PyG(nn.Module):
         self.elu = nn.ReLU()
         self.pos_linear = nn.Linear(2, nhid)
         self.convs = nn.ModuleList([GATv2Conv(in_channels=nhid, out_channels=nhid,
-                                                                          heads=nheads, dropout=dropout, edge_dim=edge_dim,
+                                                                          heads=nheads, dropout=dropout, edge_dim=None,
                                                                             concat=False) for _ in range(ntfm)])
         
         self.ln1s = nn.ModuleList([GraphNorm(nhid) for _ in range(ntfm)])
@@ -55,7 +55,7 @@ class SP_GAT_PyG(nn.Module):
         for ln, conv in zip(self.ln1s, self.convs):
             h = x
             if return_attention:
-                x, (ei, att) = conv(x, edge_index=edge_index, edge_attr=edge_attr, return_attention_weights=return_attention)# adding edge features here
+                x, (ei, att) = conv(x, edge_index=edge_index, edge_attr=None, return_attention_weights=return_attention)# adding edge features here
                 att_weights.append(att)
             else:
                 
