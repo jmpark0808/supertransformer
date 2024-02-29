@@ -165,7 +165,8 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
 
 
         # forward pass
-        
+        edge_index, edge_mask = dropout_edge(features.edge_index, p=self.dropout_edge)
+        features.edge_index = edge_index
         pred = self.forward(features)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
@@ -279,6 +280,8 @@ class SP_GAT_PyG_Wrapper(pl.LightningModule):
 
 
         # forward pass
+        edge_index, edge_mask = dropout_edge(features.edge_index, p=self.dropout_edge)
+        features.edge_index = edge_index
         pred = self.forward(features)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
