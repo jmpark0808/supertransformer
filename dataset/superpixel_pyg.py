@@ -630,10 +630,10 @@ class SPGDataModule(pl.LightningDataModule):
                                self.res,  self.compactness, self.dataloader,False, 
                                self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation, self.dilation_mode)
         val_dataloader = DataLoader(
-                data_val, batch_size=self.batch_size, 
+                data_val, batch_size=1, 
                 num_workers=self.num_workers, pin_memory=False)
         test_dataloader = DataLoader(
-                data_test, batch_size=self.batch_size, 
+                data_test, batch_size=1, 
                 num_workers=self.num_workers, pin_memory=False)
         return [val_dataloader, test_dataloader]
 
@@ -642,5 +642,5 @@ class SPGDataModule(pl.LightningDataModule):
                                self.res,  self.compactness, self.dataloader, False,
                                  self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation, self.dilation_mode)
         return DataLoader(
-                data_test, batch_size=self.batch_size, 
+                data_test, batch_size=1, 
                 num_workers=self.num_workers, pin_memory=False)

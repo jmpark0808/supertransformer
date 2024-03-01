@@ -24,9 +24,10 @@ class SP_TFM_Wrapper(pl.LightningModule):
         self.dilation = kwargs.get('dilation')
         self.dataloader = kwargs.get('dataloader')
         self.pretrain = kwargs.get('pretrain')
+        self.dropout_edge = kwargs.get('dropout_edge')
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
-        self.supert = SP_TFM_REL(input_dim, self.dilation, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout)
+        self.supert = SP_TFM_REL(input_dim, self.dilation, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout, self.dropout_edge)
         self.iteration = 0
         self.test_iteration = 0
         self.num_thresholds = 10
@@ -65,7 +66,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         return optimizer
       
 
-    def forward(self, input, adj, distances):
+    def forward(self, input):
         """
         Forward pass through model
         :param x: Input features
@@ -73,7 +74,7 @@ class SP_TFM_Wrapper(pl.LightningModule):
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
 
-        pred = self.supert(input, adj, distances)
+        pred = self.supert(input)
 
         return pred
 
@@ -99,22 +100,20 @@ class SP_TFM_Wrapper(pl.LightningModule):
         seq_mask = batch['seq_mask']
         segments = batch['segments']
         mask = batch['mask'].cpu()
-        adj = batch['neighbor_array']
-        edge_attr = batch['edge_attr']
+
 
 
 
 
         features = features.cuda()
         seq_mask = seq_mask.cuda()
-        adj = adj.cuda()
-        edge_attr = edge_attr.cuda()
+
 
 
 
         # forward pass
         
-        pred = self.forward(features, adj, None)
+        pred = self.forward(features)
 
         loss = self.loss(pred, seq_mask)
         
@@ -159,20 +158,18 @@ class SP_TFM_Wrapper(pl.LightningModule):
         seq_mask = batch['seq_mask']
         segments = batch['segments']
         mask = batch['mask']
-        adj = batch['neighbor_array']
-        edge_attr = batch['edge_attr']
-        edge_attr = edge_attr.cuda()
+
 
 
         features = features.cuda()
         seq_mask = seq_mask.cuda()
-        adj = adj.cuda()
+
     
         mask = mask.cuda()
 
 
         # forward pass
-        pred = self.forward(features, adj, None)
+        pred = self.forward(features)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
@@ -274,20 +271,18 @@ class SP_TFM_Wrapper(pl.LightningModule):
         seq_mask = batch['seq_mask']
         segments = batch['segments']
         mask = batch['mask']
-        adj = batch['neighbor_array']
-        edge_attr = batch['edge_attr']
+
      
 
 
         features = features.cuda()
         seq_mask = seq_mask.cuda()
-        adj = adj.cuda()
-        edge_attr = edge_attr.cuda()
+
     
         mask = mask.cuda()
 
         # forward pass
-        pred = self.forward(features, adj, None)
+        pred = self.forward(features)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()

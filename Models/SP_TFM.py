@@ -32,7 +32,7 @@ class SP_TFM_REL(nn.Module):
     Pure Global aggregation using transformers
     Deterministic Positional Encoding 
     '''
-    def __init__(self, nfeat, dilation, nhid, nheads, ntfm, dropout):
+    def __init__(self, nfeat, dilation, nhid, nheads, ntfm, dropout, dropout_edge):
         """Dense version of GAT."""
         super(SP_TFM_REL, self).__init__()
         self.linear = nn.Linear(nfeat, nhid * nheads)
@@ -40,12 +40,12 @@ class SP_TFM_REL(nn.Module):
         # self.pos_linear2 = nn.Linear(64, nhid*nheads)
 
         # self.pos_encoding = PositionalEncodingSuperPixel(nhid*nheads)
-        self.transformer_enc = PosTransformer(nhid * nheads, dilation, ntfm, nheads, nhid, nhid*nheads, dropout)
+        self.transformer_enc = PosTransformer(nhid * nheads, dilation, ntfm, nheads, nhid, nhid*nheads, dropout, dropout_edge)
         # self.encoder = nn.TransformerEncoderLayer(d_model=nhid*nheads, nhead=nheads, dropout=dropout, dim_feedforward=nhid*nheads, batch_first=True)
         # self.transformer_enc = nn.TransformerEncoder(self.encoder, num_layers=ntfm)
 
         self.out = nn.Linear(nhid * nheads, 1)
-    def forward(self, x, adj, distances):
+    def forward(self, x):
         pos = x[:, :, :2]
         x = x[:, :, 2:]
         x = self.linear(x)
@@ -54,7 +54,7 @@ class SP_TFM_REL(nn.Module):
         # pos = self.pos_linear2(pos)
         # pos = self.pos_encoding(pos)
         x += pos
-        x = self.transformer_enc(x, None, adj, distances)
+        x = self.transformer_enc(x)
 
         x = self.out(x)
         return x
