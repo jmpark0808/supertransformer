@@ -91,7 +91,7 @@ class PosAttention(nn.Module):
     def __init__(self, dim, dilation, heads = 8, dim_head = 64, dropout = 0., dropout_edge=0, edge_dim=1):
         super().__init__()
         inner_dim = dim_head *  heads
-        project_out = not (heads == 1 and dim_head == dim)
+        
 
         self.heads = heads
         self.dim = dim_head
@@ -102,15 +102,15 @@ class PosAttention(nn.Module):
         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
         self.distances_linear = nn.Linear(2, dim_head)
 
-        self.lin_edge = nn.Linear(edge_dim, inner_dim)
+        # self.lin_edge = nn.Linear(edge_dim, inner_dim)
         self.dropout_edge = nn.Dropout(dropout_edge)
         # self.distances_1 = nn.Linear(dim_head*heads, 1)
 
 
-        self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, dim),
-            nn.Dropout(dropout)
-        ) if project_out else nn.Identity()
+        # self.to_out = nn.Sequential(
+        #     nn.Linear(dim, dim),
+        #     nn.Dropout(dropout)
+        # ) 
 
     def forward(self, x):
         qkv = self.to_qkv(x).chunk(3, dim = -1)
@@ -124,9 +124,11 @@ class PosAttention(nn.Module):
 
         
         out = torch.matmul(attn, v)
-        out = rearrange(out, 'b h n d -> b n (h d)')
+        # out = rearrange(out, 'b h n d -> b n (h d)')
+        out = torch.mean(out, dim=1)
         
-        return self.to_out(out)
+        # return self.to_out(out)
+        return out
     
     def skew(self, QEr):
         # QEr.shape = (batch_size, num_heads, seq_len, seq_len)
