@@ -118,8 +118,9 @@ class PosAttention(nn.Module):
 
         
         dots = torch.matmul(q, k.transpose(-1, -2))
-        dots = self.dropout_edge(dots)
+        
         attn = self.attend((dots)*self.scale)
+        attn = self.dropout_edge(attn)
         
 
         
