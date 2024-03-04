@@ -11,6 +11,7 @@ import torch.utils.checkpoint as checkpoint
 import torch.nn.functional as F
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import numpy as np
+import math
 
 class DoubleConv(nn.Module):
     """(convolution => [BN] => ReLU) * 2"""
@@ -492,7 +493,7 @@ class BasicLayer(nn.Module):
 
         if self.downsample is not None:
             x = self.downsample(x)
-
+        
         return x
 
     def extra_repr(self) -> str:
@@ -527,48 +528,37 @@ class BasicLayerUpsample(nn.Module):
         use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False.
     """
 
-    def __init__(self, dim, input_resolution, depth, num_heads, window_size,
-                 mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., norm_layer=nn.LayerNorm, upsample=None, use_checkpoint=False):
+    def __init__(self, dim, input_resolution, num_heads, 
+                 mlp_ratio=4., qkv_bias=True, drop=0.,  use_checkpoint=False):
 
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
-        self.depth = depth
         self.use_checkpoint = use_checkpoint
         # build blocks
-        self.blocks = nn.ModuleList([
-            SwinTransformerBlock(dim=dim//2, input_resolution=input_resolution,
-                                 num_heads=num_heads, window_size=window_size,
-                                 shift_size=0 if (i % 2 == 0) else window_size // 2,
-                                 mlp_ratio=mlp_ratio,
-                                 qkv_bias=qkv_bias, qk_scale=qk_scale,
-                                 drop=drop, attn_drop=attn_drop,
-                                 drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                                 norm_layer=norm_layer)
-            for i in range(depth)])
-
-        # patch merging layer
-        if upsample is not None:
-            self.upsample = upsample(input_resolution, dim=dim, norm_layer=norm_layer)
-        else:
-            self.upsample = None
-
-    def forward(self, x1, x2):
-        if self.upsample is not None:
-            x1 = self.upsample(x1)
+        self.blocks = nn.TransformerDecoderLayer(dim,nhead=num_heads, dim_feedforward=int(mlp_ratio*dim), 
+                                                 dropout=drop, batch_first=True, norm_first=True, bias=qkv_bias) 
+        self.avg_pool_x8 = nn.AvgPool2d(8, 8)
+        self.avg_pool_x4 = nn.AvgPool2d(4, 4)
+        self.avg_pool_x2 = nn.AvgPool2d(2, 2)
+        self.linear = nn.Linear(16+32+64+128, dim)
         
-        x1 = x1 + x2
 
+       
+    def forward(self, x_q, x_kv):
+        
+        feat1 = self.avg_pool_x8(x_kv[0].reshape(x_kv[0].size(0), 32, 32, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+        feat2 = self.avg_pool_x4(x_kv[1].reshape(x_kv[1].size(0), 16, 16, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+        feat3 = self.avg_pool_x2(x_kv[2].reshape(x_kv[2].size(0), 8, 8, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+        feat4 = x_kv[3].reshape(x_kv[3].size(0), 4, 4, -1)
 
-        for blk in self.blocks:
-            if self.use_checkpoint:
-                x1 = checkpoint.checkpoint(blk, x1)
-            else:
-                x1 = blk(x1)
+        features = torch.cat((feat1, feat2, feat3, feat4), dim=3)
+        features = features.reshape(features.size(0), -1, features.size(3))
+        features = self.linear(features)
 
+        out = self.blocks(x_q, features)
 
-        return x1
+        return out
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, depth={self.depth}"
@@ -705,9 +695,10 @@ class SwinTransformer(nn.Module):
         # build layers
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
-            layer = BasicLayer(dim=int(embed_dim * 2 ** i_layer),
-                               input_resolution=(patches_resolution[0] // (2 ** i_layer),
-                                                 patches_resolution[1] // (2 ** i_layer)),
+            layer = BasicLayer(dim=int(embed_dim * 2 ** (i_layer-1)) if i_layer!=0 else embed_dim, 
+                               input_resolution=(patches_resolution[0] // (2 ** (i_layer-1)),
+                                                 patches_resolution[1] // (2 ** (i_layer-1))) if i_layer!=0 else (patches_resolution[0],
+                                                 patches_resolution[1]),
                                depth=depths[i_layer],
                                num_heads=num_heads[i_layer],
                                window_size=window_size,
@@ -716,40 +707,25 @@ class SwinTransformer(nn.Module):
                                drop=drop_rate, attn_drop=attn_drop_rate,
                                drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
                                norm_layer=norm_layer,
-                               downsample=PatchMerging if (i_layer < self.num_layers) else None,
+                               downsample=PatchMerging if (i_layer < self.num_layers) and i_layer!=0 else None,
                                use_checkpoint=use_checkpoint)
             self.layers.append(layer)
+            
 
         self.upsample_layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
-            layer = BasicLayerUpsample(dim=int(embed_dim * 2 ** (self.num_layers-i_layer)),
+            layer = BasicLayerUpsample(dim=int(embed_dim * 2 ** (self.num_layers-i_layer-1)),
                                input_resolution=(patches_resolution[0] // (2 ** (self.num_layers-i_layer-1)),
                                                  patches_resolution[1] // (2 ** (self.num_layers-i_layer-1))),
-                               depth=depths[self.num_layers-i_layer-1],
                                num_heads=num_heads[self.num_layers-i_layer-1],
-                               window_size=window_size,
                                mlp_ratio=self.mlp_ratio,
-                               qkv_bias=qkv_bias, qk_scale=qk_scale,
-                               drop=drop_rate, attn_drop=attn_drop_rate,
-                               drop_path=0,
-                               norm_layer=norm_layer,
-                               upsample=PatchUnMerging,
+                               qkv_bias=qkv_bias, 
+                               drop=drop_rate, 
                                use_checkpoint=use_checkpoint)
             self.upsample_layers.append(layer)
- 
-        # Decoder added for semantic segmentation
-        # self.up1 = Up(self.num_features*5//2 , self.num_features//2 , bilinear=True)
-        # self.up2 = Up(self.num_features*3//4 , self.num_features//4 , bilinear=True)
-        # self.up3 = Up(self.num_features*3//8 , self.num_features//8 , bilinear=True)
-        # self.up4 = Up(self.num_features//8 , self.num_features//16, bilinear=True)
-        # self.up5 = Up(self.num_features//16, self.num_features//32, bilinear=True)
-        
-        
-        
-        # self.out_SIC = nn.Conv2d(self.num_features//32, options['n_classes']['SIC'], kernel_size=1)
-        # self.out_SOD = nn.Conv2d(self.num_features//32, options['n_classes']['SOD'], kernel_size=1)
-        # self.out_FLOE = nn.Conv2d(self.num_features//32, options['n_classes']['FLOE'], kernel_size=1)
 
+        self.upsample = nn.Upsample(size=32)
+        
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -774,42 +750,33 @@ class SwinTransformer(nn.Module):
         x = x + pos
         x = self.pos_drop(x)
 
-        ft = [x]
+        ft = []
         for layer in self.layers:
             x = layer(x)
             ft.append(x)
+           
         
+        up_ft = []
         for idx, layer in enumerate(self.upsample_layers):
-            x = layer(x, ft[len(ft)-idx-2])
+            x = layer(ft[len(ft)-idx-1], ft)
+            ft[len(ft)-idx-1] = x
+            res = int(math.sqrt(x.size(1)))
+            x = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
+            x = self.upsample(x).permute(0, 2, 3, 1)
+            x = x.reshape(x.size(0), 1024, -1)
+            up_ft.append(x)
 
-        return x
+        up_ft = torch.cat(up_ft, dim=2)
+        return up_ft
 
 
 
     def forward(self, x, pos):
         x = self.forward_features(x, pos)
-        # for i in range(len(x)):
-        #     x[i] = torch.transpose(x[i], 1, 2)
-        #     x[i] = x[i].view(x[i].shape[0], -1, int(np.sqrt(x[i].shape[2])), int(np.sqrt(x[i].shape[2])))
+
 
         return x
-        # Decoder added for semantic segmentation
-        # out = self.up1(torch.cat([x[-1], x[-2]], dim=1), x[-3])
-        # out = self.up2(out, x[-4])
-
-        # out = self.up3(out, x[-5])
-
-        # out = self.up4.up(out)
-        # out = self.up4.conv(out)
-
-        # out = self.up5.up(out)
-        # out = self.up5.conv(out)
-        
-        
-
-        # return {'SIC': self.out_SIC(out),
-        #         'SOD': self.out_SOD(out),
-        #         'FLOE': self.out_FLOE(out)}
+ 
 
 
     def flops(self):
@@ -828,8 +795,8 @@ if __name__ == '__main__':
 
     options = {'swin_hp': {'patch_size': 1,  # (int | tuple(int)): Patch size. Default: 4
         'embed_dim': 16, #(int): Patch embedding dimension. Default: 96
-        'depths': [2, 2, 6], #(tuple(int)): Depth of each Swin Transformer layer.
-        'num_heads': [8, 8, 8], #(tuple(int)): Number of attention heads in different layers.
+        'depths': [2, 2, 6, 2], #(tuple(int)): Depth of each Swin Transformer layer.
+        'num_heads': [4, 8, 8, 16], #(tuple(int)): Number of attention heads in different layers.
         'window_size': 4, #(int): Window size. Default: 8
         'mlp_ratio': 2.,#(float): Ratio of mlp hidden dim to embedding dim. Default: 4
         'qkv_bias': True,#(bool): If True, add a learnable bias to query, key, value. Default: True
@@ -848,9 +815,10 @@ if __name__ == '__main__':
 
 
     model = SwinTransformer(options = options)
-    
+    pos = torch.rand((1, 1024, 16))
     input = torch.rand((1, 36, 32, 32))
 
-    output = model(input)
+    output = model(input, pos)
 
-    print(output.size())
+    for i in output:
+        print(i.size())
