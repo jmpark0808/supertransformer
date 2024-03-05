@@ -38,6 +38,7 @@ from Wrappers.SP_GATv3 import SP_GATv3_Wrapper
 from Wrappers.SP_GATv4 import SP_GATv4_Wrapper
 from Wrappers.SP_CTFM import SP_CTFM_Wrapper
 from Wrappers.SP_SWIN import SP_SWIN_Wrapper
+from Wrappers.SP_SWINU import SP_SWINU_Wrapper
 
 
 # Import dataset modules
@@ -92,7 +93,8 @@ MODEL_DIRECTORY = {
     'SP_GATv2': SP_GATv2_Wrapper,
     'SP_GATv3': SP_GATv3_Wrapper,
     'SP_GATv4': SP_GATv4_Wrapper,
-    'SP_SWIN': SP_SWIN_Wrapper
+    'SP_SWIN': SP_SWIN_Wrapper,
+    'SP_SWINU': SP_SWINU_Wrapper
 }
 DATALOADER_DIRECTORY = {
     'SP': SPDataModule,
