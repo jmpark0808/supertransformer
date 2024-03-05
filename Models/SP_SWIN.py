@@ -32,7 +32,7 @@ class SP_SWIN(nn.Module):
         }, 
         'in_channels': nfeat,
         'patch_size': 32}
-        self.model = SwinTransformer(options = options)
+        self.model = SwinUTransformer(options = options)
         self.out = nn.Linear(128+64+32+16, 1)
     def forward(self, x):
         pos = x[:, :, :2]
