@@ -537,7 +537,7 @@ class BasicLayerUpsample(nn.Module):
         self.use_checkpoint = use_checkpoint
         # build blocks
         self.blocks = nn.TransformerDecoderLayer(dim,nhead=num_heads, dim_feedforward=int(mlp_ratio*dim), 
-                                                 dropout=drop, batch_first=True, norm_first=True, bias=qkv_bias) 
+                                                 dropout=drop, batch_first=True, norm_first=True) 
         self.avg_pool_x8 = nn.AvgPool2d(8, 8)
         self.avg_pool_x4 = nn.AvgPool2d(4, 4)
         self.avg_pool_x2 = nn.AvgPool2d(2, 2)
