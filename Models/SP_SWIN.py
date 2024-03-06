@@ -61,7 +61,7 @@ class SP_SWIN(nn.Module):
         'embed_dim': nhid, #(int): Patch embedding dimension. Default: 96
         'depths': [ntfm, ntfm, ntfm, ntfm], #(tuple(int)): Depth of each Swin Transformer layer.
         'num_heads': [nheads, nheads, nheads, nheads], #(tuple(int)): Number of attention heads in different layers.
-        'window_size': 16, #(int): Window size. Default: 8
+        'window_size': 8, #(int): Window size. Default: 8
         'mlp_ratio': 2.,#(float): Ratio of mlp hidden dim to embedding dim. Default: 4
         'qkv_bias': True,#(bool): If True, add a learnable bias to query, key, value. Default: True
         'qk_scale': None,#(float): Override default qk scale of head_dim ** -0.5 if set. Default: None
