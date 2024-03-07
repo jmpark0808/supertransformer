@@ -12,7 +12,7 @@ inp = torch.randn([1, 1024, 38]).cuda()
 flops = FlopCountAnalysis(model, inp)
 print(flop_count_table(flops))
 
-model = SP_SWIN(36, 16, 8, 2, 0, 0).cuda()
+model = SP_SWIN(36, 32, 8, 2, 0, 0).cuda()
 flops = FlopCountAnalysis(model, inp)
 print(flop_count_table(flops))
 
