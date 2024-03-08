@@ -9,7 +9,25 @@ print(b.size())
 fold = torch.nn.Fold(32, 4, 8)
 c = fold(b)
 print(torch.equal(a, c))
-assert(0)
+# assert(0)
+
+def scattered_partition(x, window_size, unfold):
+    """
+    Args:
+        x: (B, H, W, C)
+        window_size (int): window size
+
+    Returns:
+        windows: (num_windows*B, window_size, window_size, C)
+    """
+    
+    B, H, W, C = x.shape
+    x = x.permute(0, 3, 1, 2) # B C H W
+    x = unfold(x) # B C*4*4 64
+    x = x.reshape(B, C, window_size, window_size, -1) # B, C, 4, 4, 64
+    windows = x.permute(0, 4, 2, 3, 1).contiguous().view(-1, window_size, window_size, C)
+    return windows
+
 
 def window_partition(x, window_size):
     """
@@ -25,9 +43,9 @@ def window_partition(x, window_size):
     windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
     return windows
 
-H, W = 32, 32
-window_size = 4
-shift_size = 2
+H, W = 4, 4
+window_size = 2
+shift_size = 1
 img_mask = torch.zeros((1, H, W, 1))  # 1 H W 1
 h_slices = (slice(0, -window_size),
             slice(-window_size, -shift_size),
@@ -40,14 +58,17 @@ for h in h_slices:
     for w in w_slices:
         img_mask[:, h, w, :] = cnt
         cnt += 1
-
-mask_windows = window_partition(img_mask, window_size)  # nW, window_size, window_size, 1
+print(img_mask)
+unfold = torch.nn.Unfold(2, 2)
+mask_windows =scattered_partition(img_mask, window_size, unfold)  # nW, window_size, window_size, 1
+# mask_windows = window_partition(img_mask, window_size)
 mask_windows = mask_windows.view(-1, window_size * window_size)
-print(mask_windows.size())
+print(mask_windows)
 attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
+print(attn_mask.size())
 attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
+print(attn_mask)
 
-print(attn_mask[63, :, :])
 
 
 

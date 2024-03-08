@@ -472,10 +472,10 @@ class SPDataset(data.Dataset):
 
         
         
-        # if self.dataloader == 'SPFFFT' and self.sigma is not None:
-        #     features = horizontal_flip(features, self.coeff, 0.5, self.size)
-        #     gaussian_noise = np.random.normal(1, self.sigma, features.shape)
-        #     features = features*gaussian_noise
+        if self.dataloader == 'SPFFFT' and self.sigma is not None:
+            features = horizontal_flip(features, self.coeff, 0.5, self.size)
+            gaussian_noise = np.random.normal(1, self.sigma, features.shape)
+            features = features*gaussian_noise
 
         
 

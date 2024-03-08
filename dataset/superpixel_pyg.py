@@ -508,7 +508,11 @@ class SPDataset(data.Dataset):
 
     def __getitem__(self, item):
         features = self.features[item]
-        edge_index = torch.tensor(self.edge_index[item])
+        if self.fully_connected:
+            adj = torch.ones(self.num_seg, self.num_seg)
+            edge_index = adj.nonzero().t().contiguous()
+        else:
+            edge_index = torch.tensor(self.edge_index[item])
         seq_mask = self.seq_mask[item]
         segments = self.segments[item]
         mask = self.mask[item]

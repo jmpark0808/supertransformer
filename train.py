@@ -164,6 +164,8 @@ if __name__ == "__main__":
                         , default=False, action="store_true")
     parser.add_argument('--dilation_mode', help='Dilation mode, 0 for fully connected, 1 for spotted global', default=0, type=int)
     parser.add_argument('--gunet_mode', help='GUnet mode, graclus or predefined pooling', default='graclus', type=str)
+    parser.add_argument('--fully_connected', help='Use fully connected neighbourhood'
+                        , default=False, action="store_true")
     
 
 

@@ -204,13 +204,13 @@ class WindowAttention(nn.Module):
         # relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
         attn = attn #+ relative_position_bias.unsqueeze(0)
 
-        if mask is not None:
-            nW = mask.shape[0]
-            attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
-            attn = attn.view(-1, self.num_heads, N, N)
-            attn = self.softmax(attn)
-        else:
-            attn = self.softmax(attn)
+        # if mask is not None:
+        #     nW = mask.shape[0]
+        #     attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
+        #     attn = attn.view(-1, self.num_heads, N, N)
+        #     attn = self.softmax(attn)
+        # else:
+        attn = self.softmax(attn)
 
         attn = self.attn_drop(attn)
 
