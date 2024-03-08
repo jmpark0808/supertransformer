@@ -67,7 +67,7 @@ class SP_SWIN(nn.Module):
         'qk_scale': None,#(float): Override default qk scale of head_dim ** -0.5 if set. Default: None
         'drop_rate': dropout,#(float): Dropout rate. Default: 0
         'attn_drop_rate': dropout_edge,#(float): Attention dropout rate. Default: 0
-        'drop_path_rate': 0.1,#(float): Stochastic depth rate. Default: 0.1
+        'drop_path_rate': 0.,#(float): Stochastic depth rate. Default: 0.1
         'norm_layer': nn.LayerNorm,#(nn.Module): Normalization layer. Default: nn.LayerNorm.
         'ape': False,#(bool): If True, add absolute position embedding to the patch embedding. Default: False
         'patch_norm': True,#(bool): If True, add normalization after patch embedding. Default: True
