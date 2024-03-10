@@ -477,8 +477,6 @@ class SPDataset(data.Dataset):
             gaussian_noise = np.random.normal(1, self.sigma, features.shape)
             features = features*gaussian_noise
 
-        
-
 
     
         return {'features': torch.tensor(features).float(), 'seq_mask': torch.tensor(seq_mask),
