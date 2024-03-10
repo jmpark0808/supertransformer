@@ -23,7 +23,7 @@ if __name__ == "__main__":
     generator = torch.Generator().manual_seed(seed)
     train_dir = dict_args['train_dir']
     test_dir = dict_args['test_dir']
-    num_seg = 400
+    num_seg = 1024
     coeff = 10
     compactness = 10
     batch_size = dict_args['batch_size']
@@ -32,11 +32,11 @@ if __name__ == "__main__":
     test_export_dir = dict_args['test_export_dir']
 
     val_test_transform = transforms.Compose(
-                            [transforms.Resize([256, 256]),
+                            [transforms.Resize([320, 320]),
                             transforms.ToTensor()
                             ])
 
-    train_dataset = ImageNetDatasetTrainExport(train_dir, num_seg, coeff, compactness, val_test_transform, 'train', train_export_dir)
+    train_dataset = ImageNetDatasetTrainExport(train_dir, num_seg, coeff, compactness, val_test_transform, 'train', train_export_dir, False)
     class_to_idx = train_dataset.class_to_idx
     train_size = int(0.8*len(train_dataset))
     val_size = len(train_dataset) - train_size
@@ -44,7 +44,7 @@ if __name__ == "__main__":
     val_dataset.dataset.transform = val_test_transform
     val_dataset.mode = 'val'
 
-    test_dataset = ImageNetDatasetTestExport(test_dir, val_test_transform, num_seg, coeff, class_to_idx, compactness, test_export_dir)
+    test_dataset = ImageNetDatasetTestExport(test_dir, val_test_transform, num_seg, coeff, class_to_idx, compactness, test_export_dir, False)
 
     train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                                                             num_workers =num_workers, drop_last=False)
