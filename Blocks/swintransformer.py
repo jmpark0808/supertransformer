@@ -13,56 +13,6 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import numpy as np
 import math
 
-class DoubleConv(nn.Module):
-    """(convolution => [BN] => ReLU) * 2"""
-
-    def __init__(self, in_channels, out_channels, mid_channels=None):
-        super().__init__()
-        if not mid_channels:
-            mid_channels = out_channels
-        self.double_conv = nn.Sequential(
-            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(mid_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
-        )
-
-    def forward(self, x):
-        return self.double_conv(x)
-
-class Up(nn.Module):
-    """Upscaling then double conv"""
-
-    def __init__(self, in_channels, out_channels, bilinear=True):
-        super().__init__()
-
-        # if bilinear, use the normal convolutions to reduce the number of channels
-        if bilinear:
-            self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-            self.conv = DoubleConv(in_channels, out_channels, in_channels // 2)
-        else:
-            self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
-            self.conv = DoubleConv(in_channels, out_channels)
-
-    def forward(self, x1, x2):
-
-        x1 = self.up(x1)
-
-        # input is CHW
-        diffY = x2.size()[2] - x1.size()[2]
-        diffX = x2.size()[3] - x1.size()[3]
-
-        x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2,
-                        diffY // 2, diffY - diffY // 2])
-        # if you have padding issues, see
-        # https://github.com/HaiyongJiang/U-Net-Pytorch-Unstructured-Buggy/commit/0e854509c2cea854e247a9c615f175f76fbb2e3a
-        # https://github.com/xiaopeng-liao/Pytorch-UNet/commit/8ebac70e633bac59fc22bb5195e513d5832fb3bd
-        x = torch.cat([x2, x1], dim=1)
-        
-        return self.conv(x)
-
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
         super().__init__()
@@ -253,6 +203,86 @@ class WindowAttention(nn.Module):
         flops += N * self.dim * self.dim
         return flops
     
+class GATv2Attention(nn.Module):
+    r""" Window based multi-head self attention (W-MSA) module with relative position bias.
+    It supports both of shifted and non-shifted window.
+
+    Args:
+        dim (int): Number of input channels.
+        window_size (tuple[int]): The height and width of the window.
+        num_heads (int): Number of attention heads.
+        qkv_bias (bool, optional):  If True, add a learnable bias to query, key, value. Default: True
+        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set
+        attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
+        proj_drop (float, optional): Dropout ratio of output. Default: 0.0
+    """
+
+    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+
+        super().__init__()
+        self.dim = dim
+        self.window_size = window_size  # Wh, Ww
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+        self.scale = qk_scale or head_dim ** -0.5
+
+        # define a parameter table of relative position bias
+        # self.relative_position_bias_table = nn.Parameter(
+        #     torch.zeros((2 * window_size[0] - 1) * (2 * window_size[1] - 1), num_heads))  # 2*Wh-1 * 2*Ww-1, nH
+
+        # get pair-wise relative position index for each token inside the window
+ 
+        self.qkv = nn.Linear(dim, num_heads*dim * 2, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+        # self.proj = nn.Linear(dim, dim)
+        # self.proj_drop = nn.Dropout(proj_drop)
+        self.att = nn.Parameter((torch.empty(1, num_heads, 1, 1, dim)))
+        nn.init.xavier_uniform_(self.att, gain=nn.init.calculate_gain('relu'))
+        self.bias = nn.Parameter(torch.zeros(1, 1, dim))
+        # trunc_normal_(self.relative_position_bias_table, std=.02)
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x, mask=None):
+        """
+        Args:
+            x: input features with shape of (num_windows*B, N, C)
+            mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
+        """
+        B_, N, C = x.shape
+        qkv = self.qkv(x).reshape(B_, N, 2, self.num_heads, C).permute(2, 0, 3, 1, 4)
+        q, k = qkv[0], qkv[1]  # make torchscript happy (cannot use tensor as tuple) # B_, H, N, C
+
+        q_k = q.unsqueeze(3) + k.unsqueeze(2) # B_, H, N, N, C
+        q_k= F.leaky_relu(q_k, 0.2)
+        alpha = (q_k*self.att).sum(dim=-1) # B_, H, N, N
+
+        
+        attn = self.softmax(alpha)
+
+        attn = self.attn_drop(attn)
+
+        x = (attn @ k).transpose(1, 2).reshape(B_, N, self.num_heads, C)
+        x = torch.mean(x, dim=2)
+        # x = self.proj(x)
+        # x = self.proj_drop(x)
+        return x + self.bias
+
+    def extra_repr(self) -> str:
+        return f'dim={self.dim}, window_size={self.window_size}, num_heads={self.num_heads}'
+
+    def flops(self, N):
+        # calculate flops for 1 window with token length of N
+        flops = 0
+        # qkv = self.qkv(x)
+        flops += N * self.dim * 3 * self.dim
+        # attn = (q @ k.transpose(-2, -1))
+        flops += self.num_heads * N * (self.dim // self.num_heads) * N
+        #  x = (attn @ v)
+        flops += self.num_heads * N * N * (self.dim // self.num_heads)
+        # x = self.proj(x)
+        flops += N * self.dim * self.dim
+        return flops
+    
 class KernelAttention(nn.Module):
     r""" Window based multi-head self attention (W-MSA) module with relative position bias.
     It supports both of shifted and non-shifted window.
@@ -382,7 +412,7 @@ class ScatteredTransformerBlock(nn.Module):
         assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
 
         self.norm1 = norm_layer(dim)
-        self.attn = WindowAttention(
+        self.attn = GATv2Attention(
             dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
 
@@ -604,7 +634,7 @@ class SwinTransformerBlock(nn.Module):
         assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
 
         self.norm1 = norm_layer(dim)
-        self.attn = WindowAttention(
+        self.attn = GATv2Attention(
             dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
 
@@ -824,31 +854,31 @@ class BasicLayer(nn.Module):
 
         # build blocks
         self.blocks = nn.ModuleList([])
-        # for i in range(depth):
-            # self.blocks.append(SwinTransformerBlock(dim=dim, input_resolution=input_resolution,
-            #                      num_heads=num_heads, window_size=window_size,
-            #                      shift_size=0 if (i % 2 == 0) else window_size // 2,
-            #                      mlp_ratio=mlp_ratio,
-            #                      qkv_bias=qkv_bias, qk_scale=qk_scale,
-            #                      drop=drop, attn_drop=attn_drop,
-            #                      drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-            #                      norm_layer=norm_layer))
-            # self.blocks.append(ScatteredTransformerBlock(dim=dim, input_resolution=input_resolution,
-            #                      num_heads=num_heads, window_size=window_size,
-            #                      shift_size=0 if (i % 2 == 0) else window_size // 2,
-            #                      mlp_ratio=mlp_ratio,
-            #                      qkv_bias=qkv_bias, qk_scale=qk_scale,
-            #                      drop=drop, attn_drop=attn_drop,
-            #                      drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-            #                      norm_layer=norm_layer))
-        self.blocks.append(KernelTransformerBlock(dim=dim, input_resolution=input_resolution,
-                                num_heads=num_heads, window_size=5,
-                                shift_size=depth,
-                                mlp_ratio=mlp_ratio,
-                                qkv_bias=qkv_bias, qk_scale=qk_scale,
-                                drop=drop, attn_drop=attn_drop,
-                                drop_path=0,
-                                norm_layer=norm_layer))
+        for i in range(depth):
+            self.blocks.append(SwinTransformerBlock(dim=dim, input_resolution=input_resolution,
+                                 num_heads=num_heads, window_size=window_size,
+                                 shift_size=0 if (i % 2 == 0) else window_size // 2,
+                                 mlp_ratio=mlp_ratio,
+                                 qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                 drop=drop, attn_drop=attn_drop,
+                                 drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                                 norm_layer=norm_layer))
+            self.blocks.append(ScatteredTransformerBlock(dim=dim, input_resolution=input_resolution,
+                                 num_heads=num_heads, window_size=window_size,
+                                 shift_size=0 if (i % 2 == 0) else window_size // 2,
+                                 mlp_ratio=mlp_ratio,
+                                 qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                 drop=drop, attn_drop=attn_drop,
+                                 drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                                 norm_layer=norm_layer))
+        # self.blocks.append(KernelTransformerBlock(dim=dim, input_resolution=input_resolution,
+        #                         num_heads=num_heads, window_size=5,
+        #                         shift_size=depth,
+        #                         mlp_ratio=mlp_ratio,
+        #                         qkv_bias=qkv_bias, qk_scale=qk_scale,
+        #                         drop=drop, attn_drop=attn_drop,
+        #                         drop_path=0,
+        #                         norm_layer=norm_layer))
         
 
         # patch merging layer
