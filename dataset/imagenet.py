@@ -26,111 +26,39 @@ from dataset.fft_transform import *
 import pathlib
 import scipy
 import pickle
-class ImageNetDatasetTest(data.Dataset):
-    def __init__(self, root_dir, transforms, num_seg, coeff, class_to_idx, compactness, dilation):
+class ImageNetDataset(data.Dataset):
+    def __init__(self, root_dir, augmentation, coeff, size):
         self.root_dir = root_dir
-        self.image_list = sorted(os.listdir('{}/Data/CLS-LOC/val'.format(root_dir)))
-        self.target_list = sorted(os.listdir('{}/Annotations/CLS-LOC/val'.format(root_dir)))
-        self.transform = transforms
-        self.class_to_idx = class_to_idx
-        self.num_seg = num_seg
-        self.compactness = compactness
+        self.image_list = []
+        self.target_list = []
         self.coeff = coeff
-        self.dilation = dilation
-        self.adj_list = {}
-
-        
+        self.size = size
+        self.augmentation = augmentation
+        for file in os.listdir(root_dir):
+            if 'target' in file:
+                continue
+            else:
+               self.image_list.append(os.path.join(root_dir, file))
+               self.target_list.append(os.path.join(root_dir, file.split('.')[0]+'_target.npy'))       
 
     def __len__(self):
         return len(self.image_list)
 
     def __getitem__(self, item):
-        img_name = '{}/Data/CLS-LOC/val/{}'.format(self.root_dir, self.image_list[item])
-        target_name = '{}/Annotations/CLS-LOC/val/{}'.format(self.root_dir, self.target_list[item])
+        
+        features_np = np.load(self.image_list[item])
 
-        sp_file_name = self.image_list[item].split('.')[0]+'.npy'
-        sp_file_name_edge = self.image_list[item].split('.')[0]+'edge.pickle'
-        sp_file_folder = pathlib.Path(os.path.join(self.root_dir,'Data/CLS-LOC/sp_test'))
-        if not os.path.exists(sp_file_folder):
-            os.makedirs(sp_file_folder, exist_ok=True)
-        sp_file_path = os.path.join(sp_file_folder, sp_file_name)
-        sp_file_path_edge_index = os.path.join(sp_file_folder, sp_file_name_edge)
+        if self.augmentation:
+            features_np = horizontal_flip(features_np, self.coeff, 0.5, self.size)
 
-        target = ET.parse(target_name)
-        root = target.getroot()
-        target = root[5][0].text
-        target = self.class_to_idx[target]
+        features = torch.tensor(features_np).float()
 
-        # if os.path.exists(sp_file_path):
-        features = torch.tensor(np.load(sp_file_path)).float()
+        target = torch.tensor(np.load(self.target_list[item]))
 
-        target = torch.tensor(target)
-
-        # adj = torch.ones(self.num_seg, self.num_seg)
-        # file = open(sp_file_path_edge_index,'rb') 
-        # S = pickle.load(file)
-
-        # adj = S.toarray()
-        # if self.dilation != 1:
-        #     adj = np.linalg.matrix_power(adj, self.dilation).astype(bool).astype(int)
-        # adj = torch.tensor(adj)
-        return features, target #, adj
+        return features, target
        
 
 
-
-class ImageNetDatasetTrain(torchvision.datasets.ImageFolder):
-    def __init__(self, root, num_seg, coeff, compactness, transform, mode, dilation) -> None:
-        super().__init__(root, transform=transform)
-        self.num_seg = num_seg
-        self.compactness = compactness
-        self.coeff = coeff
-        self.mode = mode
-        self.dilation = dilation
-        
-
-   
-
-    def __getitem__(self, index: int):
-        """
-        Args:
-            index (int): Index
-
-        Returns:
-            tuple: (image, target) where target is index of the target class.
-        """
-
-        img, target = self.imgs[index], self.targets[index]
-
-        sp_file_name = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'.npy'
-        sp_file_name_edge = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'edge.pickle'
-        sp_file_folder = os.path.join('/',*pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[:-3], 'sp_train')
-        if not os.path.exists(sp_file_folder):
-            os.makedirs(sp_file_folder, exist_ok=True)
-        sp_file_path = os.path.join(sp_file_folder, sp_file_name)
-        sp_file_path_edge_index = os.path.join(sp_file_folder, sp_file_name_edge)
-
-
-        # if os.path.exists(sp_file_path):
-        if self.mode == 'train':
-            features_np = np.load(sp_file_path)
-            # gaussian_noise = np.random.normal(1, 0.05, features_np.shape)
-            features_np = horizontal_flip(features_np, self.coeff, 0.5)
-            # features_np = features_np*gaussian_noise
-            
-            # features_np = rotate(features_np, self.coeff, 30, 0.5)
-            features = torch.tensor(features_np).float()
-
-        else:
-            features = torch.tensor(np.load(sp_file_path)).float()
-        # file = open(sp_file_path_edge_index,'rb') 
-        # S = pickle.load(file)
-
-        # adj = S.toarray()
-        # if self.dilation != 1:
-        #     adj = np.linalg.matrix_power(adj, self.dilation).astype(bool).astype(int)
-        # adj = torch.ones(self.num_seg, self.num_seg)
-        return features, torch.tensor(target)#, adj
         
 
 
@@ -433,21 +361,7 @@ class SPImageNetDataModule(pl.LightningDataModule):
     def __init__(self, **kwargs):
         super().__init__()
 
-        # train_transform = transforms.Compose(
-        #             [transforms.Resize([256, 256]),
-        #              transforms.RandomAffine(degrees=20, translate=(0.1,0.1), scale=(0.9, 1.1)),
-        #             transforms.ColorJitter(brightness=0.2, contrast=0.2),
-        #             transforms.RandomHorizontalFlip(),
-        #             transforms.RandomVerticalFlip(),
-        #             transforms.ToTensor()
-        #             ])
-        FFT_transform = []
-        # val_test_transform = None
         
-        val_test_transform = transforms.Compose(
-                        [transforms.Resize([256, 256]),
-                         transforms.ToTensor()
-                        ])
         train_dir = kwargs.get('train_dir')
         test_dir = kwargs.get('test_dir')
         self.batch_size = kwargs.get('batch_size')
@@ -457,17 +371,16 @@ class SPImageNetDataModule(pl.LightningDataModule):
         self.compactness = kwargs.get('compactness', 10)
         self.seed = kwargs.get('seed')
         self.dilation = kwargs.get('dilation')
+        self.size = kwargs.get('size')
         generator = torch.Generator().manual_seed(self.seed)
 
-        train_dataset = ImageNetDatasetTrain(train_dir, self.num_seg, self.coeff, self.compactness, val_test_transform, 'train', self.dilation)
-        class_to_idx = train_dataset.class_to_idx
+        train_dataset = ImageNetDataset(train_dir, True, self.coeff, self.size)
         train_size = int(0.8*len(train_dataset))
         val_size = len(train_dataset) - train_size
         train_dataset, val_dataset = torch.utils.data.random_split(train_dataset, [train_size, val_size], generator=generator)
-        val_dataset.dataset.transform = val_test_transform
-        val_dataset.mode = 'val'
+        val_dataset.augmentation = False
 
-        test_dataset = ImageNetDatasetTest(test_dir, val_test_transform, self.num_seg, self.coeff, class_to_idx, self.compactness, self.dilation)
+        test_dataset = ImageNetDataset(test_dir, False, self.coeff, self.size)
 
         self.train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,
                                                                num_workers =self.num_workers, drop_last=True)
@@ -477,9 +390,6 @@ class SPImageNetDataModule(pl.LightningDataModule):
         
         self.test_source_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False,
                                                               num_workers=self.num_workers, drop_last=False)
-
-        
-
 
         
     def train_dataloader(self):
