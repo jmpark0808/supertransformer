@@ -39,7 +39,7 @@ from Wrappers.SP_GATv4 import SP_GATv4_Wrapper
 from Wrappers.SP_CTFM import SP_CTFM_Wrapper
 from Wrappers.SP_SWIN import SP_SWIN_Wrapper
 from Wrappers.SP_SWINU import SP_SWINU_Wrapper
-from Wrappers.SP_MAMBA import SP_MAMBA_Wrapper
+# from Wrappers.SP_MAMBA import SP_MAMBA_Wrapper
 
 
 # Import dataset modules
@@ -96,7 +96,7 @@ MODEL_DIRECTORY = {
     'SP_GATv4': SP_GATv4_Wrapper,
     'SP_SWIN': SP_SWIN_Wrapper,
     'SP_SWINU': SP_SWINU_Wrapper,
-    'SP_MAMBA': SP_MAMBA_Wrapper
+    # 'SP_MAMBA': SP_MAMBA_Wrapper
 }
 DATALOADER_DIRECTORY = {
     'SP': SPDataModule,
@@ -218,7 +218,7 @@ if __name__ == "__main__":
     trainer = pl.Trainer(accelerator="gpu",
         callbacks=[early_stopping_callback, checkpoint_callback, lr_monitor],
         val_check_interval=dict_args['val_freq'],
-        deterministic=False,
+        deterministic=True,
         profiler='simple',
         logger=logger,
         max_epochs=dict_args["epoch"],

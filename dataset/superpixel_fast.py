@@ -469,7 +469,7 @@ class SPDataset(data.Dataset):
         seq_mask = self.seq_mask[item]
         segments = self.segments[item]
         mask = self.mask[item]
-
+        
         
         
         if self.dataloader == 'SPFFFT' and self.sigma is not None:

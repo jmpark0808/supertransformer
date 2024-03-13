@@ -16,6 +16,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from Wrappers.SP_ImageNet_TFM import SP_ImageNet_TFM_Wrapper
 from Wrappers.SP_ImageNet_GAT_PyG import SP_ImageNet_GAT_PyG_Wrapper
 from Wrappers.SP_ImageNet_DGAT_PyG import SP_ImageNet_DGAT_PyG_Wrapper
+from Wrappers.SP_ImageNet_SWIN import SP_ImageNet_SWIN_Wrapper
 
 
 # Import dataset modules
@@ -34,7 +35,8 @@ from dataset.imagenet_pyg_exp import SPGEImageNetDataModule
 MODEL_DIRECTORY = {
     'SP_ImageNet': SP_ImageNet_TFM_Wrapper,
     'SP_ImageNet_GAT': SP_ImageNet_GAT_PyG_Wrapper,
-    'SP_ImageNet_DGAT': SP_ImageNet_DGAT_PyG_Wrapper
+    'SP_ImageNet_DGAT': SP_ImageNet_DGAT_PyG_Wrapper,
+    'SP_ImageNet_SWIN': SP_ImageNet_SWIN_Wrapper
 
 }
 DATALOADER_DIRECTORY = {
@@ -127,7 +129,7 @@ if __name__ == "__main__":
     trainer = pl.Trainer(
         callbacks=[early_stopping_callback, checkpoint_callback, lr_monitor],
         val_check_interval=dict_args['val_freq'],
-        deterministic=False,
+        deterministic=True,
         profiler='simple',
         logger=logger,
         max_epochs=dict_args["epoch"],
