@@ -192,10 +192,12 @@ class ImageNetDatasetTestExport(data.Dataset):
 
         sp_file_name = self.image_list[item].split('.')[0]+'.npy'
         sp_file_name_edge = self.image_list[item].split('.')[0]+'edge.pickle'
+        sp_file_target = self.image_list[item].split('.')[0]+'target.npy'
   
    
         sp_file_path = os.path.join(self.export_dir, sp_file_name)
         sp_file_path_edge_index = os.path.join(self.export_dir, sp_file_name_edge)
+        sp_file_path_target = os.path.join(self.export_dir, sp_file_target)
     
 
         target = ET.parse(target_name)
@@ -269,6 +271,7 @@ class ImageNetDatasetTestExport(data.Dataset):
         
 
         np.save(sp_file_path, features)
+        np.save(sp_file_path_target, np.array([target]))
 
         features, target = torch.tensor(features).float(), torch.tensor(target)
 
@@ -333,10 +336,12 @@ class ImageNetDatasetTrainExport(torchvision.datasets.ImageFolder):
         
         sp_file_name = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'.npy'
         sp_file_name_edge = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'edge.pickle'
+        sp_file_target = pathlib.PureWindowsPath(rf'{img[0]}').as_posix().split('/')[-1].split('.')[0]+'_target.npy'
       
 
         sp_file_path = os.path.join(self.export_dir, sp_file_name)
         sp_file_path_edge_index = os.path.join(self.export_dir, sp_file_name_edge)
+        sp_file_path_target = os.path.join(self.export_dir, sp_file_target)
      
 
         
@@ -413,6 +418,7 @@ class ImageNetDatasetTrainExport(torchvision.datasets.ImageFolder):
 
         
         np.save(sp_file_path, features)
+        np.save(sp_file_path_target, np.array([target]))
 
         features, target = torch.tensor(features).float(), torch.tensor(target)
 
