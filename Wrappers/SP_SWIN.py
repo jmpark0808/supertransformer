@@ -105,8 +105,8 @@ class SP_SWIN_Wrapper(pl.LightningModule):
 
 
 
-        features = features.cuda()
-        seq_mask = seq_mask.cuda()
+        # features = features.cuda()
+        # seq_mask = seq_mask.cuda()
 
 
 
@@ -145,7 +145,7 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         f_score = f_score.sum(dim=0)
         self.train_fscores += f_score
         self.num_samples += features.size(0)
-        self.log('loss', loss.item())
+        self.log('loss', loss)
         self.iteration += 1
         return loss
 
@@ -161,11 +161,11 @@ class SP_SWIN_Wrapper(pl.LightningModule):
 
 
 
-        features = features.cuda()
-        seq_mask = seq_mask.cuda()
+        # features = features.cuda()
+        # seq_mask = seq_mask.cuda()
 
     
-        mask = mask.cuda()
+        # mask = mask.cuda()
 
 
         # forward pass
@@ -275,11 +275,11 @@ class SP_SWIN_Wrapper(pl.LightningModule):
      
 
 
-        features = features.cuda()
-        seq_mask = seq_mask.cuda()
+        # features = features.cuda()
+        # seq_mask = seq_mask.cuda()
 
     
-        mask = mask.cuda()
+        # mask = mask.cuda()
 
         # forward pass
         pred = self.forward(features)
