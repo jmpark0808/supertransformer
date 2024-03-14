@@ -231,8 +231,8 @@ class TopKAttention(nn.Module):
         #     torch.zeros((2 * window_size[0] - 1) * (2 * window_size[1] - 1), num_heads))  # 2*Wh-1 * 2*Ww-1, nH
 
         # get pair-wise relative position index for each token inside the window
-        self.weight = torch.nn.Paramter(torch.empty(1,  num_heads, 1, dim))
-        nn.init.uniform(self.weight)
+        self.weight = torch.nn.Parameter(torch.empty(1,  num_heads, 1, dim))
+        nn.init.uniform_(self.weight)
         self.act = nn.Tanh()
         self.kv = nn.Linear(dim, num_heads*dim * 2, bias=qkv_bias)
         self.q = nn.Linear(dim, num_heads*dim, bias=qkv_bias)
@@ -675,7 +675,7 @@ class TopKTransformerBlock(nn.Module):
         x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
 
         # W-MSA/SW-MSA
-        attn_windows = self.attn(shifted_x, x_windows, mask=self.attn_mask)  # B, N, C
+        attn_windows = self.attn(shifted_x.reshape(B, -1, C), x_windows, mask=self.attn_mask)  # B, N, C
 
         # merge windows
         attn_windows = attn_windows.view(-1, H, W, C)
