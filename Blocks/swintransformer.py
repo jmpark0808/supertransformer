@@ -58,8 +58,8 @@ def scattered_partition(x, window_size, unfold):
     
     B, H, W, C = x.shape
     x = x.permute(0, 3, 1, 2) # B C H W
-    x = unfold(x) # B C*4*4 64
-    x = x.reshape(B, C, window_size, window_size, -1) # B, C, 4, 4, 64
+    x = unfold(x) # B C*8*8 16
+    x = x.reshape(B, C, window_size, window_size, -1) # B, C, 8, 8, 16
     windows = x.permute(0, 4, 2, 3, 1).contiguous().view(-1, window_size, window_size, C)
     return windows
 
@@ -522,28 +522,28 @@ class ScatteredTransformerBlock(nn.Module):
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
-        if self.shift_size > 0:
-            # calculate attention mask for SW-MSA
-            H, W = self.input_resolution
-            img_mask = torch.zeros((1, H, W, 1))  # 1 H W 1
-            h_slices = (slice(0, -self.window_size),
-                        slice(-self.window_size, -self.shift_size),
-                        slice(-self.shift_size, None))
-            w_slices = (slice(0, -self.window_size),
-                        slice(-self.window_size, -self.shift_size),
-                        slice(-self.shift_size, None))
-            cnt = 0
-            for h in h_slices:
-                for w in w_slices:
-                    img_mask[:, h, w, :] = cnt
-                    cnt += 1
+        # if self.shift_size > 0:
+        #     # calculate attention mask for SW-MSA
+        #     H, W = self.input_resolution
+        #     img_mask = torch.zeros((1, H, W, 1))  # 1 H W 1
+        #     h_slices = (slice(0, -self.window_size),
+        #                 slice(-self.window_size, -self.shift_size),
+        #                 slice(-self.shift_size, None))
+        #     w_slices = (slice(0, -self.window_size),
+        #                 slice(-self.window_size, -self.shift_size),
+        #                 slice(-self.shift_size, None))
+        #     cnt = 0
+        #     for h in h_slices:
+        #         for w in w_slices:
+        #             img_mask[:, h, w, :] = cnt
+        #             cnt += 1
 
-            mask_windows = scattered_partition(img_mask, self.window_size, self.unfold)  # nW, window_size, window_size, 1
-            mask_windows = mask_windows.view(-1, self.window_size * self.window_size)
-            attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
-            attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
-        else:
-            attn_mask = None
+        #     mask_windows = scattered_partition(img_mask, self.window_size, self.unfold)  # nW, window_size, window_size, 1
+        #     mask_windows = mask_windows.view(-1, self.window_size * self.window_size)
+        #     attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
+        #     attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
+        # else:
+        attn_mask = None
 
         self.register_buffer("attn_mask", attn_mask)
 
@@ -563,15 +563,15 @@ class ScatteredTransformerBlock(nn.Module):
             shifted_x = x
 
         # partition windows
-        x_windows = scattered_partition(shifted_x, self.window_size, self.unfold)  # nW*B, window_size, window_size, C
-        x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
+        x_windows = scattered_partition(shifted_x, self.window_size*2, self.unfold)  # nW*B, window_size, window_size, C
+        x_windows = x_windows.view(-1, self.window_size*2 * self.window_size*2, C)  # nW*B, window_size*window_size, C
 
         # W-MSA/SW-MSA
         attn_windows = self.attn(x_windows, mask=self.attn_mask)  # nW*B, window_size*window_size, C
 
         # merge windows
-        attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
-        shifted_x = scattered_reverse(attn_windows, self.window_size, H, W, self.fold)  # B H' W' C
+        attn_windows = attn_windows.view(-1, self.window_size*2, self.window_size*2, C)
+        shifted_x = scattered_reverse(attn_windows, self.window_size*2, H, W, self.fold)  # B H' W' C
 
         # reverse cyclic shift
         if self.shift_size > 0:
@@ -1072,7 +1072,7 @@ class BasicLayer(nn.Module):
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                  norm_layer=norm_layer))
-            self.blocks.append(TopKTransformerBlock(dim=dim, input_resolution=input_resolution,
+            self.blocks.append(ScatteredTransformerBlock(dim=dim, input_resolution=input_resolution,
                                  num_heads=num_heads, window_size=window_size,
                                  shift_size=0 if (i % 2 == 0) else window_size // 2,
                                  mlp_ratio=mlp_ratio,
