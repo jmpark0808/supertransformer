@@ -64,7 +64,7 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
         return optimizer
       
 
-    def forward(self, input, adj):
+    def forward(self, input):
         """
         Forward pass through model
         :param x: Input features
@@ -72,7 +72,7 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
 
-        pred = self.supert(input, adj)
+        pred = self.supert(input)
 
         return pred
 
@@ -91,16 +91,14 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
         logging resources:
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
-        features, target, adj = batch
+        features, target = batch
   
-        features = features.cuda()
-        target = target.cuda()
-        adj = adj.cuda()
+        
 
 
         # forward pass
         
-        pred = self.forward(features, adj)
+        pred = self.forward(features)
 
         loss = self.loss(pred, target)
         
@@ -137,17 +135,15 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
         Compute the metrics for validation batch
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
-        features, label, adj = batch
+        features, label = batch
 
 
 
-        features = features.cuda()
-        label = label.cuda()
-        adj = adj.cuda()
+       
 
         # forward pass
         
-        pred = self.forward(features, adj)
+        pred = self.forward(features)
 
         loss = self.loss(pred, label)
         
@@ -178,17 +174,14 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
         Compute the metrics for validation batch
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
-        features, label, adj = batch
+        features, label = batch
 
 
 
-        features = features.cuda()
-        label = label.cuda()
-        adj = adj.cuda()
 
         # forward pass
         
-        pred = self.forward(features, adj)
+        pred = self.forward(features)
 
         loss = self.loss(pred, label)
         

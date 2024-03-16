@@ -222,7 +222,7 @@ class SP_ImageNet_TFM(nn.Module):
         # self.transformer_enc = nn.TransformerEncoder(self.encoder, num_layers=ntfm)
 
         self.out = nn.Linear(nhid * nheads, 1000)
-    def forward(self, x, adj):
+    def forward(self, x):
         pos = x[:, :, :2]
         x = x[:, :, 2:]
         x = self.linear(x)
