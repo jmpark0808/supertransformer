@@ -231,7 +231,7 @@ class SP_ImageNet_TFM(nn.Module):
         # pos = self.pos_linear2(pos)
         # pos = self.pos_encoding(pos)
         x += pos
-        x = self.transformer_enc(x, None, adj, None) # batch, nodes, hid
+        x = self.transformer_enc(x) # batch, nodes, hid
         x = torch.mean(x, dim=1)
 
         x = self.out(x)
