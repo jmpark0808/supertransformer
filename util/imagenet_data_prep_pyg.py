@@ -24,7 +24,7 @@ if __name__ == "__main__":
     generator = torch.Generator().manual_seed(seed)
     train_dir = dict_args['train_dir']
     test_dir = dict_args['test_dir']
-    num_seg = 625
+    num_seg = 1024
     compactness = 10
     coeff = 10 
     batch_size = dict_args['batch_size']
@@ -33,7 +33,7 @@ if __name__ == "__main__":
     test_export_dir = dict_args['test_export_dir']
 
     val_test_transform = transforms.Compose(
-                            [transforms.Resize([300, 300]),
+                            [transforms.Resize([320, 320]),
                             transforms.ToTensor()
                             ])
 
