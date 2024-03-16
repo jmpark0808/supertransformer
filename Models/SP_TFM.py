@@ -212,16 +212,16 @@ class SP_ImageNet_TFM(nn.Module):
     def __init__(self, nfeat, dilation, nhid, nheads, ntfm, dropout, dropout_edge):
         """Dense version of GAT."""
         super(SP_ImageNet_TFM, self).__init__()
-        self.linear = nn.Linear(nfeat, nhid * nheads)
-        self.pos_linear = nn.Linear(2, nhid*nheads)
+        self.linear = nn.Linear(nfeat, nhid )
+        self.pos_linear = nn.Linear(2, nhid)
         # self.pos_linear2 = nn.Linear(64, nhid*nheads)
 
         # self.pos_encoding = PositionalEncodingSuperPixel(nhid*nheads)
-        self.transformer_enc = PosTransformer(nhid * nheads, dilation, ntfm, nheads, nhid, nhid*nheads, dropout, dropout_edge)
+        self.transformer_enc = PosTransformer(nhid, dilation, ntfm, nheads, nhid, nhid*2, dropout, dropout_edge)
         # self.encoder = nn.TransformerEncoderLayer(d_model=nhid*nheads, nhead=nheads, dropout=dropout, dim_feedforward=nhid*nheads, batch_first=True)
         # self.transformer_enc = nn.TransformerEncoder(self.encoder, num_layers=ntfm)
 
-        self.out = nn.Linear(nhid * nheads, 1000)
+        self.out = nn.Linear(nhid , 1000)
     def forward(self, x):
         pos = x[:, :, :2]
         x = x[:, :, 2:]
