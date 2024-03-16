@@ -18,6 +18,7 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
         self.num_seg = kwargs.get('num_seg')
         self.es_patience = kwargs.get('es_patience')
         self.dropout = kwargs.get('dropout')
+        self.dropout_edge = kwargs.get('dropout_edge')
         self.coeff = kwargs.get('coeff')
         self.tfm_hp = kwargs.get('tfmhp')
         self.dataloader = kwargs.get('dataloader')
@@ -25,7 +26,7 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
         self.dilation = kwargs.get('dilation')
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
-        self.supert = SP_ImageNet_TFM(input_dim, self.dilation, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout)
+        self.supert = SP_ImageNet_TFM(input_dim, self.dilation, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout, self.dropout_edge)
         if self.load:
             ckpt = torch.load(self.load)
             for key in list(ckpt['state_dict'].keys()):
