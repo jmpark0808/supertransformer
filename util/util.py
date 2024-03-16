@@ -154,12 +154,12 @@ def get_input_dim(args):
         return 3
     elif d == 'SPF':
         return 13
-    elif d == 'SPFFFT' or d== 'SPGFFT':
+    elif d == 'SPFFFT' or d== 'SPGFFT' or d == 'ImageNet' :
         if args.get('ignore_phase'):
             return 6+(args.get('coeff'))+10
         else:
             return 6+(args.get('coeff')*2)+10
-    elif d == 'SPFFT' or d == 'ImageNet'  or \
+    elif d == 'SPFFT'  or \
     d== 'SPGIFFT' or d == 'ImageNet_PyG':
         if args.get('ignore_phase'):
             return 6+(args.get('coeff'))
