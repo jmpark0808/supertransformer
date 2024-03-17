@@ -35,11 +35,15 @@ class ImageNetDataset(data.Dataset):
         self.size = size
         self.augmentation = augmentation
         for file in os.listdir(root_dir):
-            if 'target' in file:
-                continue
+            if '_target' in file:
+                self.image_list.append(os.path.join(root_dir, file.split('_target')[0]+'.npy'))
+                self.target_list.append(os.path.join(root_dir, file))  
+            elif 'target' in file:
+                self.image_list.append(os.path.join(root_dir, file.split('target')[0]+'.npy'))
+                self.target_list.append(os.path.join(root_dir, file)) 
             else:
-               self.image_list.append(os.path.join(root_dir, file))
-               self.target_list.append(os.path.join(root_dir, file.split('.')[0]+'_target.npy'))       
+               continue
+                
 
     def __len__(self):
         return len(self.image_list)
