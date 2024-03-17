@@ -92,10 +92,6 @@ class SP_ImageNet_SWIN_Wrapper(pl.LightningModule):
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
         features, target = batch
-  
-        features = features.cuda()
-        target = target.cuda()
-        # adj = adj.cuda()
 
 
         # forward pass
@@ -140,11 +136,6 @@ class SP_ImageNet_SWIN_Wrapper(pl.LightningModule):
         features, label = batch
 
 
-
-        features = features.cuda()
-        label = label.cuda()
-        # adj = adj.cuda()
-
         # forward pass
         
         pred = self.forward(features)
@@ -179,12 +170,6 @@ class SP_ImageNet_SWIN_Wrapper(pl.LightningModule):
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
         features, label = batch
-
-
-
-        features = features.cuda()
-        label = label.cuda()
-        # adj = adj.cuda()
 
         # forward pass
         

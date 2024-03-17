@@ -82,7 +82,7 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
     
     def on_train_epoch_end(self):
         acc = self.train_acc/self.num_samples
-        self.log('Train Accuracy', acc)
+        self.log('Train Accuracy', acc, sync_dist=True)
 
 
     def training_step(self, batch, batch_idx):
@@ -109,16 +109,16 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
         self.train_acc += acc
         self.num_samples += n
 
-        self.log('loss', loss.item())
+        self.log('loss', loss)
         self.iteration += 1
         return loss
 
     def on_validation_epoch_end(self):
         acc = self.val_acc/self.val_num_samples
-        self.log('Validation Accuracy', acc)
+        self.log('Validation Accuracy', acc, sync_dist=True)
 
         acc = self.test_acc/self.test_num_samples
-        self.log('Test Accuracy', acc)
+        self.log('Test Accuracy', acc, sync_dist=True)
 
         self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
         self.validation_step_outputs.clear()
@@ -163,7 +163,7 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
 
     def on_test_epoch_end(self):
         acc = self.test_acc/self.test_num_samples
-        self.log('Final Test Accuracy', acc)
+        self.log('Final Test Accuracy', acc, sync_dist=True)
 
     def on_test_start(self):
         self.test_acc = 0
