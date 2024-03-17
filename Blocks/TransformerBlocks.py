@@ -100,7 +100,7 @@ class PosAttention(nn.Module):
 
         self.attend = nn.Softmax(dim = -1)
         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
-        self.distances_linear = nn.Linear(2, dim_head)
+        # self.distances_linear = nn.Linear(2, dim_head)
 
         # self.lin_edge = nn.Linear(edge_dim, inner_dim)
         self.dropout_edge = nn.Dropout(dropout_edge)

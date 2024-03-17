@@ -124,7 +124,7 @@ class ImageNetDatasetTestExport(data.Dataset):
 
         sp_file_name = self.image_list[item].split('.')[0]+'.npy'
         sp_file_name_edge = self.image_list[item].split('.')[0]+'edge.pickle'
-        sp_file_target = self.image_list[item].split('.')[0]+'target.npy'
+        sp_file_target = self.image_list[item].split('.')[0]+'_target.npy'
   
    
         sp_file_path = os.path.join(self.export_dir, sp_file_name)
