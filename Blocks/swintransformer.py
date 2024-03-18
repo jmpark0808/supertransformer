@@ -1544,6 +1544,19 @@ class SwinTransformer(nn.Module):
                                downsample=None,
                                use_checkpoint=use_checkpoint)
             self.layers.append(layer)
+        self.layers.append(BasicLayerKernel(dim=embed_dim, 
+                               input_resolution=(patches_resolution[0],
+                                                 patches_resolution[1]),
+                               depth=1,
+                               num_heads=8,
+                               window_size=3,
+                               mlp_ratio=self.mlp_ratio,
+                               qkv_bias=qkv_bias, qk_scale=qk_scale,
+                               drop=drop_rate, attn_drop=attn_drop_rate,
+                               drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
+                               norm_layer=norm_layer,
+                               downsample=None,
+                               use_checkpoint=use_checkpoint))
             
 
         
