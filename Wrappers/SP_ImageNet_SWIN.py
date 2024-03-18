@@ -44,7 +44,7 @@ class SP_ImageNet_SWIN_Wrapper(pl.LightningModule):
         """
         Defining the loss funcition:
         """
-        loss = self.loss_fn(pred, label)
+        loss = self.loss_fn(pred, torch.squeeze(label))
 
         return loss
 
