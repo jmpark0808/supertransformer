@@ -160,8 +160,8 @@ class SP_SWIN_ImageNet(nn.Module):
         'in_channels': nfeat,
         'patch_size': 32}
         self.model = SwinTransformer(options = options)
-        self.out = nn.Linear(nhid*64, 1000)
-        self.unfold = torch.nn.Unfold(4, stride=4)
+        self.out = nn.Linear(nhid*16, 1000)
+        self.unfold = torch.nn.Unfold(8, stride=8)
     def forward(self, x):
         pos = x[:, :, :2]
         x = x[:, :, 2:]
@@ -171,9 +171,9 @@ class SP_SWIN_ImageNet(nn.Module):
         x = x.reshape(x.size(0), 32, 32, -1).permute(0, 3, 1, 2)
         x = self.model(x, pos)
         x = x.reshape(x.size(0), 32, 32, -1).permute(0, 3, 1, 2) # B, C, 32, 32
-        x = self.unfold(x) # B, C*4*4, 8*8
-        x = x.reshape(x.size(0), -1, 4*4, 8*8)
-        x = torch.mean(x, dim=2) # B, C, 8*8
-        x = x.reshape(x.size(0), -1) # B, C*8*8
+        x = self.unfold(x) # B, C*8*8, 4*4
+        x = x.reshape(x.size(0), -1, 8*8, 4*4)
+        x = torch.mean(x, dim=2) # B, C, 4*4
+        x = x.reshape(x.size(0), -1) # B, C*4*4
         x = self.out(x)
         return x
