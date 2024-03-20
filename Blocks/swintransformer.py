@@ -46,7 +46,7 @@ def window_partition(x, window_size):
     windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
     return windows
 
-def scattered_partition(x, window_size, unfold):
+def scattered_partition(x, window_size, kernel_size, unfold1, unfold2):
     """
     Args:
         x: (B, H, W, C)
@@ -58,10 +58,14 @@ def scattered_partition(x, window_size, unfold):
     
     B, H, W, C = x.shape
     x = x.permute(0, 3, 1, 2) # B C H W
-    x = unfold(x) # B C*w*w n
-    x = x.reshape(B, C, window_size, window_size, -1) # B, C, w, w, n
-    windows = x.permute(0, 4, 2, 3, 1).contiguous().view(-1, window_size, window_size, C)
-    return windows
+    x = unfold1(x) # B C*k*k n
+    x = x.reshape(B, C, kernel_size, kernel_size, -1) # B, C, k, k, n
+    x = x.permute(0, 4, 1, 2, 3).contiguous().view(-1, C, kernel_size, kernel_size)# B*n, C, k, k 
+    B_, _, _, _ = x.shape
+    x = unfold2(x) # B*n, C*4*4, m
+    x = x.reshape(B_, C, window_size, window_size, -1) # B*n, C, 4, 4, m
+    x = x.permute(0, 4, 2, 3, 1).contiguous().view(-1, window_size, window_size, C) # B*n*m, 4, 4, C
+    return x
 
 def kernel_partition(x, window_size, unfold):
     """
@@ -96,7 +100,7 @@ def window_reverse(windows, window_size, H, W):
     x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, H, W, -1)
     return x
 
-def scattered_reverse(windows, window_size, H, W, fold):
+def scattered_reverse(windows, window_size, kernel_size, H, W, fold1, fold2):
     """
     Args:
         windows: (num_windows*B, window_size, window_size, C)
@@ -107,11 +111,18 @@ def scattered_reverse(windows, window_size, H, W, fold):
     Returns:
         x: (B, H, W, C)
     """
-    B = int(windows.shape[0] / (H * W / window_size / window_size))
-    x = windows.view(B, H // window_size, W // window_size, window_size, window_size, -1) # B, k, k, n, n, C
-    x = x.permute(0, 5, 3, 4, 1, 2).contiguous().view(B, -1, (H//window_size)*(W//window_size)) # B, Cnn, kk
-    x = fold(x) # B, C, H, W
-    x = x.permute(0, 2, 3, 1)
+
+    B = int(windows.shape[0] / ((kernel_size//4)**2))
+    x = windows.view(B, (kernel_size//4)**2, window_size*window_size, -1) # B*n, m, 4*4, C
+    x = x.permute(0, 3, 2, 1).contiguous().view(B, -1, (kernel_size//4)**2) # B*n, C*4*4, m
+    x = fold1(x) # B*n, C, k, k
+    x = x.permute(0, 2, 3, 1) # B*n, k, k, C
+    B = int(x.shape[0] / ((32//kernel_size)**2))
+    x = x.view(B, (32//kernel_size)**2, kernel_size*kernel_size, -1) # B, n, k*k, C
+    x = x.permute(0, 3, 2, 1).contiguous().view(B, -1, (32//kernel_size)**2) # B, C*k*k, n
+    x = fold2(x) # B, C, 32, 32
+    x = x.permute(0, 2, 3, 1) # B, 32, 32, C
+    
     return x
 
 
@@ -130,14 +141,14 @@ class WindowAttention(nn.Module):
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
 
-    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, head_dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
 
         super().__init__()
         self.dim = dim
         self.window_size = window_size  # Wh, Ww
         self.num_heads = num_heads
-        head_dim = dim // num_heads
         self.scale = qk_scale or head_dim ** -0.5
+        self.head_dim = head_dim
 
         # define a parameter table of relative position bias
         # self.relative_position_bias_table = nn.Parameter(
@@ -145,9 +156,9 @@ class WindowAttention(nn.Module):
 
         # get pair-wise relative position index for each token inside the window
  
-        self.qkv = nn.Linear(dim, num_heads*dim * 3, bias=qkv_bias)
+        self.qkv = nn.Linear(dim, num_heads*head_dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim)
+        self.proj = nn.Linear(head_dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
         # trunc_normal_(self.relative_position_bias_table, std=.02)
@@ -160,7 +171,7 @@ class WindowAttention(nn.Module):
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
         B_, N, C = x.shape
-        qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C).permute(2, 0, 3, 1, 4)
+        qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
 
         q = q * self.scale
@@ -181,7 +192,7 @@ class WindowAttention(nn.Module):
 
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B_, N, self.num_heads, C)
+        x = (attn @ v).transpose(1, 2).reshape(B_, N, self.num_heads, self.head_dim)
         x = torch.mean(x, dim=2)
         x = self.proj(x)
         x = self.proj_drop(x)
@@ -494,18 +505,23 @@ class ScatteredTransformerBlock(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
 
-    def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
+    def __init__(self, dim, head_dim, kernel, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm):
         super().__init__()
         self.dim = dim
+        self.head_dim = head_dim
+        self.kernel = kernel
         self.input_resolution = input_resolution
         self.num_heads = num_heads
         self.window_size = window_size
         self.shift_size = shift_size
         self.mlp_ratio = mlp_ratio
-        self.unfold = nn.Unfold(8, 4)
-        self.fold = nn.Fold(32, 8, 4)
+        self.unfold1 = nn.Unfold(kernel, 1, stride=kernel)
+        self.unfold2 = nn.Unfold(4, kernel//4)
+        self.fold1 = nn.Fold(kernel, 4, kernel//4)
+        self.fold2 = nn.Fold(32, kernel, 1, stride=kernel)
+
         if min(self.input_resolution) <= self.window_size:
             # if window size is larger than input resolution, we don't partition windows
             self.shift_size = 0
@@ -514,7 +530,7 @@ class ScatteredTransformerBlock(nn.Module):
 
         self.norm1 = norm_layer(dim)
         self.attn = WindowAttention(
-            dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
+            dim, head_dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
@@ -542,15 +558,15 @@ class ScatteredTransformerBlock(nn.Module):
             shifted_x = x
 
         # partition windows
-        x_windows = scattered_partition(shifted_x, self.window_size*2, self.unfold)  # nW*B, window_size, window_size, C
-        x_windows = x_windows.view(-1, self.window_size*2 * self.window_size*2, C)  # nW*B, window_size*window_size, C
+        x_windows = scattered_partition(shifted_x, self.window_size, self.kernel, self.unfold1, self.unfold2)  # B*n*m, window_size, window_size, C
+        x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # B*n*m, window_size*window_size, C
 
         # W-MSA/SW-MSA
-        attn_windows = self.attn(x_windows, mask=self.attn_mask)  # nW*B, window_size*window_size, C
+        attn_windows = self.attn(x_windows, mask=self.attn_mask)  # B*n*m, window_size*window_size, C
 
         # merge windows
-        attn_windows = attn_windows.view(-1, self.window_size*2, self.window_size*2, C)
-        shifted_x = scattered_reverse(attn_windows, self.window_size*2, H, W, self.fold)  # B H' W' C
+        attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C) # B*n*m, window_size*window_size, C
+        shifted_x = scattered_reverse(attn_windows, self.window_size, self.kernel, H, W, self.fold1, self.fold2)  # B H' W' C
 
         # reverse cyclic shift
         if self.shift_size > 0:
@@ -806,7 +822,7 @@ class SwinTransformerBlock(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
 
-    def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
+    def __init__(self, dim, head_dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm):
         super().__init__()
@@ -824,13 +840,13 @@ class SwinTransformerBlock(nn.Module):
 
         self.norm1 = norm_layer(dim)
         self.attn = WindowAttention(
-            dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
+            dim, head_dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+        self.mlp = Mlp(in_features=head_dim, hidden_features=mlp_hidden_dim, out_feautres=dim, act_layer=act_layer, drop=drop)
 
         if self.shift_size > 0:
             # calculate attention mask for SW-MSA
@@ -1030,7 +1046,7 @@ class BasicLayer(nn.Module):
         use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False.
     """
 
-    def __init__(self, dim, input_resolution, depth, num_heads, window_size,
+    def __init__(self, dim, head_dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False):
 
@@ -1043,7 +1059,7 @@ class BasicLayer(nn.Module):
         # build blocks
         self.blocks = nn.ModuleList([])
         for i in range(depth):
-            self.blocks.append(SwinTransformerBlock(dim=dim, input_resolution=input_resolution,
+            self.blocks.append(SwinTransformerBlock(dim=dim, head_dim=head_dim, input_resolution=input_resolution,
                                  num_heads=num_heads, window_size=window_size,
                                  shift_size=0 if (i % 2 == 0) else window_size // 2,
                                  mlp_ratio=mlp_ratio,
@@ -1051,7 +1067,7 @@ class BasicLayer(nn.Module):
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                  norm_layer=norm_layer))
-            self.blocks.append(ScatteredTransformerBlock(dim=dim, input_resolution=input_resolution,
+            self.blocks.append(ScatteredTransformerBlock(dim=dim, head_dim=head_dim, input_resolution=input_resolution,
                                  num_heads=num_heads, window_size=window_size,
                                  shift_size=0 if (i % 2 == 0) else window_size // 2,
                                  mlp_ratio=mlp_ratio,
@@ -1487,6 +1503,8 @@ class SwinTransformer(nn.Module):
         patch_size = options['swin_hp']['patch_size']
         in_chans = options['in_channels']
         embed_dim = options['swin_hp']['embed_dim']
+        kernels = options['swin_hp']['kernels']
+        head_dim = options['swin_hp']['head_dim']
         depths = options['swin_hp']['depths']
         num_heads = options['swin_hp']['num_heads']
         window_size = options['swin_hp']['window_size']
@@ -1500,9 +1518,9 @@ class SwinTransformer(nn.Module):
         ape = options['swin_hp']['ape']
         patch_norm = options['swin_hp']['patch_norm']
         use_checkpoint = options['swin_hp']['use_checkpoint']
-
+        
         self.net_name = 'SwinTransformer'
-        self.num_layers = len(depths)
+        self.num_layers = len(kernels)
         self.embed_dim = embed_dim
         self.ape = ape
         self.patch_norm = patch_norm
@@ -1525,38 +1543,55 @@ class SwinTransformer(nn.Module):
         self.pos_drop = nn.Dropout(p=drop_rate)
 
         # stochastic depth
-        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, self.num_layers)]  # stochastic depth decay rule
 
         # build layers
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
-            layer = BasicLayer(dim=embed_dim, 
-                               input_resolution=(patches_resolution[0],
-                                                 patches_resolution[1]),
-                               depth=depths[i_layer],
-                               num_heads=num_heads[i_layer],
-                               window_size=window_size,
-                               mlp_ratio=self.mlp_ratio,
-                               qkv_bias=qkv_bias, qk_scale=qk_scale,
-                               drop=drop_rate, attn_drop=attn_drop_rate,
-                               drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
-                               norm_layer=norm_layer,
-                               downsample=None,
-                               use_checkpoint=use_checkpoint)
+            layer = ScatteredTransformerBlock(dim=embed_dim,
+                                            head_dim=head_dim,
+                                            kernel=kernels[i_layer],
+                                            input_resolution=(patches_resolution[0],
+                                                            patches_resolution[1]),
+                                            num_heads=num_heads, window_size=window_size,
+                                            shift_size=0,
+                                            mlp_ratio=mlp_ratio,
+                                            qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                            drop=drop_rate, attn_drop=attn_drop_rate,
+                                            drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
+                                            norm_layer=norm_layer)
             self.layers.append(layer)
-        self.layers.append(BasicLayerKernel(dim=embed_dim, 
-                               input_resolution=(patches_resolution[0],
-                                                 patches_resolution[1]),
-                               depth=1,
-                               num_heads=8,
-                               window_size=3,
-                               mlp_ratio=self.mlp_ratio,
-                               qkv_bias=qkv_bias, qk_scale=qk_scale,
-                               drop=drop_rate, attn_drop=attn_drop_rate,
-                               drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
-                               norm_layer=norm_layer,
-                               downsample=None,
-                               use_checkpoint=use_checkpoint))
+            
+        # for i_layer in range(self.num_layers):
+        #     layer = BasicLayer(dim=embed_dim, 
+        #                        head_dim=head_dim,
+        #                        input_resolution=(patches_resolution[0],
+        #                                          patches_resolution[1]),
+        #                        depth=depths[i_layer],
+        #                        num_heads=num_heads[i_layer],
+        #                        window_size=window_size,
+        #                        mlp_ratio=self.mlp_ratio,
+        #                        qkv_bias=qkv_bias, qk_scale=qk_scale,
+        #                        drop=drop_rate, attn_drop=attn_drop_rate,
+        #                        drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
+        #                        norm_layer=norm_layer,
+        #                        downsample=None,
+        #                        use_checkpoint=use_checkpoint)
+        #     self.layers.append(layer)
+        # self.layers.append(BasicLayerKernel(dim=embed_dim, 
+        #                                     head_dim=head_dim,
+        #                        input_resolution=(patches_resolution[0],
+        #                                          patches_resolution[1]),
+        #                        depth=1,
+        #                        num_heads=8,
+        #                        window_size=3,
+        #                        mlp_ratio=self.mlp_ratio,
+        #                        qkv_bias=qkv_bias, qk_scale=qk_scale,
+        #                        drop=drop_rate, attn_drop=attn_drop_rate,
+        #                        drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
+        #                        norm_layer=norm_layer,
+        #                        downsample=None,
+        #                        use_checkpoint=use_checkpoint))
             
 
         
