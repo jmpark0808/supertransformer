@@ -409,13 +409,13 @@ class KernelAttention(nn.Module):
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
 
-    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, head_dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
 
         super().__init__()
         self.dim = dim
+        self.head_dim = head_dim
         self.window_size = window_size  # Wh, Ww
         self.num_heads = num_heads
-        head_dim = dim // num_heads
         self.scale = qk_scale or head_dim ** -0.5
 
         # define a parameter table of relative position bias
@@ -424,11 +424,11 @@ class KernelAttention(nn.Module):
 
         # get pair-wise relative position index for each token inside the window
  
-        self.q = nn.Linear(dim, num_heads*dim, bias=qkv_bias)
-        self.k = nn.Linear(dim, num_heads*dim, bias=qkv_bias)
-        self.v = nn.Linear(dim, num_heads*dim, bias=qkv_bias)
+        self.q = nn.Linear(dim, num_heads*head_dim, bias=qkv_bias)
+        self.k = nn.Linear(dim, num_heads*head_dim, bias=qkv_bias)
+        self.v = nn.Linear(dim, num_heads*head_dim, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim)
+        self.proj = nn.Linear(head_dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
         # trunc_normal_(self.relative_position_bias_table, std=.02)
@@ -441,9 +441,9 @@ class KernelAttention(nn.Module):
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
         B_, N, C = x.shape
-        q = self.q(x[:, N//2:N//2+1, :]).reshape(B_, 1, self.num_heads, C).permute(0, 2, 1, 3)
-        k = self.k(x[:, :, :]).reshape(B_, N, self.num_heads, C).permute(0, 2, 1, 3)
-        v = self.v(x[:, :, :]).reshape(B_, N, self.num_heads, C).permute(0, 2, 1, 3)
+        q = self.q(x[:, N//2:N//2+1, :]).reshape(B_, 1, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        k = self.k(x[:, :, :]).reshape(B_, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        v = self.v(x[:, :, :]).reshape(B_, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
         
 
         q = q * self.scale
@@ -464,7 +464,7 @@ class KernelAttention(nn.Module):
 
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B_, 1, self.num_heads, C)
+        x = (attn @ v).transpose(1, 2).reshape(B_, 1, self.num_heads, self.head_dim)
         x = torch.mean(x, dim=2)
         x = self.proj(x)
         x = self.proj_drop(x)
@@ -727,11 +727,12 @@ class KernelTransformerBlock(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
 
-    def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
+    def __init__(self, dim, head_dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm):
         super().__init__()
         self.dim = dim
+        self.head_dim = head_dim
         self.input_resolution = input_resolution
         self.num_heads = num_heads
         self.window_size = window_size
@@ -749,7 +750,7 @@ class KernelTransformerBlock(nn.Module):
      
         self.norm1 = norm_layer(dim)
         self.attn = KernelAttention(
-            dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
+            dim, head_dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
@@ -1543,7 +1544,7 @@ class SwinTransformer(nn.Module):
         self.pos_drop = nn.Dropout(p=drop_rate)
 
         # stochastic depth
-        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, self.num_layers)]  # stochastic depth decay rule
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, self.num_layers+1)]  # stochastic depth decay rule
 
         # build layers
         self.layers = nn.ModuleList()
@@ -1561,6 +1562,17 @@ class SwinTransformer(nn.Module):
                                             drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
                                             norm_layer=norm_layer)
             self.layers.append(layer)
+        self.layers.append(KernelTransformerBlock(dim=embed_dim,
+                                            head_dim=head_dim,
+                                            input_resolution=(patches_resolution[0],
+                                                            patches_resolution[1]),
+                                            num_heads=num_heads, window_size=3,
+                                            shift_size=1,
+                                            mlp_ratio=mlp_ratio,
+                                            qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                            drop=drop_rate, attn_drop=attn_drop_rate,
+                                            drop_path=dpr[-1], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
+                                            norm_layer=norm_layer))
             
         # for i_layer in range(self.num_layers):
         #     layer = BasicLayer(dim=embed_dim, 
