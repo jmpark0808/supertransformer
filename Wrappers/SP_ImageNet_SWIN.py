@@ -26,7 +26,7 @@ class SP_ImageNet_SWIN_Wrapper(pl.LightningModule):
         self.dropout_edge = kwargs.get('dropout_edge')
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
-        self.supert = SP_SWIN_ImageNet(input_dim, self.tfm_hp[1], self.tfm_hp[0], self.tfm_hp[2], self.dropout, self.dropout_edge)
+        self.supert = SP_SWIN_ImageNet(input_dim, self.tfm_hp[1], self.tfm_hp[3], self.tfm_hp[0],self.tfm_hp[2], self.dropout, self.dropout_edge)
         if self.load:
             ckpt = torch.load(self.load)
             for key in list(ckpt['state_dict'].keys()):

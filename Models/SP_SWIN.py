@@ -62,7 +62,6 @@ class SP_SWIN(nn.Module):
         'head_dim': head_dim,
         'depths': None, #(tuple(int)): Depth of each Swin Transformer layer.
         'num_heads': nheads, #(tuple(int)): Number of attention heads in different layers.
-        'kernels': [4, 8, 16, 32], #(tuple(int)): Number of attention heads in different layers.
         'window_size': 4, #(int): Window size. Default: 8
         'mlp_ratio': 2.,#(float): Ratio of mlp hidden dim to embedding dim. Default: 4
         'qkv_bias': True,#(bool): If True, add a learnable bias to query, key, value. Default: True
@@ -137,14 +136,16 @@ class SP_SWIN_ImageNet(nn.Module):
     '''
     SWIN Transformer for ImageNet 
     '''
-    def __init__(self, nfeat, nhid, nheads, ntfm, dropout, dropout_edge):
+    def __init__(self, nfeat, nhid, head_dim, nheads, ntfm, dropout, dropout_edge):
         """Dense version of GAT."""
         super().__init__()
         self.pos_linear = nn.Linear(2, nhid)
         options = {'swin_hp': {'patch_size': 1,  # (int | tuple(int)): Patch size. Default: 4
         'embed_dim': nhid, #(int): Patch embedding dimension. Default: 96
+        'head_dim': head_dim,
         'depths': [2]*ntfm, #(tuple(int)): Depth of each Swin Transformer layer.
-        'num_heads': [nheads]*ntfm, #(tuple(int)): Number of attention heads in different layers.
+        'num_heads': nheads, #(tuple(int)): Number of attention heads in different layers.
+        'kernels': [4, 8, 16, 32],
         'window_size': 4, #(int): Window size. Default: 8
         'mlp_ratio': 2.,#(float): Ratio of mlp hidden dim to embedding dim. Default: 4
         'qkv_bias': True,#(bool): If True, add a learnable bias to query, key, value. Default: True
