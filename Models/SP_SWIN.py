@@ -62,6 +62,7 @@ class SP_SWIN(nn.Module):
         'head_dim': head_dim,
         'depths': None, #(tuple(int)): Depth of each Swin Transformer layer.
         'num_heads': nheads, #(tuple(int)): Number of attention heads in different layers.
+        'kernels': [4, 8, 16, 32],
         'window_size': 4, #(int): Window size. Default: 8
         'mlp_ratio': 2.,#(float): Ratio of mlp hidden dim to embedding dim. Default: 4
         'qkv_bias': True,#(bool): If True, add a learnable bias to query, key, value. Default: True
