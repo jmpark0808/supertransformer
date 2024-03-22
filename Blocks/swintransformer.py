@@ -526,7 +526,7 @@ class ScatteredTransformerBlock(nn.Module):
             # if window size is larger than input resolution, we don't partition windows
             self.shift_size = 0
             self.window_size = min(self.input_resolution)
-        assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
+        # assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
 
         self.norm1 = norm_layer(dim)
         self.attn = WindowAttention(
@@ -1562,17 +1562,31 @@ class SwinTransformer(nn.Module):
                                             drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
                                             norm_layer=norm_layer)
             self.layers.append(layer)
-        self.layers.append(KernelTransformerBlock(dim=embed_dim,
+            layer = ScatteredTransformerBlock(dim=embed_dim,
                                             head_dim=head_dim,
+                                            kernel=kernels[i_layer],
                                             input_resolution=(patches_resolution[0],
                                                             patches_resolution[1]),
-                                            num_heads=num_heads, window_size=3,
-                                            shift_size=1,
+                                            num_heads=num_heads, window_size=window_size,
+                                            shift_size=kernels[i_layer] // 2,
                                             mlp_ratio=mlp_ratio,
                                             qkv_bias=qkv_bias, qk_scale=qk_scale,
                                             drop=drop_rate, attn_drop=attn_drop_rate,
-                                            drop_path=dpr[-1], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
-                                            norm_layer=norm_layer))
+                                            drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
+                                            norm_layer=norm_layer)
+            
+            self.layers.append(layer)
+        # self.layers.append(KernelTransformerBlock(dim=embed_dim,
+        #                                     head_dim=head_dim,
+        #                                     input_resolution=(patches_resolution[0],
+        #                                                     patches_resolution[1]),
+        #                                     num_heads=num_heads, window_size=3,
+        #                                     shift_size=1,
+        #                                     mlp_ratio=mlp_ratio,
+        #                                     qkv_bias=qkv_bias, qk_scale=qk_scale,
+        #                                     drop=drop_rate, attn_drop=attn_drop_rate,
+        #                                     drop_path=dpr[-1], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
+        #                                     norm_layer=norm_layer))
             
         # for i_layer in range(self.num_layers):
         #     layer = BasicLayer(dim=embed_dim, 
