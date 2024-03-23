@@ -112,9 +112,9 @@ def scattered_reverse(windows, window_size, kernel_size, H, W, fold1, fold2):
         x: (B, H, W, C)
     """
 
-    B = int(windows.shape[0] / ((kernel_size//4)**2))
-    x = windows.view(B, (kernel_size//4)**2, window_size*window_size, -1) # B*n, m, 4*4, C
-    x = x.permute(0, 3, 2, 1).contiguous().view(B, -1, (kernel_size//4)**2) # B*n, C*4*4, m
+    B = int(windows.shape[0] / ((kernel_size//window_size)**2))
+    x = windows.view(B, (kernel_size//window_size)**2, window_size*window_size, -1) # B*n, m, 4*4, C
+    x = x.permute(0, 3, 2, 1).contiguous().view(B, -1, (kernel_size//window_size)**2) # B*n, C*4*4, m
     x = fold1(x) # B*n, C, k, k
     x = x.permute(0, 2, 3, 1) # B*n, k, k, C
     B = int(x.shape[0] / ((32//kernel_size)**2))
@@ -518,8 +518,8 @@ class ScatteredTransformerBlock(nn.Module):
         self.shift_size = shift_size
         self.mlp_ratio = mlp_ratio
         self.unfold1 = nn.Unfold(kernel, 1, stride=kernel)
-        self.unfold2 = nn.Unfold(4, kernel//4)
-        self.fold1 = nn.Fold(kernel, 4, kernel//4)
+        self.unfold2 = nn.Unfold(window_size, kernel//window_size)
+        self.fold1 = nn.Fold(kernel, window_size, kernel//window_size)
         self.fold2 = nn.Fold(32, kernel, 1, stride=kernel)
 
         if min(self.input_resolution) <= self.window_size:
@@ -1549,33 +1549,48 @@ class SwinTransformer(nn.Module):
         # build layers
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
-            layer = ScatteredTransformerBlock(dim=embed_dim,
-                                            head_dim=head_dim,
-                                            kernel=kernels[i_layer],
-                                            input_resolution=(patches_resolution[0],
-                                                            patches_resolution[1]),
-                                            num_heads=num_heads, window_size=window_size,
-                                            shift_size=0,
-                                            mlp_ratio=mlp_ratio,
-                                            qkv_bias=qkv_bias, qk_scale=qk_scale,
-                                            drop=drop_rate, attn_drop=attn_drop_rate,
-                                            drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
-                                            norm_layer=norm_layer)
-            self.layers.append(layer)
-            layer = ScatteredTransformerBlock(dim=embed_dim,
-                                            head_dim=head_dim,
-                                            kernel=kernels[i_layer],
-                                            input_resolution=(patches_resolution[0],
-                                                            patches_resolution[1]),
-                                            num_heads=num_heads, window_size=window_size,
-                                            shift_size=kernels[i_layer] // 2,
-                                            mlp_ratio=mlp_ratio,
-                                            qkv_bias=qkv_bias, qk_scale=qk_scale,
-                                            drop=drop_rate, attn_drop=attn_drop_rate,
-                                            drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
-                                            norm_layer=norm_layer)
-            
-            self.layers.append(layer)
+            if kernels[i_layer] == 32:
+                layer = ScatteredTransformerBlock(dim=embed_dim,
+                                                head_dim=head_dim,
+                                                kernel=kernels[i_layer],
+                                                input_resolution=(patches_resolution[0],
+                                                                patches_resolution[1]),
+                                                num_heads=num_heads, window_size=window_size,
+                                                shift_size=0,
+                                                mlp_ratio=mlp_ratio,
+                                                qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                                drop=drop_rate, attn_drop=attn_drop_rate,
+                                                drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
+                                                norm_layer=norm_layer)
+                self.layers.append(layer)
+            else:
+                layer = ScatteredTransformerBlock(dim=embed_dim,
+                                                head_dim=head_dim,
+                                                kernel=kernels[i_layer],
+                                                input_resolution=(patches_resolution[0],
+                                                                patches_resolution[1]),
+                                                num_heads=num_heads, window_size=window_size,
+                                                shift_size=0,
+                                                mlp_ratio=mlp_ratio,
+                                                qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                                drop=drop_rate, attn_drop=attn_drop_rate,
+                                                drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
+                                                norm_layer=norm_layer)
+                self.layers.append(layer)
+                layer = ScatteredTransformerBlock(dim=embed_dim,
+                                                head_dim=head_dim,
+                                                kernel=kernels[i_layer],
+                                                input_resolution=(patches_resolution[0],
+                                                                patches_resolution[1]),
+                                                num_heads=num_heads, window_size=window_size,
+                                                shift_size=kernels[i_layer] // 2,
+                                                mlp_ratio=mlp_ratio,
+                                                qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                                drop=drop_rate, attn_drop=attn_drop_rate,
+                                                drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
+                                                norm_layer=norm_layer)
+                
+                self.layers.append(layer)
         # self.layers.append(KernelTransformerBlock(dim=embed_dim,
         #                                     head_dim=head_dim,
         #                                     input_resolution=(patches_resolution[0],
