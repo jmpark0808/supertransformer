@@ -170,6 +170,9 @@ if __name__ == "__main__":
     parser.add_argument('--gunet_mode', help='GUnet mode, graclus or predefined pooling', default='graclus', type=str)
     parser.add_argument('--fully_connected', help='Use fully connected neighbourhood'
                         , default=False, action="store_true")
+    parser.add_argument('--kernels', default=[32, 32, 32, 32], 
+                    nargs="*", 
+                    type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
     
 
 

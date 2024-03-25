@@ -314,11 +314,11 @@ class ToTensorSPFFT(object):
         # plt.imshow(mark_boundaries(img_np, segments))
         # plt.show()
 
-        vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
-        vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
-        vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
-        vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
-        bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
+        # vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
+        # vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
+        # vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
+        # vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
+        # bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
     
 
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
