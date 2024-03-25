@@ -53,7 +53,7 @@ class SP_SWIN(nn.Module):
     Pure Global aggregation using transformers
     Deterministic Positional Encoding 
     '''
-    def __init__(self, nfeat, nhid, head_dim, nheads, ntfm, dropout, dropout_edge, kernels):
+    def __init__(self, nfeat, nhid, head_dim, nheads, ntfm, dropout, dropout_edge, kernels, window_size):
         """Dense version of GAT."""
         super().__init__()
         self.pos_linear = nn.Linear(2, nhid)
@@ -63,7 +63,7 @@ class SP_SWIN(nn.Module):
         'depths': None, #(tuple(int)): Depth of each Swin Transformer layer.
         'num_heads': nheads, #(tuple(int)): Number of attention heads in different layers.
         'kernels': kernels,
-        'window_size': 8, #(int): Window size. Default: 8
+        'window_size': window_size, #(int): Window size. Default: 8
         'mlp_ratio': 2.,#(float): Ratio of mlp hidden dim to embedding dim. Default: 4
         'qkv_bias': True,#(bool): If True, add a learnable bias to query, key, value. Default: True
         'qk_scale': None,#(float): Override default qk scale of head_dim ** -0.5 if set. Default: None
@@ -137,7 +137,7 @@ class SP_SWIN_ImageNet(nn.Module):
     '''
     SWIN Transformer for ImageNet 
     '''
-    def __init__(self, nfeat, nhid, head_dim, nheads, ntfm, dropout, dropout_edge, kernels):
+    def __init__(self, nfeat, nhid, head_dim, nheads, ntfm, dropout, dropout_edge, kernels, window_size):
         """Dense version of GAT."""
         super().__init__()
         self.pos_linear = nn.Linear(2, nhid)
@@ -147,7 +147,7 @@ class SP_SWIN_ImageNet(nn.Module):
         'depths': None, #(tuple(int)): Depth of each Swin Transformer layer.
         'num_heads': nheads, #(tuple(int)): Number of attention heads in different layers.
         'kernels': kernels,
-        'window_size': 8, #(int): Window size. Default: 8
+        'window_size': window_size, #(int): Window size. Default: 8
         'mlp_ratio': 2.,#(float): Ratio of mlp hidden dim to embedding dim. Default: 4
         'qkv_bias': True,#(bool): If True, add a learnable bias to query, key, value. Default: True
         'qk_scale': None,#(float): Override default qk scale of head_dim ** -0.5 if set. Default: None

@@ -84,6 +84,9 @@ if __name__ == "__main__":
     parser.add_argument('--compactness', help='Compactness for SLIC', type=float, default=10)
     parser.add_argument('--dilation', help='Dilation for local transformer', type=int, default=5)
     parser.add_argument('--size', help='Image size for DUTS', type=int, default=224)
+    parser.add_argument('--kernels', default=[32, 32, 32, 32], 
+                    nargs="*", 
+                    type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
 
 
 

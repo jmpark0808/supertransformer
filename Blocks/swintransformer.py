@@ -1564,12 +1564,13 @@ class SwinTransformer(nn.Module):
             #                                     norm_layer=norm_layer)
             #     self.layers.append(layer)
             # else:
+            # LOCAL attention
             layer = ScatteredTransformerBlock(dim=embed_dim,
                                             head_dim=head_dim,
-                                            kernel=8,
+                                            kernel=kernels[i_layer],
                                             input_resolution=(patches_resolution[0],
                                                             patches_resolution[1]),
-                                            num_heads=num_heads, window_size=8,
+                                            num_heads=num_heads, window_size=window_size,
                                             shift_size=0 if (i_layer % 2 == 0) else kernels[i_layer] // 2,
                                             mlp_ratio=mlp_ratio,
                                             qkv_bias=qkv_bias, qk_scale=qk_scale,
@@ -1577,12 +1578,13 @@ class SwinTransformer(nn.Module):
                                             drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
                                             norm_layer=norm_layer)
             self.layers.append(layer)
+            # GLOBAL Scattered
             layer = ScatteredTransformerBlock(dim=embed_dim,
                                             head_dim=head_dim,
-                                            kernel=kernels[i_layer],
+                                            kernel=32,
                                             input_resolution=(patches_resolution[0],
                                                             patches_resolution[1]),
-                                            num_heads=num_heads, window_size=8,
+                                            num_heads=num_heads, window_size=window_size,
                                             shift_size=0,
                                             mlp_ratio=mlp_ratio,
                                             qkv_bias=qkv_bias, qk_scale=qk_scale,
