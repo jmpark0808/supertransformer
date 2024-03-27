@@ -336,36 +336,44 @@ class ToTensorSPFFT(object):
             for i in range(self.coeff*2):
                 features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
-        
+ 
         features[label-1, 0] = regions['centroid-0']
         features[label-1, 1] = regions['centroid-1']
+        
         features[label-1, 2] = regions['intensity_mean-0']/255.
         features[label-1, 3] = regions['intensity_mean-1']/255.
         features[label-1, 4] = regions['intensity_mean-2']/255.
         features[label-1, 5] = regions['image_stdev-0']/255.
         features[label-1, 6] = regions['image_stdev-1']/255.
         features[label-1, 7] = regions['image_stdev-2']/255.
+
         
-
-
         for ind, coord in zip(regions['label'], regions['coords']):
             seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
 
-        neighbor_array = np.zeros([self.num_seg, self.num_seg])
-        # eye = np.eye(self.num_seg)
-        neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
-        neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
 
-        # neighbor_array -= eye
+        # if self.fully_connected:
+        #     neighbor_array = np.ones([self.num_seg, self.num_seg])
+        # else:
+        #     neighbor_array = np.zeros([self.num_seg, self.num_seg])
+        #     neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+        #     neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+        # edge_index = np.nonzero(neighbor_array)
 
-        spatial_distances_x = (features[:, 0:1] - features[:, 0:1].T)
-        spatial_distances_y = (features[:, 1:2] - features[:, 1:2].T)
-        edge_features = np.stack((spatial_distances_x, spatial_distances_y), axis=2)
 
+
+        # spatial_distances = euclidean_distances(features_centroids, features_centroids)
+        # spatial_distances = spatial_distances[edge_index]
+        
       
-        edge_features = torch.from_numpy(edge_features).float()
-        features, neighbor_array, seq_mask, segments, mask, img = torch.tensor(features).float(), torch.tensor(neighbor_array).float(), torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
-        return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask, 'img': img, 'neighbor_array': neighbor_array, 'edge_features': edge_features}
+        # edge_features = np.expand_dims(spatial_distances, axis=1)
+        
+
+        # d = Data(x=torch.tensor(features).float(), edge_index=edge_index, edge_attr=edge_features)
+        # seq_mask, segments, mask = torch.tensor(seq_mask).float(), torch.tensor(segments)
+        features, seq_mask, segments, mask, img = torch.tensor(features).float(),  torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
+        return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask, 'img': img}
+ 
 
 class ToTensorSPContour(object):
     def __init__(self, num_seg):
@@ -500,7 +508,7 @@ class SPDataset(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, compactness, data_augmentation=True, dataloader=None, coeff=None, ignore_phase=False):
         self.image_list = image_list
         self.mask_list = mask_list
-            
+        
         if dataloader == 'SP':
             totensor = ToTensorSP(num_seg, compactness)
         elif dataloader == 'SPFFT':
@@ -517,7 +525,7 @@ class SPDataset(data.Dataset):
         self.transform = transforms.Compose(
             [RandomFlip(0.5),
              RandomCrop(size, int(size*1.14)),
-            #  RandomAffine(30, 0.2, 0.3),
+             RandomAffine(15, 0.1, 0.1),
             #  RandomColorJitter(0.2, 0.2, 0.2, 0.2),
              Resize(size),
              totensor])
@@ -551,8 +559,9 @@ class SPDataset(data.Dataset):
         sample = self.transform(sample)
         sample['file_name'] = self.image_list[item]
         sample['mask'] = (sample['mask']>0.5).float()
-        if not os.path.exists(file_path):
-            np.save(file_path, sample)    
+        # if not os.path.exists(file_path):
+        #     np.save(file_path, sample)   
+        
         return sample
 
 
@@ -616,6 +625,7 @@ class SPDataModule(pl.LightningDataModule):
 
         self.test_image_list = sorted([os.path.join('{}/Image'.format(self.test_dir), f) for f in os.listdir('{}/Image'.format(self.test_dir))])
         self.test_mask_list = sorted([os.path.join('{}/Mask'.format(self.test_dir), f) for f in os.listdir('{}/Mask'.format(self.test_dir))])
+        
 
         
     def train_dataloader(self):

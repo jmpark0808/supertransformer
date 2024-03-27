@@ -82,9 +82,8 @@ class SP_SWIN(nn.Module):
     def forward(self, x):
         pos = x[:, :, :2]
         x = x[:, :, 2:]
-       
+        
         pos = self.pos_linear(pos)
-
         x = x.reshape(x.size(0), 32, 32, -1).permute(0, 3, 1, 2)
         x = self.model(x, pos)
 

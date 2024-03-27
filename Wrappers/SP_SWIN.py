@@ -162,7 +162,7 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         segments = batch['segments']
         mask = batch['mask']
 
-
+        
 
         # features = features.cuda()
         # seq_mask = seq_mask.cuda()
