@@ -87,6 +87,7 @@ if __name__ == "__main__":
     parser.add_argument('--kernels', default=[32, 32, 32, 32], 
                     nargs="*", 
                     type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
+    parser.add_argument('--window_size', help='Window size for SWIN Transformer', type=int, default=4)
 
 
 
