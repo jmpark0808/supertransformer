@@ -362,12 +362,12 @@ class SPDatasetExport(data.Dataset):
         image = self.image_list[item]
         mask = self.mask_list[item]
 
-        sp_file_name_features = image.split('/')[-1].split('.')[0]+'_features.npy'
-        sp_file_name_edge_index = image.split('/')[-1].split('.')[0]+'_edge_index.npy'
-        sp_file_name_edge_attr = image.split('/')[-1].split('.')[0]+'_edge_attr.npy'
-        sp_file_name_seq_mask = image.split('/')[-1].split('.')[0]+'_seq_mask.npy'
-        sp_file_name_segments = image.split('/')[-1].split('.')[0]+'_segments.npy'
-        sp_file_name_mask = image.split('/')[-1].split('.')[0]+'_mask.npy'
+        sp_file_name_features = "".join(image.split('/')[-2:]).split('.')[0]+'_features.npy'
+        sp_file_name_edge_index = "".join(image.split('/')[-2:]).split('.')[0]+'_edge_index.npy'
+        sp_file_name_edge_attr = "".join(image.split('/')[-2:]).split('.')[0]+'_edge_attr.npy'
+        sp_file_name_seq_mask = "".join(image.split('/')[-2:]).split('.')[0]+'_seq_mask.npy'
+        sp_file_name_segments = "".join(image.split('/')[-2:]).split('.')[0]+'_segments.npy'
+        sp_file_name_mask = "".join(image.split('/')[-2:]).split('.')[0]+'_mask.npy'
 
         sp_file_path_features = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_features )
         sp_file_path_edge_index = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_edge_index )
@@ -437,11 +437,11 @@ class SPDataset(data.Dataset):
       
 
         for item in range(len(self.image_list)):
-            sp_file_name_features = self.image_list[item].split('/')[-1].split('.')[0]+'_features.npy'
-            sp_file_name_edge_attr = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_attr.npy.npz'
-            sp_file_name_seq_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_seq_mask.npy'
-            sp_file_name_segments = self.image_list[item].split('/')[-1].split('.')[0]+'_segments.npy'
-            sp_file_name_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_mask.npy'
+            sp_file_name_features = "".join(self.image_list[item].split('/')[-2:]).split('.')[0]+'_features.npy'
+            sp_file_name_edge_attr = "".join(self.image_list[item].split('/')[-2:]).split('.')[0]+'_edge_attr.npy.npz'
+            sp_file_name_seq_mask = "".join(self.image_list[item].split('/')[-2:]).split('.')[0]+'_seq_mask.npy'
+            sp_file_name_segments = "".join(self.image_list[item].split('/')[-2:]).split('.')[0]+'_segments.npy'
+            sp_file_name_mask = "".join(self.image_list[item].split('/')[-2:]).split('.')[0]+'_mask.npy'
 
 
 
