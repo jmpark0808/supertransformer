@@ -354,6 +354,8 @@ class SPDatasetExport(data.Dataset):
 
         self.data_augmentation = data_augmentation
         os.makedirs(os.path.join(str(Path(self.image_list[0]).parents[1]), dataloader), exist_ok=True)
+        self.parent_directory = os.path.join(str(Path(self.image_list[0]).parents[1]), dataloader)
+       
 
     def __len__(self):
         return len(self.image_list)
@@ -369,12 +371,12 @@ class SPDatasetExport(data.Dataset):
         sp_file_name_segments = "".join(image.split('/')[-2:]).split('.')[0]+'_segments.npy'
         sp_file_name_mask = "".join(image.split('/')[-2:]).split('.')[0]+'_mask.npy'
 
-        sp_file_path_features = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_features )
-        sp_file_path_edge_index = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_edge_index )
-        sp_file_path_edge_attr = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_edge_attr )
-        sp_file_path_seq_mask = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_seq_mask )
-        sp_file_path_segments = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_segments )
-        sp_file_path_mask = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_mask )
+        sp_file_path_features = os.path.join(self.parent_directory,sp_file_name_features )
+        sp_file_path_edge_index = os.path.join(self.parent_directory,sp_file_name_edge_index )
+        sp_file_path_edge_attr = os.path.join(self.parent_directory,sp_file_name_edge_attr )
+        sp_file_path_seq_mask = os.path.join(self.parent_directory,sp_file_name_seq_mask )
+        sp_file_path_segments = os.path.join(self.parent_directory,sp_file_name_segments )
+        sp_file_path_mask = os.path.join(self.parent_directory,sp_file_name_mask )
         if os.path.exists(sp_file_path_features):
             return torch.empty(0)
     
@@ -435,7 +437,7 @@ class SPDataset(data.Dataset):
         self.mask = []
         
       
-
+        self.parent_directory = os.path.join(str(Path(self.image_list[0]).parents[1]), dataloader)
         for item in range(len(self.image_list)):
             sp_file_name_features = "".join(self.image_list[item].split('/')[-2:]).split('.')[0]+'_features.npy'
             sp_file_name_edge_attr = "".join(self.image_list[item].split('/')[-2:]).split('.')[0]+'_edge_attr.npy.npz'
@@ -446,11 +448,11 @@ class SPDataset(data.Dataset):
 
 
 
-            sp_file_path_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_features )
-            sp_file_path_edge_attr = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_attr )
-            sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_seq_mask )
-            sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_segments )
-            sp_file_path_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_mask)           
+            sp_file_path_features = os.path.join(self.parent_directory,sp_file_name_features )
+            sp_file_path_edge_attr = os.path.join(self.parent_directory,sp_file_name_edge_attr )
+            sp_file_path_seq_mask = os.path.join(self.parent_directory,sp_file_name_seq_mask )
+            sp_file_path_segments = os.path.join(self.parent_directory,sp_file_name_segments )
+            sp_file_path_mask = os.path.join(self.parent_directory,sp_file_name_mask)           
             
             features = np.load(sp_file_path_features)
             seq_mask = np.load(sp_file_path_seq_mask)
