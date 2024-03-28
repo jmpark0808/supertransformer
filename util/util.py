@@ -154,7 +154,8 @@ def get_input_dim(args):
         return 3
     elif d == 'SPF':
         return 13
-    elif d == 'SPFFFT' or d== 'SPGFFT' or d == 'ImageNet' :
+    elif d == 'SPFFFT' or d== 'SPGFFT' or d == 'ImageNet' or \
+        d == 'YD':
         if args.get('ignore_phase'):
             return 6+(args.get('coeff'))+10
         else:

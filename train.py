@@ -49,6 +49,7 @@ from dataset.superpixel_pyg import SPGDataModule
 from dataset.superpixel_pyg_image import SPGIDataModule
 from dataset.superpixel_fast import SPFDataModule
 from dataset.superpixel_fast_cnn import SPFCDataModule
+from dataset.youtube_davis import YDDataModule
 
 
 # Metric logging
@@ -113,7 +114,8 @@ DATALOADER_DIRECTORY = {
     'SPGI': SPGIDataModule,
     'SPF': SPFDataModule,
     'SPFFFT': SPFDataModule,
-    'SPFC': SPFCDataModule
+    'SPFC': SPFCDataModule,
+    'YD': YDDataModule
 
 } 
 
