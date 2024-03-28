@@ -534,7 +534,7 @@ class SPFDataModule(pl.LightningDataModule):
                                 self.res, self.compactness, self.dataloader, True,
                                   self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
         dummy_tr_loader = DataLoader(
-                dummy_tr, batch_size=self.batch_size, 
+                dummy_tr, batch_size=1, 
                 num_workers=self.num_workers, shuffle=False, pin_memory=False)
         
         for batch in tqdm(dummy_tr_loader):
@@ -549,10 +549,10 @@ class SPFDataModule(pl.LightningDataModule):
                                self.res,  self.compactness, self.dataloader,False, 
                                self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
         dummy_val_loader = DataLoader(
-                dummy_val, batch_size=self.batch_size, 
+                dummy_val, batch_size=1, 
                 num_workers=self.num_workers, pin_memory=False)
         dummy_test_loader = DataLoader(
-                dummy_test, batch_size=self.batch_size, 
+                dummy_test, batch_size=1, 
                 num_workers=self.num_workers, pin_memory=False)
         
         for batch in tqdm(dummy_val_loader):
