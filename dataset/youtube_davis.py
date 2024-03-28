@@ -438,31 +438,13 @@ class SPDataset(data.Dataset):
         
       
         self.parent_directory = os.path.join(str(Path(self.image_list[0]).parents[1]), dataloader)
-        for item in range(len(self.image_list)):
-            sp_file_name_features = "".join(self.image_list[item].split('/')[-2:]).split('.')[0]+'_features.npy'
-            sp_file_name_edge_attr = "".join(self.image_list[item].split('/')[-2:]).split('.')[0]+'_edge_attr.npy.npz'
-            sp_file_name_seq_mask = "".join(self.image_list[item].split('/')[-2:]).split('.')[0]+'_seq_mask.npy'
-            sp_file_name_segments = "".join(self.image_list[item].split('/')[-2:]).split('.')[0]+'_segments.npy'
-            sp_file_name_mask = "".join(self.image_list[item].split('/')[-2:]).split('.')[0]+'_mask.npy'
+        # for item in range(len(self.image_list)):
+           
 
-
-
-
-            sp_file_path_features = os.path.join(self.parent_directory,sp_file_name_features )
-            sp_file_path_edge_attr = os.path.join(self.parent_directory,sp_file_name_edge_attr )
-            sp_file_path_seq_mask = os.path.join(self.parent_directory,sp_file_name_seq_mask )
-            sp_file_path_segments = os.path.join(self.parent_directory,sp_file_name_segments )
-            sp_file_path_mask = os.path.join(self.parent_directory,sp_file_name_mask)           
-            
-            features = np.load(sp_file_path_features)
-            seq_mask = np.load(sp_file_path_seq_mask)
-            segments = np.load(sp_file_path_segments)
-            mask = np.load(sp_file_path_mask)
-
-            self.features.append(features)
-            self.seq_mask.append(seq_mask)
-            self.segments.append(segments)
-            self.mask.append(mask)
+        #     self.features.append(features)
+        #     self.seq_mask.append(seq_mask)
+        #     self.segments.append(segments)
+        #     self.mask.append(mask)
 
             
 
@@ -470,10 +452,29 @@ class SPDataset(data.Dataset):
         return len(self.image_list)
 
     def __getitem__(self, item):
-        features = self.features[item]
-        seq_mask = self.seq_mask[item]
-        segments = self.segments[item]
-        mask = self.mask[item]
+        # features = self.features[item]
+        # seq_mask = self.seq_mask[item]
+        # segments = self.segments[item]
+        # mask = self.mask[item]
+        sp_file_name_features = "".join(self.image_list[item].split('/')[-2:]).split('.')[0]+'_features.npy'
+        sp_file_name_edge_attr = "".join(self.image_list[item].split('/')[-2:]).split('.')[0]+'_edge_attr.npy.npz'
+        sp_file_name_seq_mask = "".join(self.image_list[item].split('/')[-2:]).split('.')[0]+'_seq_mask.npy'
+        sp_file_name_segments = "".join(self.image_list[item].split('/')[-2:]).split('.')[0]+'_segments.npy'
+        sp_file_name_mask = "".join(self.image_list[item].split('/')[-2:]).split('.')[0]+'_mask.npy'
+
+
+
+
+        sp_file_path_features = os.path.join(self.parent_directory,sp_file_name_features )
+        sp_file_path_edge_attr = os.path.join(self.parent_directory,sp_file_name_edge_attr )
+        sp_file_path_seq_mask = os.path.join(self.parent_directory,sp_file_name_seq_mask )
+        sp_file_path_segments = os.path.join(self.parent_directory,sp_file_name_segments )
+        sp_file_path_mask = os.path.join(self.parent_directory,sp_file_name_mask)           
+        
+        features = np.load(sp_file_path_features)
+        seq_mask = np.load(sp_file_path_seq_mask)
+        segments = np.load(sp_file_path_segments)
+        mask = np.load(sp_file_path_mask)
         
         
         
@@ -568,7 +569,7 @@ class YDDataModule(pl.LightningDataModule):
                                 self.res, self.compactness, self.dataloader, True,
                                   self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
         dummy_tr_loader = DataLoader(
-                dummy_tr, batch_size=1, 
+                dummy_tr, batch_size=10, 
                 num_workers=self.num_workers, shuffle=False, pin_memory=False)
         
         for batch in tqdm(dummy_tr_loader):
@@ -583,10 +584,10 @@ class YDDataModule(pl.LightningDataModule):
                                self.res,  self.compactness, self.dataloader,False, 
                                self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
         dummy_val_loader = DataLoader(
-                dummy_val, batch_size=1, 
+                dummy_val, batch_size=10, 
                 num_workers=self.num_workers, pin_memory=False)
         dummy_test_loader = DataLoader(
-                dummy_test, batch_size=1, 
+                dummy_test, batch_size=10, 
                 num_workers=self.num_workers, pin_memory=False)
         
         for batch in tqdm(dummy_val_loader):
