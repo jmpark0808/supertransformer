@@ -1584,7 +1584,7 @@ class SwinTransformer(nn.Module):
                                             kernel=32,
                                             input_resolution=(patches_resolution[0],
                                                             patches_resolution[1]),
-                                            num_heads=num_heads, window_size=window_size,
+                                            num_heads=num_heads, window_size=32//window_size,
                                             shift_size=0,
                                             mlp_ratio=mlp_ratio,
                                             qkv_bias=qkv_bias, qk_scale=qk_scale,
