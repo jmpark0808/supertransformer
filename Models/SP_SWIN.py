@@ -56,7 +56,7 @@ class SP_SWIN(nn.Module):
     def __init__(self, nfeat, nhid, head_dim, nheads, ntfm, dropout, dropout_edge, kernels, window_size):
         """Dense version of GAT."""
         super().__init__()
-        self.pos_linear = nn.Linear(2, nhid)
+        
         options = {'swin_hp': {'patch_size': 1,  # (int | tuple(int)): Patch size. Default: 4
         'embed_dim': nhid, #(int): Patch embedding dimension. Default: 96
         'head_dim': head_dim,
@@ -77,6 +77,7 @@ class SP_SWIN(nn.Module):
         }, 
         'in_channels': nfeat,
         'patch_size': 32}
+        self.pos_linear = nn.Linear(2, nhid)
         self.model = SwinTransformer(options = options)
         self.out = nn.Linear(nhid, 1)
     def forward(self, x):
@@ -84,6 +85,7 @@ class SP_SWIN(nn.Module):
         x = x[:, :, 2:]
         
         pos = self.pos_linear(pos)
+        # pos = pos.reshape(pos.size(0), 32, 32, -1)
         x = x.reshape(x.size(0), 32, 32, -1).permute(0, 3, 1, 2)
         x = self.model(x, pos)
 

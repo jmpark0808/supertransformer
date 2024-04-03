@@ -160,14 +160,16 @@ class WindowAttention(nn.Module):
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(head_dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
+        self.pe_linear = nn.Linear(2, num_heads)
 
         # trunc_normal_(self.relative_position_bias_table, std=.02)
         self.softmax = nn.Softmax(dim=-1)
 
-    def forward(self, x, mask=None):
+    def forward(self, x, pe, mask=None):
         """
         Args:
             x: input features with shape of (num_windows*B, N, C)
+            pe: positional encoding centroids (num_windows*B, N, 2)
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
         B_, N, C = x.shape
@@ -180,8 +182,11 @@ class WindowAttention(nn.Module):
         # relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
         #     self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
         # relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
-        attn = attn #+ relative_position_bias.unsqueeze(0)
 
+        # pe = pe.unsqueeze(2) - pe.unsqueeze(1) # num_windows*B, N, N, 2
+ 
+        attn = attn #+ self.pe_linear(pe).permute(0, 3, 1, 2)
+        
         # if mask is not None:
         #     nW = mask.shape[0]
         #     attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
@@ -542,7 +547,7 @@ class ScatteredTransformerBlock(nn.Module):
 
         self.register_buffer("attn_mask", attn_mask)
 
-    def forward(self, x):
+    def forward(self, x, pe):
         H, W = self.input_resolution
         B, L, C = x.shape
         assert L == H * W, f"input feature has wrong size"
@@ -550,19 +555,23 @@ class ScatteredTransformerBlock(nn.Module):
         shortcut = x
         x = self.norm1(x)
         x = x.view(B, H, W, C)
-
+        
         # cyclic shift
         if self.shift_size > 0:
             shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+            shifted_pe = torch.roll(pe, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
         else:
             shifted_x = x
-
+            shifted_pe = pe
+        
         # partition windows
         x_windows = scattered_partition(shifted_x, self.window_size, self.kernel, self.unfold1, self.unfold2)  # B*n*m, window_size, window_size, C
         x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # B*n*m, window_size*window_size, C
-
+        # pe_windows = scattered_partition(shifted_pe, self.window_size, self.kernel, self.unfold1, self.unfold2)
+        # pe_windows = pe_windows.view(-1, self.window_size * self.window_size, 2)
+        pe_windows = None
         # W-MSA/SW-MSA
-        attn_windows = self.attn(x_windows, mask=self.attn_mask)  # B*n*m, window_size*window_size, C
+        attn_windows = self.attn(x_windows, pe_windows, mask=self.attn_mask)  # B*n*m, window_size*window_size, C
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C) # B*n*m, window_size*window_size, C
@@ -1541,7 +1550,7 @@ class SwinTransformer(nn.Module):
         #     self.absolute_pos_embed = nn.Parameter(torch.zeros(1, num_patches, embed_dim))
         #     trunc_normal_(self.absolute_pos_embed, std=.02)
 
-        self.pos_drop = nn.Dropout(p=drop_rate)
+        # self.pos_drop = nn.Dropout(p=drop_rate)
 
         # stochastic depth
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, self.num_layers+1)]  # stochastic depth decay rule
@@ -1659,12 +1668,12 @@ class SwinTransformer(nn.Module):
 
     def forward_features(self, x, pos):
         x = self.patch_embed(x)
-        x = x + pos
-        x = self.pos_drop(x)
+        # x = x + pos
+        # x = self.pos_drop(x)
 
         
         for layer in self.layers:
-            x = layer(x)
+            x = layer(x, pos)
 
         return x
 

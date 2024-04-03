@@ -4,6 +4,7 @@ import os
 import random
 import time
 from re import X
+import git
 
 import pytorch_lightning as pl
 
@@ -176,6 +177,8 @@ if __name__ == "__main__":
                     nargs="*", 
                     type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
     parser.add_argument('--window_size', help='Window size for SWIN Transformer', type=int, default=4)
+    parser.add_argument('--memory', help='Whether to put the data into memory'
+                        , default=False, action="store_true")
     
     
 
@@ -185,6 +188,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     dict_args = vars(args)
+    repo = git.Repo(search_parent_directories=True)
+    sha = repo.head.object.hexsha
+    dict_args['git'] = sha
     
     pl.seed_everything(dict_args['seed'], True)
     # Initialize model to train

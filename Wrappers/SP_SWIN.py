@@ -9,6 +9,7 @@ import numpy as np
 from dataset.constants import *
 from util.util import get_input_dim
 
+
 class SP_SWIN_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
@@ -41,7 +42,8 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         #     checkpoint['state_dict'].pop('out.weight')
         #     checkpoint['state_dict'].pop('out.bias')
         #     self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
-
+        
+        
         self.save_hyperparameters()
         
 
@@ -132,7 +134,7 @@ class SP_SWIN_Wrapper(pl.LightningModule):
             samples.append(plt_image)
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1))
-     
+        
 
         prec, recall = torch.zeros(samples.shape[0], 1), torch.zeros(samples.shape[0], 1)
         pred = samples.reshape(samples.shape[0], -1)
@@ -157,6 +159,7 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         Compute the metrics for validation batch
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
+        tensorboard = self.logger.experiment
         features = batch['features']
         seq_mask = batch['seq_mask']
         segments = batch['segments']
@@ -186,6 +189,9 @@ class SP_SWIN_Wrapper(pl.LightningModule):
             samples.append(plt_image)
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
+        if batch_idx == 0 and dataloader_idx == 0:
+            tensorboard.add_images('Validation Pred', samples, self.test_iteration)
+            tensorboard.add_images('Validation GT', mask, self.test_iteration)
 
         mae = torch.mean(torch.abs(samples - mask))
         if dataloader_idx == 0:

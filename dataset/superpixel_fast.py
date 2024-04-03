@@ -415,7 +415,7 @@ class SPDatasetExport(data.Dataset):
 class SPDataset(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, compactness,
                   dataloader, data_augmentation=True, coeff=None,
-                    ignore_phase=False, fully_conneted=False, sigma=None, dilation=1):
+                    ignore_phase=False, fully_conneted=False, sigma=None, dilation=1, memory=True):
         self.image_list = image_list
         self.mask_list = mask_list
         self.fully_connected = fully_conneted
@@ -426,14 +426,53 @@ class SPDataset(data.Dataset):
         self.size = size
         self.dilation = dilation
         self.coeff = coeff
+        self.memory = memory
         self.features = []
         self.seq_mask = []
         self.segments = []
         self.mask = []
         
       
+        if memory:
 
-        for item in range(len(self.image_list)):
+            for item in range(len(self.image_list)):
+                sp_file_name_features = self.image_list[item].split('/')[-1].split('.')[0]+'_features.npy'
+                sp_file_name_edge_attr = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_attr.npy.npz'
+                sp_file_name_seq_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_seq_mask.npy'
+                sp_file_name_segments = self.image_list[item].split('/')[-1].split('.')[0]+'_segments.npy'
+                sp_file_name_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_mask.npy'
+
+
+
+
+                sp_file_path_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_features )
+                sp_file_path_edge_attr = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_attr )
+                sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_seq_mask )
+                sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_segments )
+                sp_file_path_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_mask)           
+                
+                features = np.load(sp_file_path_features)
+                seq_mask = np.load(sp_file_path_seq_mask)
+                segments = np.load(sp_file_path_segments)
+                mask = np.load(sp_file_path_mask)
+
+                self.features.append(features)
+                self.seq_mask.append(seq_mask)
+                self.segments.append(segments)
+                self.mask.append(mask)
+
+            
+
+    def __len__(self):
+        return len(self.image_list)
+
+    def __getitem__(self, item):
+        if self.memory:
+            features = self.features[item]
+            seq_mask = self.seq_mask[item]
+            segments = self.segments[item]
+            mask = self.mask[item]
+        else:
             sp_file_name_features = self.image_list[item].split('/')[-1].split('.')[0]+'_features.npy'
             sp_file_name_edge_attr = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_attr.npy.npz'
             sp_file_name_seq_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_seq_mask.npy'
@@ -453,22 +492,6 @@ class SPDataset(data.Dataset):
             seq_mask = np.load(sp_file_path_seq_mask)
             segments = np.load(sp_file_path_segments)
             mask = np.load(sp_file_path_mask)
-
-            self.features.append(features)
-            self.seq_mask.append(seq_mask)
-            self.segments.append(segments)
-            self.mask.append(mask)
-
-            
-
-    def __len__(self):
-        return len(self.image_list)
-
-    def __getitem__(self, item):
-        features = self.features[item]
-        seq_mask = self.seq_mask[item]
-        segments = self.segments[item]
-        mask = self.mask[item]
         
         
         
@@ -504,6 +527,7 @@ class SPFDataModule(pl.LightningDataModule):
         self.sigma = kwargs.get('sigma', None)
         self.dilation = kwargs.get('dilation')
         self.debug = kwargs.get('debug', False)
+        self.memory = kwargs.get('memory', False)
         
         self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
         self.mask_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.train_dir, 'Mask'))]))
@@ -570,7 +594,7 @@ class SPFDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.compactness, self.dataloader, True,
-                                  self.coeff, self.ignore_phase, self.fully_connected, self.sigma, self.dilation)
+                                  self.coeff, self.ignore_phase, self.fully_connected, self.sigma, self.dilation, self.memory)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=False)
@@ -578,10 +602,10 @@ class SPFDataModule(pl.LightningDataModule):
     def val_dataloader(self):
         data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg,
                               self.res, self.compactness, self.dataloader,False,
-                                self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
+                                self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation, self.memory)
         data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.dataloader,False, 
-                               self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
+                               self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation, self.memory)
         val_dataloader = DataLoader(
                 data_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
@@ -593,7 +617,7 @@ class SPFDataModule(pl.LightningDataModule):
     def test_dataloader(self):
         data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.dataloader, False,
-                                 self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation)
+                                 self.coeff, self.ignore_phase, self.fully_connected, None, self.dilation, self.memory)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
