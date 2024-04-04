@@ -559,10 +559,10 @@ class ScatteredTransformerBlock(nn.Module):
         # cyclic shift
         if self.shift_size > 0:
             shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
-            shifted_pe = torch.roll(pe, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+            # shifted_pe = torch.roll(pe, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
         else:
             shifted_x = x
-            shifted_pe = pe
+            # shifted_pe = pe
         
         # partition windows
         x_windows = scattered_partition(shifted_x, self.window_size, self.kernel, self.unfold1, self.unfold2)  # B*n*m, window_size, window_size, C
@@ -1550,7 +1550,7 @@ class SwinTransformer(nn.Module):
         #     self.absolute_pos_embed = nn.Parameter(torch.zeros(1, num_patches, embed_dim))
         #     trunc_normal_(self.absolute_pos_embed, std=.02)
 
-        # self.pos_drop = nn.Dropout(p=drop_rate)
+        self.pos_drop = nn.Dropout(p=drop_rate)
 
         # stochastic depth
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, self.num_layers+1)]  # stochastic depth decay rule
@@ -1666,21 +1666,21 @@ class SwinTransformer(nn.Module):
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
 
-    def forward_features(self, x, pos):
+    def forward_features(self, x, pos_x, pos_y):
         x = self.patch_embed(x)
-        # x = x + pos
-        # x = self.pos_drop(x)
+        x = x + torch.cat((pos_x, pos_y), dim=-1)
+        x = self.pos_drop(x)
 
         
         for layer in self.layers:
-            x = layer(x, pos)
+            x = layer(x, None)
 
         return x
 
 
 
-    def forward(self, x, pos):
-        x = self.forward_features(x, pos)
+    def forward(self, x, pos_x, pos_y):
+        x = self.forward_features(x, pos_x, pos_y)
 
 
         return x

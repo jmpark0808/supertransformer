@@ -77,17 +77,20 @@ class SP_SWIN(nn.Module):
         }, 
         'in_channels': nfeat,
         'patch_size': 32}
-        self.pos_linear = nn.Linear(2, nhid)
+        self.pos_linear_x = nn.Linear(1, nhid//2)
+        self.pos_linear_y = nn.Linear(1, nhid//2)
         self.model = SwinTransformer(options = options)
         self.out = nn.Linear(nhid, 1)
     def forward(self, x):
-        pos = x[:, :, :2]
+        pos_y = x[:, :, 0:1]
+        pos_x = x[:, :, 1:2]
         x = x[:, :, 2:]
         
-        pos = self.pos_linear(pos)
+        pos_y = self.pos_linear_y(pos_y)
+        pos_x = self.pos_linear_x(pos_x)
         # pos = pos.reshape(pos.size(0), 32, 32, -1)
         x = x.reshape(x.size(0), 32, 32, -1).permute(0, 3, 1, 2)
-        x = self.model(x, pos)
+        x = self.model(x, pos_x, pos_y)
 
         x = self.out(x)
         return x
