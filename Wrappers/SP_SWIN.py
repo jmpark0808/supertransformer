@@ -28,10 +28,11 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         self.dropout_edge = kwargs.get('dropout_edge')
         self.kernels = kwargs.get('kernels')
         self.window_size = kwargs.get('window_size')
+        self.image_size = kwargs.get('size')
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
         self.supert = SP_SWIN(input_dim, self.tfm_hp[1], self.tfm_hp[3], self.tfm_hp[0],self.tfm_hp[2],
-                               self.dropout, self.dropout_edge, self.kernels, self.window_size)
+                               self.dropout, self.dropout_edge, self.kernels, self.window_size, self.image_size)
         self.iteration = 0
         self.test_iteration = 0
         self.num_thresholds = 10

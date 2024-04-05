@@ -46,14 +46,37 @@ class SP_SWINU(nn.Module):
         x = self.out(x)
         return x
     
+class AxialRotaryEmbedding(nn.Module):
+    def __init__(self, dim, max_freq = 10):
+        super().__init__()
+        self.dim = dim
+        scales = torch.linspace(1., max_freq / 2, self.dim // 4)
+        self.register_buffer('scales', scales)
 
+    def forward(self, xs, ys):
+        # xs: batch_size, seq_len, 1
+        # ys: batch_size, seq_len, 1
+        device, dtype = xs.device, xs.dtype
+
+
+        scales = self.scales[(*((None,) * (len(xs.shape) - 1)), Ellipsis)]
+        scales = scales.to(device)
+
+        seq_x = xs * scales * math.pi
+        seq_y = ys * scales * math.pi
+
+        sin = torch.cat((seq_x.sin(), seq_y.sin()), dim = -1)
+        cos = torch.cat((seq_x.cos(), seq_y.cos()), dim = -1)
+
+        sin, cos = map(lambda t: repeat(t, 'b n d -> b n (d j)', j = 2), (sin, cos))
+        return sin, cos
 
 class SP_SWIN(nn.Module):
     '''
     Pure Global aggregation using transformers
     Deterministic Positional Encoding 
     '''
-    def __init__(self, nfeat, nhid, head_dim, nheads, ntfm, dropout, dropout_edge, kernels, window_size):
+    def __init__(self, nfeat, nhid, head_dim, nheads, ntfm, dropout, dropout_edge, kernels, window_size, image_size):
         """Dense version of GAT."""
         super().__init__()
         
@@ -77,20 +100,23 @@ class SP_SWIN(nn.Module):
         }, 
         'in_channels': nfeat,
         'patch_size': 32}
-        self.pos_linear_x = nn.Linear(1, nhid//2)
-        self.pos_linear_y = nn.Linear(1, nhid//2)
+        # self.pos_linear_x = nn.Linear(1, nhid//2)
+        # self.pos_linear_y = nn.Linear(1, nhid//2)
         self.model = SwinTransformer(options = options)
         self.out = nn.Linear(nhid, 1)
+        self.pos_emb =  AxialRotaryEmbedding(head_dim, max_freq=image_size)
+        self.image_size = image_size
     def forward(self, x):
-        pos_y = x[:, :, 0:1]
-        pos_x = x[:, :, 1:2]
+        pos_y = (x[:, :, 0:1]/self.image_size)*2-1
+        pos_x = (x[:, :, 1:2]/self.image_size)*2-1
         x = x[:, :, 2:]
         
-        pos_y = self.pos_linear_y(pos_y)
-        pos_x = self.pos_linear_x(pos_x)
+        # pos_y = self.pos_linear_y(pos_y)
+        # pos_x = self.pos_linear_x(pos_x)
+        pos_emb = self.pos_emb(pos_x, pos_y)
         # pos = pos.reshape(pos.size(0), 32, 32, -1)
         x = x.reshape(x.size(0), 32, 32, -1).permute(0, 3, 1, 2)
-        x = self.model(x, pos_x, pos_y)
+        x = self.model(x, pos_emb)
 
         x = self.out(x)
         return x

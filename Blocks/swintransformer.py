@@ -12,6 +12,7 @@ import torch.nn.functional as F
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import numpy as np
 import math
+from einops import repeat, rearrange
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
@@ -165,7 +166,7 @@ class WindowAttention(nn.Module):
         # trunc_normal_(self.relative_position_bias_table, std=.02)
         self.softmax = nn.Softmax(dim=-1)
 
-    def forward(self, x, pe, mask=None):
+    def forward(self, x, pos, mask=None):
         """
         Args:
             x: input features with shape of (num_windows*B, N, C)
@@ -175,8 +176,13 @@ class WindowAttention(nn.Module):
         B_, N, C = x.shape
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
-
+       
         q = q * self.scale
+
+        sin, cos = pos
+        sin = sin.unsqueeze(1)
+        cos = cos.unsqueeze(1)
+        q, k = map(lambda t: (t * cos) + (rotate_every_two(t) * sin), (q, k))
         attn = (q @ k.transpose(-2, -1))
 
         # relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
@@ -197,7 +203,7 @@ class WindowAttention(nn.Module):
 
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B_, N, self.num_heads, self.head_dim)
+        x = (attn @ v).transpose(1, 2).reshape(B_, N, self.num_heads,self.head_dim)
         x = torch.mean(x, dim=2)
         x = self.proj(x)
         x = self.proj_drop(x)
@@ -490,6 +496,14 @@ class KernelAttention(nn.Module):
         # x = self.proj(x)
         flops += N * self.dim * self.dim
         return flops
+    
+def rotate_every_two(x):
+    x = rearrange(x, '... (d j) -> ... d j', j = 2)
+    x1, x2 = x.unbind(dim = -1)
+    x = torch.stack((-x2, x1), dim = -1)
+    return rearrange(x, '... d j -> ... (d j)')
+
+
 
 class ScatteredTransformerBlock(nn.Module):
     r""" Swin Transformer Block.
@@ -547,7 +561,7 @@ class ScatteredTransformerBlock(nn.Module):
 
         self.register_buffer("attn_mask", attn_mask)
 
-    def forward(self, x, pe):
+    def forward(self, x, pos):
         H, W = self.input_resolution
         B, L, C = x.shape
         assert L == H * W, f"input feature has wrong size"
@@ -555,23 +569,30 @@ class ScatteredTransformerBlock(nn.Module):
         shortcut = x
         x = self.norm1(x)
         x = x.view(B, H, W, C)
+        sin, cos = pos
+        sin = sin.view(B, H, W, -1)
+        cos = cos.view(B, H, W, -1)
         
         # cyclic shift
         if self.shift_size > 0:
             shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
-            # shifted_pe = torch.roll(pe, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+            shifted_sin = torch.roll(sin, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+            shifted_cos= torch.roll(cos, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
         else:
             shifted_x = x
-            # shifted_pe = pe
+            shifted_sin = sin
+            shifted_cos = cos
         
         # partition windows
         x_windows = scattered_partition(shifted_x, self.window_size, self.kernel, self.unfold1, self.unfold2)  # B*n*m, window_size, window_size, C
         x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # B*n*m, window_size*window_size, C
-        # pe_windows = scattered_partition(shifted_pe, self.window_size, self.kernel, self.unfold1, self.unfold2)
-        # pe_windows = pe_windows.view(-1, self.window_size * self.window_size, 2)
-        pe_windows = None
+        sin_windows = scattered_partition(shifted_sin, self.window_size, self.kernel, self.unfold1, self.unfold2)
+        sin_windows = sin_windows.view(-1, self.window_size * self.window_size, self.head_dim)
+        cos_windows = scattered_partition(shifted_cos, self.window_size, self.kernel, self.unfold1, self.unfold2)
+        cos_windows = cos_windows.view(-1, self.window_size * self.window_size, self.head_dim)
+        # pe_windows = None
         # W-MSA/SW-MSA
-        attn_windows = self.attn(x_windows, pe_windows, mask=self.attn_mask)  # B*n*m, window_size*window_size, C
+        attn_windows = self.attn(x_windows, (sin_windows, cos_windows), mask=self.attn_mask)  # B*n*m, window_size*window_size, C
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C) # B*n*m, window_size*window_size, C
@@ -1666,21 +1687,21 @@ class SwinTransformer(nn.Module):
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
 
-    def forward_features(self, x, pos_x, pos_y):
+    def forward_features(self, x, pos):
         x = self.patch_embed(x)
-        x = x + torch.cat((pos_x, pos_y), dim=-1)
-        x = self.pos_drop(x)
+        # x = x + torch.cat((pos_x, pos_y), dim=-1)
+        # x = self.pos_drop(x)
 
         
         for layer in self.layers:
-            x = layer(x, None)
+            x = layer(x, pos)
 
         return x
 
 
 
-    def forward(self, x, pos_x, pos_y):
-        x = self.forward_features(x, pos_x, pos_y)
+    def forward(self, x, pos):
+        x = self.forward_features(x, pos)
 
 
         return x
