@@ -2,6 +2,27 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cv2
 from PIL import Image
+import math
+
+def rotate(origin, point, angle):
+    """
+    Rotate a point counterclockwise by a given angle around a given origin.
+
+    The angle should be given in radians.
+    """
+    ox, oy = origin
+    px, py = point
+
+    qx = ox + math.cos(angle) * (px - ox) - math.sin(angle) * (py - oy)
+    qy = oy + math.sin(angle) * (px - ox) + math.cos(angle) * (py - oy)
+    return qx, qy
+
+def horizontal_flip(xs):
+    mid_x = np.mean(xs)
+    diff_x = xs-mid_x
+    new_x = mid_x-diff_x
+    return new_x
+
 
 # rectangle = np.zeros([100, 100])
 # rectangle[30:70, 40:60] = 1
@@ -84,6 +105,7 @@ ax[0, 0].scatter(xi[1], yi[1], c='Green', label='Second')
 ax[0, 0].legend()
 ax[0, 0].set_title('Original')
 ax[0, 0].set_ylabel('Images')
+ax[0, 0].set_aspect('equal')
 
 ax[1, 0].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
 # ax[1, 0].plot(fourier_result.real[1:], label='Real')
@@ -94,25 +116,23 @@ ax[1, 0].set_ylabel('Amplitude')
 phase = np.arctan2(fourier_result.imag, fourier_result.real)
 ax[2, 0].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
 ax[2, 0].set_ylabel('Phase')
-print('Original', fourier_result.real[1:])
-# plt.scatter(xi[1:], yi[1:], c='blue')
-# plt.scatter(xi[0], yi[0], c='red')
-# plt.show()
 
 
-# TRANSLATION
-contour_array = np.stack((xi, yi), axis=1)+50
+
+# Changing starting point
+contour_array = np.stack((np.concatenate((xi[10:],xi[:10]) ), np.concatenate((yi[10:], yi[:10]))), axis=1)
 contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
 contour_complex.real = contour_array[:, 0]
 contour_complex.imag = contour_array[:, 1]
 fourier_result = np.fft.fft(contour_complex)
 
-ax[0, 1].scatter(xi[2:]+50, yi[2:]+50, c='blue')
-ax[0, 1].scatter(xi[0]+50, yi[0]+50, c='red', label='Start')
-ax[0, 1].scatter(xi[1]+50, yi[1]+50, c='Green', label='Second')
+ax[0, 1].scatter(xi[:10], yi[:10], c='blue')
+ax[0, 1].scatter(xi[12:], yi[12:], c='blue')
+ax[0, 1].scatter(xi[10], yi[10], c='red', label='Start')
+ax[0, 1].scatter(xi[11], yi[11], c='Green', label='Second')
 ax[0, 1].legend()
-ax[0, 1].set_title('Translated')
-
+ax[0, 1].set_title('New starting point')
+ax[0, 1].set_aspect('equal')
 ax[1, 1].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
 # ax[1, 1].plot(fourier_result.real[1:], label='Real')
 # ax[1, 1].plot(fourier_result.imag[1:], label='Imag')
@@ -121,57 +141,61 @@ ax[1, 1].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result
 phase = np.arctan2(fourier_result.imag, fourier_result.real)
 ax[2, 1].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
 
-print('Translated', fourier_result.real[1:])
-# SCALED
-contour_array = np.stack((xi*10, yi*10), axis=1)
-contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
-contour_complex.real = contour_array[:, 0]
-contour_complex.imag = contour_array[:, 1]
-fourier_result = np.fft.fft(contour_complex)
-ax[0, 2].scatter(xi[2:]*10, yi[2:]*10, c='blue')
-ax[0, 2].scatter(xi[0]*10, yi[0]*10, c='red', label='Start')
-ax[0, 2].scatter(xi[1]*10, yi[1]*10, c='Green', label='Second')
-ax[0, 2].legend()
-ax[0, 2].set_title('Scaled x 10')
 
-ax[1, 2].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
-# ax[1, 2].plot(fourier_result.real[1:], label='Real')
-# ax[1, 2].plot(fourier_result.imag[1:], label='Imag')
-# ax[1, 2].legend(loc='lower left')
-
-phase = np.arctan2(fourier_result.imag, fourier_result.real)
-ax[2, 2].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
-print('Scaled', fourier_result.real[1:])
 # ROTATION
 
-im = Image.fromarray(rectangle)
-rotated = im.rotate(30)
-rectangle_rotated = np.array(rotated)
+xc = np.mean(xi)
+yc = np.mean(yi)
 
-
-contour, hierarchy = cv2.findContours(rectangle_rotated, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-points_rotated = contour[0][:, 0, :]
-
-xi, yi = resample_2d(points_rotated, N)
-contour_array = np.stack((xi, yi), axis=1)
+xi_rotate, yi_rotate = rotate([xc, yc], [xi, yi], math.radians(90))
+contour_array = np.stack((xi_rotate, yi_rotate), axis=1)
 contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
 contour_complex.real = contour_array[:, 0]
 contour_complex.imag = contour_array[:, 1]
 fourier_result = np.fft.fft(contour_complex)
-ax[0, 3].scatter(xi[2:], yi[2:], c='blue')
-ax[0, 3].scatter(xi[0], yi[0], c='red', label='Start')
-ax[0, 3].scatter(xi[1], yi[1], c='Green', label='Second')
-ax[0, 3].legend()
-ax[0, 3].set_title('Rotated')
-
-ax[1, 3].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
+ax[0, 2].scatter(xi_rotate[2:], yi_rotate[2:], c='blue')
+ax[0, 2].scatter(xi_rotate[0], yi_rotate[0], c='red', label='Start')
+ax[0, 2].scatter(xi_rotate[1], yi_rotate[1], c='Green', label='Second')
+ax[0, 2].legend()
+ax[0, 2].set_title('Rotated')
+ax[0, 2].set_aspect('equal')
+ax[1, 2].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
 # ax[1, 3].plot(fourier_result.real[1:], label='Real')
 # ax[1, 3].plot(fourier_result.imag[1:], label='Imag')
 # ax[1, 3].legend(loc='lower left')
 
 phase = np.arctan2(fourier_result.imag, fourier_result.real)
+ax[2, 2].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
+
+
+# Horizontal Flip
+
+
+xi_flip = np.roll(np.flip(-xi), 1)#horizontal_flip(xi)
+yi_flip = np.roll(np.flip(yi), 1)
+contour_array = np.stack((xi_flip, yi_flip), axis=1)
+contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
+contour_complex.real = contour_array[:, 0]
+contour_complex.imag = contour_array[:, 1]
+fourier_result = np.fft.fft(contour_complex)
+ax[0, 3].scatter(xi_flip[2:], yi_flip[2:], c='blue')
+ax[0, 3].scatter(xi_flip[0], yi_flip[0], c='red', label='Start')
+ax[0, 3].scatter(xi_flip[1], yi_flip[1], c='Green', label='Second')
+ax[0, 3].legend()
+ax[0, 3].set_title('Horizontal Flipped')
+ax[0, 3].set_aspect('equal')
+ax[1, 3].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
+# ax[1, 3].plot(fourier_result.real[1:], label='Real')
+# ax[1, 3].plot(fourier_result.imag[1:], label='Imag')
+# ax[1, 3].legend(loc='lower left')
+print(fourier_result.imag)
+print(fourier_result.real)
+phase = np.arctan2(fourier_result.imag, fourier_result.real)
 ax[2, 3].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
-print('Rotated', fourier_result.real[1:])
+
+
+
+
 
 # Use less coefficients 
 # xi, yi = resample_2d(points, N)
@@ -241,3 +265,11 @@ fourier_result = np.fft.fft(contour_complex)
 # ax[2, 4].stem(list(range(len(phase[1:]))), phase[1:], 'b', markerfmt=" ", basefmt="-b")
 fig.supxlabel('Frequency (2nd and 3rd row)')
 plt.show()
+
+# plt.bar([0, 1, 2, 3], [0.7523, 0.7531, 0.7547, 0.758])
+# plt.xticks([0, 1,2,3],['4 Coef', '8 Coef', '12 Coef', '70 Coef'])
+# plt.errorbar([0, 1, 2, 3], [0.7523, 0.7531, 0.7547, 0.758], [0.006045, 0.004842, 0.0042, 0.002425], linestyle='None', marker='^', color='red')
+# plt.ylim((0.74, 0.77))
+# plt.ylabel('Test data Max F1 score')
+# plt.show()
+

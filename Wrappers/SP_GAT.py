@@ -27,7 +27,7 @@ class SP_GAT_Wrapper(pl.LightningModule):
         self.tfm_hp = kwargs.get('tfmhp')
 
         # Generator that produces the HeatMap
-        self.model = SP_GAT(11, self.tfm_hp[1], self.dropout, self.tfm_hp[0], self.tfm_hp[2], 0.2)
+        self.model = SP_GAT(9, self.tfm_hp[1], self.dropout, self.tfm_hp[0], self.tfm_hp[2], 0.2)
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()

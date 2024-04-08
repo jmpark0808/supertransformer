@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 import pickle
-from Analysis.contour_resample import resample_2d
+from Analysis.visualizations.contour_resample import resample_2d
 
 
 dataset_images = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Image'

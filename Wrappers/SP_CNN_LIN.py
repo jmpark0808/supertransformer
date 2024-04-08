@@ -22,9 +22,7 @@ class SP_CNN_LIN_Wrapper(pl.LightningModule):
         self.test_iteration = 0
         self.save_hyperparameters()
 
-        flops, params = get_model_complexity_info(self.model, input_res=(1, 11, 25, 25), 
-                                              as_strings=False, print_per_layer_stat=False)#input_constructor=prepare_input_gat,
-        print(flops)
+        
         
 
     def loss(self, pred, label):

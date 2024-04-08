@@ -133,4 +133,8 @@ log
 
 lightning_logs/
 models/
+visualization/
+demo/
 .vscode
+
+Models/SP_MAMBA.py

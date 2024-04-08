@@ -37,15 +37,24 @@ class PreBatchNorm(nn.Module):
         return self.fn(x, **kwargs)
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, hidden_dim, dropout = 0.):
+    def __init__(self, dim, hidden_dim, dropout = 0., out_dim=None):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(dim, hidden_dim),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, dim),
-            nn.Dropout(dropout)
-        )
+        if out_dim is None:
+            self.net = nn.Sequential(
+                nn.Linear(dim, hidden_dim),
+                nn.GELU(),
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim, dim),
+                nn.Dropout(dropout)
+            )
+        else:
+            self.net = nn.Sequential(
+                nn.Linear(dim, hidden_dim),
+                nn.GELU(),
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim, out_dim),
+                nn.Dropout(dropout)
+            )
     def forward(self, x):
         return self.net(x)
 
@@ -79,34 +88,60 @@ class Attention(nn.Module):
         return self.to_out(out)
 
 class PosAttention(nn.Module):
-    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0.):
+    def __init__(self, dim, dilation, heads = 8, dim_head = 64, dropout = 0., dropout_edge=0, edge_dim=1):
         super().__init__()
         inner_dim = dim_head *  heads
-        project_out = not (heads == 1 and dim_head == dim)
+        
 
         self.heads = heads
+        self.dim = dim_head
         self.scale = dim_head ** -0.5
+        self.dilation = dilation
 
         self.attend = nn.Softmax(dim = -1)
         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
+        # self.distances_linear = nn.Linear(2, dim_head)
 
-        self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, dim),
-            nn.Dropout(dropout)
-        ) if project_out else nn.Identity()
+        # self.lin_edge = nn.Linear(edge_dim, inner_dim)
+        self.dropout_edge = nn.Dropout(dropout_edge)
+        # self.distances_1 = nn.Linear(dim_head*heads, 1)
 
-    def forward(self, x, emb_x, emb_y):
+
+        # self.to_out = nn.Sequential(
+        #     nn.Linear(dim, dim),
+        #     nn.Dropout(dropout)
+        # ) 
+
+    def forward(self, x):
         qkv = self.to_qkv(x).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
 
+        
         dots = torch.matmul(q, k.transpose(-1, -2))
-        dots_x = torch.matmul(q, emb_x.transpose(-1, -2).unsqueeze(1).repeat(1, dots.size(1), 1, 1)) 
-        dots_y = torch.matmul(q, emb_y.transpose(-1, -2).unsqueeze(1).repeat(1, dots.size(1), 1, 1))
-        attn = self.attend((dots+dots_x+dots_y)*self.scale)
+        
+        attn = self.attend((dots)*self.scale)
+        attn = self.dropout_edge(attn)
+        
 
+        
         out = torch.matmul(attn, v)
-        out = rearrange(out, 'b h n d -> b n (h d)')
-        return self.to_out(out)
+        # out = rearrange(out, 'b h n d -> b n (h d)')
+        out = torch.mean(out, dim=1)
+        
+        # return self.to_out(out)
+        return out
+    
+    def skew(self, QEr):
+        # QEr.shape = (batch_size, num_heads, seq_len, seq_len)
+        padded = F.pad(QEr, (1, 0))
+        # padded.shape = (batch_size, num_heads, seq_len, 1 + seq_len)
+        batch_size, num_heads, num_rows, num_cols = padded.shape
+        reshaped = padded.reshape(batch_size, num_heads, num_cols, num_rows)
+        # reshaped.size = (batch_size, num_heads, 1 + seq_len, seq_len)
+        Srel = reshaped[:, :, 1:, :]
+        # Srel.shape = (batch_size, num_heads, seq_len, seq_len)
+        return Srel
+
 
 class GraphAttention(nn.Module):
     def __init__(self, dim,  heads = 8, dim_head = 64, dropout = 0.):
@@ -212,18 +247,24 @@ class Transformer(nn.Module):
         return x
 
 class PosTransformer(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
+    def __init__(self, dim, dilation, depth, heads, dim_head, mlp_dim, dropout = 0., dropout_edge=0.):
         super().__init__()
         self.layers = nn.ModuleList([])
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                PreNorm(dim, PosAttention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
+                PreNorm(dim, PosAttention(dim, dilation, heads = heads, dim_head = dim_head, dropout = dropout, dropout_edge=dropout_edge)),
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
-    def forward(self, x, emb_x, emb_y):
-        for attn, ff in self.layers:
-            x = attn(x, emb_x=emb_x, emb_y=emb_y) + x
+    def forward(self, x):
+        for idx, (attn, ff) in enumerate(self.layers):
+            x = attn(x) + x
             x = ff(x) + x
+            # if idx == 0:
+            #     x = attn(x, emb=emb, adj=adj, edge_attr=distances) + x
+            #     x = ff(x) + x
+            # else:
+            #     x = attn(x, emb=emb, adj=adj, edge_attr=None) + x
+            #     x = ff(x) + x
         return x
 
 class GraphConvTransformer(nn.Module):
