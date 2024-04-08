@@ -23,7 +23,7 @@ class SuperLinear(pl.LightningModule):
         def get_seq_len():
             img_np = np.random.rand(300, 300, 3).astype(np.uint8)
             slic = SlicAvx2(num_components=self.num_seg, compactness=10, min_size_factor=0)
-            segments = slic.iterate(img_np)
+            segments = slic.iterate(img_np)+1
 
             regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'area', 'intensity_mean', 'extent', 'coords', 'eccentricity'))
             seq_len = len(regions['label'])

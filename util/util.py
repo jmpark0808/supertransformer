@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import numpy as np
-
+from dataset.constants import *
 
 def estimate_memory_training(model, sample_input, optimizer_type=torch.optim.Adam, batch_size=1, use_amp=False, device=0):
     """Predict the maximum memory usage of the model. 
@@ -146,3 +146,75 @@ def resample_2d(points, N):
     xi = np.interp(dSi, d, xc)
     yi = np.interp(dSi, d, yc)
     return xi, yi
+
+
+def get_input_dim(args):
+    d = args.get('dataloader')
+    if d == 'SP' or d == 'SPLAP' or d == 'INPE':
+        return 3
+    elif d == 'SPF':
+        return 13
+    elif d == 'SPFFFT' or d== 'SPGFFT' or d == 'ImageNet' or \
+        d == 'YD':
+        if args.get('ignore_phase'):
+            return 6+(args.get('coeff'))+10
+        else:
+            return 6+(args.get('coeff')*2)+10
+    elif d == 'SPFFT'  or \
+    d== 'SPGIFFT' or d == 'ImageNet_PyG':
+        if args.get('ignore_phase'):
+            return 6+(args.get('coeff'))
+        else:
+            return 6+(args.get('coeff')*2)
+    elif d == 'SPG' or d == 'SPGI':
+        return 3
+    else:
+        raise 'Unrecognized dataloader'
+    
+
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+
+def create_batch_grid(rows, cols):
+    grid = torch.zeros([rows, cols], device='cuda')
+    col_starter = 0 
+    for i in range(rows):
+        shifter = 0 
+        for j in range(cols):
+            grid[i, j] = col_starter+shifter
+            if j % 2 == 1:
+                shifter += 1
+        if i%2 == 1:
+            col_starter += cols
+    
+    return grid.long()
+
+def create_edge_index(rows, cols):
+    grid = torch.arange(0, rows*cols).reshape(rows, cols)
+    edge_index = []
+    for i in range(rows):
+        for j in range(cols):
+            seed_node = grid[i, j]
+            for h, v in [[-1, 0], [1, 0], [0, -1], [0, 1]]:
+                if 0<=i+h<rows and 0<=j+v<cols:
+                    edge_index.append([seed_node, grid[i+h, j+v]])
+    edge_index = torch.tensor(edge_index, dtype=torch.int64, device='cuda').permute(1, 0)
+
+    del grid
+    return edge_index
+
