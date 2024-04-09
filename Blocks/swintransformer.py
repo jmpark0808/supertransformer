@@ -188,7 +188,7 @@ class WindowAttention(nn.Module):
         # sin = sin.unsqueeze(1)
         # cos = cos.unsqueeze(1)
         # q, k = map(lambda t: (t * cos) + (rotate_every_two(t) * sin), (q, k))
-        attn = ((q+rpe) @ (k+rpe).transpose(-2, -1))
+        attn = (q @ (k+rpe).transpose(-2, -1)) + (q @ rpe.transpose(-2, -1))
 
         # relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
         #     self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
