@@ -165,8 +165,9 @@ class WindowAttention(nn.Module):
 
         # trunc_normal_(self.relative_position_bias_table, std=.02)
         self.softmax = nn.Softmax(dim=-1)
+        self.pos_linear = nn.Linear(window_size[0]*window_size[1], num_heads*head_dim)
 
-    def forward(self, x,mask=None):
+    def forward(self, x, pos, mask=None):
         """
         Args:
             x: input features with shape of (num_windows*B, N, C)
@@ -179,11 +180,15 @@ class WindowAttention(nn.Module):
        
         q = q * self.scale
 
+        rpe = self.pos_linear(torch.sqrt(torch.sum(torch.pow(pos.unsqueeze(2) - pos.unsqueeze(1), 2), -1))) # B, N, H*D
+ 
+        rpe = rpe.reshape(B_, N, self.num_heads, -1).permute(0, 2, 1, 3)
+       
         # sin, cos = pos
         # sin = sin.unsqueeze(1)
         # cos = cos.unsqueeze(1)
         # q, k = map(lambda t: (t * cos) + (rotate_every_two(t) * sin), (q, k))
-        attn = (q @ k.transpose(-2, -1))
+        attn = ((q+rpe) @ (k+rpe).transpose(-2, -1))
 
         # relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
         #     self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
@@ -561,7 +566,7 @@ class ScatteredTransformerBlock(nn.Module):
 
         self.register_buffer("attn_mask", attn_mask)
 
-    def forward(self, x):
+    def forward(self, x, pos):
         H, W = self.input_resolution
         B, L, C = x.shape
         assert L == H * W, f"input feature has wrong size"
@@ -576,23 +581,28 @@ class ScatteredTransformerBlock(nn.Module):
         # cyclic shift
         if self.shift_size > 0:
             shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+            shifted_pos = torch.roll(pos, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
             # shifted_sin = torch.roll(sin, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
             # shifted_cos= torch.roll(cos, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
         else:
             shifted_x = x
+            shifted_pos = pos
             # shifted_sin = sin
             # shifted_cos = cos
         
         # partition windows
         x_windows = scattered_partition(shifted_x, self.window_size, self.kernel, self.unfold1, self.unfold2)  # B*n*m, window_size, window_size, C
         x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # B*n*m, window_size*window_size, C
+        pe_windows = scattered_partition(shifted_pos, self.window_size, self.kernel, self.unfold1, self.unfold2)
+        pe_windows = pe_windows.view(-1, self.window_size * self.window_size, 2)
         # sin_windows = scattered_partition(shifted_sin, self.window_size, self.kernel, self.unfold1, self.unfold2)
         # sin_windows = sin_windows.view(-1, self.window_size * self.window_size, self.head_dim)
         # cos_windows = scattered_partition(shifted_cos, self.window_size, self.kernel, self.unfold1, self.unfold2)
         # cos_windows = cos_windows.view(-1, self.window_size * self.window_size, self.head_dim)
         # pe_windows = None
         # W-MSA/SW-MSA
-        attn_windows = self.attn(x_windows, mask=self.attn_mask)  # B*n*m, window_size*window_size, C
+        
+        attn_windows = self.attn(x_windows, pe_windows, mask=self.attn_mask)  # B*n*m, window_size*window_size, C
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C) # B*n*m, window_size*window_size, C
@@ -1689,12 +1699,12 @@ class SwinTransformer(nn.Module):
 
     def forward_features(self, x, pos):
         x = self.patch_embed(x)
-        x = x + pos
-        x = self.pos_drop(x)
+        # x = x + pos
+        # x = self.pos_drop(x)
 
         
         for layer in self.layers:
-            x = layer(x)
+            x = layer(x, pos)
 
         return x
 
