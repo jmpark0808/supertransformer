@@ -60,9 +60,7 @@ for batch in spg_loader:
   
  
     cos = nn.CosineSimilarity(dim=0)
-    output = centroids[0]
-    
-    output = torch.sqrt(torch.sum(torch.pow(output.unsqueeze(1) - output.unsqueeze(0), 2), dim=-1)).reshape(32, 32, -1)
+    output = centroids[0].reshape(32, 32, -1)-160
     import matplotlib.pyplot as plt
     import numpy as np
     # fig, ax = plt.subplots(32, 32)
@@ -88,7 +86,7 @@ for batch in spg_loader:
     #         if k == 31:
     #             ax[k, l].set_xlabel(f'{l+1}')
         
-    # fig.suptitle('Relative Distance Cosine Similarity')
+    # fig.suptitle('Coordinates Cosine Similarity')
     # plt.show()
 
     
