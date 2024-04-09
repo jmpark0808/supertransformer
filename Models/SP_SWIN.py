@@ -46,30 +46,68 @@ class SP_SWINU(nn.Module):
         x = self.out(x)
         return x
     
+# class AxialRotaryEmbedding(nn.Module):
+#     def __init__(self, dim, max_freq = 10):
+#         super().__init__()
+#         self.dim = dim
+#         scales = torch.linspace(1., max_freq / 2, self.dim // 4)
+#         self.register_buffer('scales', scales)
+
+#     def forward(self, xs, ys):
+#         # xs: batch_size, seq_len, 1
+#         # ys: batch_size, seq_len, 1
+#         device, dtype = xs.device, xs.dtype
+
+
+#         scales = self.scales[(*((None,) * (len(xs.shape) - 1)), Ellipsis)]
+#         scales = scales.to(device)
+
+#         seq_x = xs * scales * math.pi # N x d//4
+#         seq_y = ys * scales * math.pi # N x d//4
+
+#         sin = torch.cat((seq_x.sin(), seq_y.sin()), dim = -1) # N x d//2
+#         cos = torch.cat((seq_x.cos(), seq_y.cos()), dim = -1) # N x d//2
+
+#         sin, cos = map(lambda t: repeat(t, 'b n d -> b n (d j)', j = 2), (sin, cos))
+#         return sin, cos
+    
 class AxialRotaryEmbedding(nn.Module):
     def __init__(self, dim, max_freq = 10):
         super().__init__()
         self.dim = dim
         scales = torch.linspace(1., max_freq / 2, self.dim // 4)
+        self.d = torch.arange(1, self.dim//4+1, device='cuda')
         self.register_buffer('scales', scales)
 
     def forward(self, xs, ys):
-        # xs: batch_size, seq_len, 1
-        # ys: batch_size, seq_len, 1
-        device, dtype = xs.device, xs.dtype
+        
+
+        # seq = torch.linspace(-1., 1., steps = n, device = device)
+        # seq = seq.unsqueeze(-1)
+
+        # scales = self.scales[(*((None,) * (len(seq.shape) - 1)), Ellipsis)]
+        # scales = scales.to(x)
+        seq_x = xs
+        seq_y = ys
 
 
-        scales = self.scales[(*((None,) * (len(xs.shape) - 1)), Ellipsis)]
-        scales = scales.to(device)
 
-        seq_x = xs * scales * math.pi
-        seq_y = ys * scales * math.pi
+        theta = (10000**(-2.*(self.d-1)/self.dim))
+        theta = theta.unsqueeze(0).unsqueeze(0)
 
-        sin = torch.cat((seq_x.sin(), seq_y.sin()), dim = -1)
-        cos = torch.cat((seq_x.cos(), seq_y.cos()), dim = -1)
+        seq_x = seq_x * theta # N^2 x d//4
+        seq_y = seq_y * theta # N^2 x d//4
+
+
+        # x_sinu = repeat(seq, 'i d -> i j d', j = n)
+        # y_sinu = repeat(seq, 'j d -> i j d', i = n)
+
+        sin = torch.cat((seq_x.sin(), seq_y.sin()), dim = -1) # N^2 x d//2
+        cos = torch.cat((seq_x.cos(), seq_y.cos()), dim = -1) # N^2 x d//2
 
         sin, cos = map(lambda t: repeat(t, 'b n d -> b n (d j)', j = 2), (sin, cos))
         return sin, cos
+
 
 class SP_SWIN(nn.Module):
     '''

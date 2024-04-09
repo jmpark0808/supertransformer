@@ -38,13 +38,19 @@ class AxialRotaryEmbedding(nn.Module):
     def forward(self, x):
         device, dtype, n = x.device, x.dtype, int(math.sqrt(x.shape[-2]))
 
-        seq = torch.linspace(-1., 1., steps = n, device = device)
+        # seq = torch.linspace(-1., 1., steps = n, device = device)
+        # seq = seq.unsqueeze(-1)
+
+        # scales = self.scales[(*((None,) * (len(seq.shape) - 1)), Ellipsis)]
+        # scales = scales.to(x)
+        seq = torch.arange(1, n+1)
         seq = seq.unsqueeze(-1)
 
-        scales = self.scales[(*((None,) * (len(seq.shape) - 1)), Ellipsis)]
-        scales = scales.to(x)
+        d = torch.arange(1, self.dim//4+1)
+        theta = (10000**(-2.*(d-1)/self.dim))
+        theta = theta.unsqueeze(0)
 
-        seq = seq * scales * math.pi
+        seq = seq * theta
 
         x_sinu = repeat(seq, 'i d -> i j d', j = n)
         y_sinu = repeat(seq, 'j d -> i j d', i = n)
@@ -66,7 +72,7 @@ cos = nn.CosineSimilarity(dim=0)
 output = q.reshape(25, 25, -1)
 import matplotlib.pyplot as plt
 import numpy as np
-fig, ax = plt.subplots(25, 25)
+# fig, ax = plt.subplots(25, 25)
 count = 0 
 for k in range(25):
     for l in range(25):
@@ -82,15 +88,15 @@ for k in range(25):
         plt.savefig(f"/home/eddie/Downloads/gif_rope/{count}.png")
         plt.clf()
         count += 1
-        # ax[k, l].imshow(np.array(patches).reshape(25, 25), cmap='hot', vmin=0, vmax=1)
-        # ax[k, l].set_xticks([])
-        # ax[k, l].set_yticks([])
-        # if l == 0:
-        #     ax[k, l].set_ylabel(f'{k+1}') 
-        # if k == 24:
-        #     ax[k, l].set_xlabel(f'{l+1}')
+#         ax[k, l].imshow(np.array(patches).reshape(25, 25), cmap='hot', vmin=0, vmax=1)
+#         ax[k, l].set_xticks([])
+#         ax[k, l].set_yticks([])
+#         if l == 0:
+#             ax[k, l].set_ylabel(f'{k+1}') 
+#         if k == 24:
+#             ax[k, l].set_xlabel(f'{l+1}')
     
-# fig.suptitle('SuperFormer Positional Encoding Cosine Similarity')
+# fig.suptitle('Rotary Positional Encoding Cosine Similarity')
 # plt.show()
 
 
