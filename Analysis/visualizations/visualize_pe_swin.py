@@ -51,13 +51,13 @@ for batch in spg_loader:
 
     features = batch['features']
     img_name = batch['file_name']
-    img = Image.open(img_name[0]).resize((224, 224))
-    plt.imshow(img)
-    for i in range(0, 224, 32):
-        if i != 224 and i !=0:
-            plt.axhline(y=i, c='r', linewidth=3)
-            plt.axvline(x=i, c='r', linewidth=3)
-    plt.show()
+    # img = Image.open(img_name[0]).resize((224, 224))
+    # plt.imshow(img)
+    # for i in range(0, 224, 32):
+    #     if i != 224 and i !=0:
+    #         plt.axhline(y=i, c='r', linewidth=3)
+    #         plt.axvline(x=i, c='r', linewidth=3)
+    # plt.show()
     
 
     # np.save(f'/mnt/dragon/gat_logs/features_x_{batch_idx}', features.x.detach().cpu().numpy())
@@ -70,43 +70,45 @@ for batch in spg_loader:
     centroids = features[:, :, :2]
   
     output = dummy_linear(centroids)[0]
-    plt.rcParams['axes.facecolor']='black'
-    for i in range(32):
-        if i % 2 == 0:
-            plt.scatter(centroids[0, i*32:i*32+32, 1].detach().cpu().numpy(), -centroids[0, i*32:i*32+32, 0].detach().cpu().numpy(), c=list(range(31, -1, -1)), cmap='YlOrBr')
-        else:
-            plt.scatter(centroids[0, i*32:i*32+32, 1].detach().cpu().numpy(), -centroids[0, i*32:i*32+32, 0].detach().cpu().numpy(), c=list(range(32)), cmap='GnBu')
+    # plt.rcParams['axes.facecolor']='black'
+    # for i in range(32):
+    #     if i % 2 == 0:
+    #         plt.scatter(centroids[0, i*32:i*32+32, 1].detach().cpu().numpy(), -centroids[0, i*32:i*32+32, 0].detach().cpu().numpy(), c=list(range(31, -1, -1)), cmap='YlOrBr')
+    #     else:
+    #         plt.scatter(centroids[0, i*32:i*32+32, 1].detach().cpu().numpy(), -centroids[0, i*32:i*32+32, 0].detach().cpu().numpy(), c=list(range(32)), cmap='GnBu')
     
-    plt.show()
-    cos = nn.CosineSimilarity(dim=0)
+    # plt.show()
+    # cos = nn.CosineSimilarity(dim=0)
     output = output.reshape(32, 32, -1)
     import matplotlib.pyplot as plt
     import numpy as np
-    # fig, ax = plt.subplots(32, 32)
+    fig, ax = plt.subplots(32, 32)
     count = 0 
     for k in range(32):
         for l in range(32):
             patches = []
             for i in range(32):
                 for j in range(32):
-                    patches.append(cos(output[k, l], output[i, j]).detach().cpu().numpy())
+                    # patches.append(cos(output[k, l], output[i, j]).detach().cpu().numpy())
+                   patches.append(torch.sqrt(torch.sum(torch.pow(output[k, l]-output[i, j], 2))).detach().cpu().numpy())
+                   print(torch.sqrt(torch.sum(torch.pow(output[k, l]-output[i, j], 2))).detach().cpu().numpy())
 
-            plt.imshow(np.array(patches).reshape(32, 32), cmap='hot')
-            plt.scatter(l, k, c='green', marker='s')
-            plt.title(f'Seed row {k}, column {l}')
-            plt.savefig(f"/home/eddie/Downloads/gif_pe/{count}.png")
-            plt.clf()
-            count += 1
-    #         ax[k, l].imshow(np.array(patches).reshape(32, 32), cmap='hot')
-    #         ax[k, l].set_xticks([])
-    #         ax[k, l].set_yticks([])
-    #         if l == 0:
-    #             ax[k, l].set_ylabel(f'{k+1}') 
-    #         if k == 31:
-    #             ax[k, l].set_xlabel(f'{l+1}')
+            # plt.imshow(np.array(patches).reshape(32, 32), cmap='hot')
+            # plt.scatter(l, k, c='green', marker='s')
+            # plt.title(f'Seed row {k}, column {l}')
+            # plt.savefig(f"/home/eddie/Downloads/gif_pe/{count}.png")
+            # plt.clf()
+            # count += 1
+            ax[k, l].imshow(np.array(patches).reshape(32, 32), cmap='hot')
+            ax[k, l].set_xticks([])
+            ax[k, l].set_yticks([])
+            if l == 0:
+                ax[k, l].set_ylabel(f'{k+1}') 
+            if k == 31:
+                ax[k, l].set_xlabel(f'{l+1}')
         
-    # fig.suptitle('SuperFormer Positional Encoding Cosine Similarity')
-    # plt.show()
+    fig.suptitle('SuperFormer Positional Encoding Euclidean distance')
+    plt.show()
 
     
     assert(0)
