@@ -6,6 +6,7 @@
 from transformers import ViTImageProcessor, ViTModel
 from PIL import Image
 import requests
+import torch
 
 url = 'http://images.cocodataset.org/val2017/000000039769.jpg'
 image = Image.open(requests.get(url, stream=True).raw)
@@ -30,7 +31,7 @@ for k in range(7):
         patches = []
         for i in range(7):
             for j in range(7):
-                patches.append(cos(pos_patch[k, l], pos_patch[i, j]).detach().cpu().numpy())
+                patches.append(torch.sqrt(torch.sum(torch.pow(pos_patch[k, l]-pos_patch[i, j], 2))).detach().cpu().numpy())
         ax[k, l].imshow(np.array(patches).reshape(7, 7), cmap='hot')
         ax[k, l].set_xticks([])
         ax[k, l].set_yticks([])
@@ -41,6 +42,6 @@ for k in range(7):
         
 
 
-fig.suptitle('Vision Transformer Positional Encoding Cosine Similarity')
+fig.suptitle('Vision Transformer Positional Encoding Euclidean Distance')
 plt.show()
 

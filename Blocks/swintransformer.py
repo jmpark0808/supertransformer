@@ -165,7 +165,8 @@ class WindowAttention(nn.Module):
 
         # trunc_normal_(self.relative_position_bias_table, std=.02)
         self.softmax = nn.Softmax(dim=-1)
-        self.pos_linear = nn.Linear(window_size[0]*window_size[1], num_heads*head_dim)
+        self.pos_linear_k = nn.Linear(2, head_dim)
+        self.pos_linear_v = nn.Linear(2, head_dim)
 
     def forward(self, x, pos, mask=None):
         """
@@ -176,19 +177,24 @@ class WindowAttention(nn.Module):
         """
         B_, N, C = x.shape
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+        q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple) B, H, N, D
        
         q = q * self.scale
 
-        rpe = self.pos_linear(torch.sqrt(torch.sum(torch.pow(pos.unsqueeze(2) - pos.unsqueeze(1), 2), -1))) # B, N, H*D
+        # rpe = self.pos_linear(torch.sqrt(torch.sum(torch.pow(pos.unsqueeze(2) - pos.unsqueeze(1), 2), -1))) # B, N, H*D
+        rpe = pos.unsqueeze(2) - pos.unsqueeze(1) # B, N, N, 2
+        rpe_k = self.pos_linear_k(rpe) # B, N, N, D
+        
+        rpe_v = self.pos_linear_v(rpe) # B, N, N, D
  
-        rpe = rpe.reshape(B_, N, self.num_heads, -1).permute(0, 2, 1, 3)
+        # rpe = rpe.reshape(B_, N, self.num_heads, -1).permute(0, 2, 1, 3)
        
         # sin, cos = pos
         # sin = sin.unsqueeze(1)
         # cos = cos.unsqueeze(1)
         # q, k = map(lambda t: (t * cos) + (rotate_every_two(t) * sin), (q, k))
-        attn = (q @ (k+rpe).transpose(-2, -1)) + (q @ rpe.transpose(-2, -1))
+        
+        attn = (q @ k.transpose(-2, -1)) + (q.transpose(1, 2) @ rpe_k.permute(0, 1, 3, 2)).permute(0, 2, 1, 3)
 
         # relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
         #     self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
@@ -208,7 +214,7 @@ class WindowAttention(nn.Module):
 
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B_, N, self.num_heads,self.head_dim)
+        x = (attn @ v).transpose(1, 2).reshape(B_, N, self.num_heads,self.head_dim)+(attn.permute(0, 2, 1, 3) @ rpe_v)
         x = torch.mean(x, dim=2)
         x = self.proj(x)
         x = self.proj_drop(x)
