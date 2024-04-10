@@ -142,7 +142,7 @@ class WindowAttention(nn.Module):
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
 
-    def __init__(self, dim, head_dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, head_dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0., rel_pos=None):
 
         super().__init__()
         self.dim = dim
@@ -165,8 +165,10 @@ class WindowAttention(nn.Module):
 
         # trunc_normal_(self.relative_position_bias_table, std=.02)
         self.softmax = nn.Softmax(dim=-1)
-        self.pos_linear_k = nn.Linear(2, head_dim)
-        self.pos_linear_v = nn.Linear(2, head_dim)
+        # self.pos_linear_k = nn.Linear(2, head_dim)
+        # self.pos_linear_v = nn.Linear(2, head_dim)
+        self.pos_linear_k = rel_pos[:, :, :2, :] # 1, 1, 2, D
+        self.pos_linear_v = rel_pos[:, :, 2:, :] # 1, 1, 2, D
 
     def forward(self, x, pos, mask=None):
         """
@@ -183,9 +185,9 @@ class WindowAttention(nn.Module):
 
         # rpe = self.pos_linear(torch.sqrt(torch.sum(torch.pow(pos.unsqueeze(2) - pos.unsqueeze(1), 2), -1))) # B, N, H*D
         rpe = pos.unsqueeze(2) - pos.unsqueeze(1) # B, N, N, 2
-        rpe_k = self.pos_linear_k(rpe) # B, N, N, D
+        rpe_k = rpe @ self.pos_linear_k # B, N, N, D
         
-        rpe_v = self.pos_linear_v(rpe) # B, N, N, D
+        rpe_v = rpe @ self.pos_linear_v # B, N, N, D
  
         # rpe = rpe.reshape(B_, N, self.num_heads, -1).permute(0, 2, 1, 3)
        
@@ -537,7 +539,7 @@ class ScatteredTransformerBlock(nn.Module):
 
     def __init__(self, dim, head_dim, kernel, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm):
+                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, rel_pos=None):
         super().__init__()
         self.dim = dim
         self.head_dim = head_dim
@@ -561,7 +563,7 @@ class ScatteredTransformerBlock(nn.Module):
         self.norm1 = norm_layer(dim)
         self.attn = WindowAttention(
             dim, head_dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
-            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
+            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop, rel_pos=rel_pos)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -1588,6 +1590,7 @@ class SwinTransformer(nn.Module):
         #     trunc_normal_(self.absolute_pos_embed, std=.02)
 
         self.pos_drop = nn.Dropout(p=drop_rate)
+        self.rel_pos = nn.Parameter(torch.randn(1, 1, 4, head_dim)).cuda()
 
         # stochastic depth
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, self.num_layers+1)]  # stochastic depth decay rule
@@ -1622,7 +1625,8 @@ class SwinTransformer(nn.Module):
                                             qkv_bias=qkv_bias, qk_scale=qk_scale,
                                             drop=drop_rate, attn_drop=attn_drop_rate,
                                             drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
-                                            norm_layer=norm_layer)
+                                            norm_layer=norm_layer,
+                                            rel_pos=self.rel_pos)
             self.layers.append(layer)
             # GLOBAL Scattered
             layer = ScatteredTransformerBlock(dim=embed_dim,
@@ -1636,7 +1640,8 @@ class SwinTransformer(nn.Module):
                                             qkv_bias=qkv_bias, qk_scale=qk_scale,
                                             drop=drop_rate, attn_drop=attn_drop_rate,
                                             drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
-                                            norm_layer=norm_layer)
+                                            norm_layer=norm_layer,
+                                            rel_pos=self.rel_pos)
             
             self.layers.append(layer)
         # self.layers.append(KernelTransformerBlock(dim=embed_dim,
