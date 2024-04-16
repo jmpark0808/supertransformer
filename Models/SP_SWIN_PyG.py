@@ -17,10 +17,10 @@ class SP_SWIN_PyG(nn.Module):
         super().__init__()
         self.linear1 = nn.Linear(nfeat, nhid)
         self.elu = nn.ReLU()
-        self.pos_linear = nn.Linear(2, nhid)
+        # self.pos_linear = nn.Linear(2, nhid)
         assert ntfm%3==0, 'NTFM must be divisible by 3'
         self.convs = nn.ModuleList([TransformerConv(in_channels=nhid, out_channels=head_dim,
-                                                                          heads=nheads, dropout=dropout, edge_dim=None,
+                                                                          heads=nheads, dropout=dropout, edge_dim=edge_dim,
                                                                             concat=False, root_weight=False) for _ in range(ntfm)])
         self.ln1s = nn.ModuleList([GraphNorm(nhid) for _ in range(ntfm)])
         self.classifier = nn.Linear(nhid, 1)
@@ -52,8 +52,8 @@ class SP_SWIN_PyG(nn.Module):
 
         x = self.linear1(x)
         
-        pos = self.pos_linear(pos)
-        x += pos
+        # pos = self.pos_linear(pos)
+        # x += pos
 
         att_weights = []
         for idx, (ln, conv) in enumerate(zip(self.ln1s, self.convs)):
@@ -69,10 +69,10 @@ class SP_SWIN_PyG(nn.Module):
 
             h = x
             if return_attention:
-                x, (ei, att) = conv(x, edge_index=edge_index, edge_attr=None, return_attention_weights=return_attention)# adding edge features here
+                x, (ei, att) = conv(x, edge_index=edge_index, edge_attr=edge_attr, return_attention_weights=return_attention)# adding edge features here
                 att_weights.append(att)
             else:
-                x = conv(x, edge_index=edge_index, edge_attr=None)
+                x = conv(x, edge_index=edge_index, edge_attr=edge_attr)
            
             x = ln(x, batch=batch_index)
             x = self.elu(x) + h
