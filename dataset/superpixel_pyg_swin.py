@@ -429,7 +429,7 @@ class SPDatasetExport(data.Dataset):
 class SPDataset(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, 
                   dataloader, window_size,  coeff=None,
-                     sigma=None):
+                     sigma=None, memory=False):
         self.image_list = image_list
         self.mask_list = mask_list
         self.resize_mask = ResizeMask(size)
@@ -467,7 +467,42 @@ class SPDataset(data.Dataset):
 
         edge_indices = torch.cat((all_local_indices, all_shifted_indices, all_dilated_indices), dim=1).long()
         self.edge_indices = edge_indices
-       
+        
+        self.features = []
+        self.edge_features = []
+        self.seq_mask = []
+        self.segments = []
+        self.mask = []
+        self.memory = memory
+        if memory:
+
+            for item in range(len(self.image_list)):
+                sp_file_name_features = self.image_list[item].split('/')[-1].split('.')[0]+'_features.npy'
+                sp_file_name_edge_index = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_index.npy'
+                sp_file_name_edge_features = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_features.npy'
+                sp_file_name_seq_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_seq_mask.npy'
+                sp_file_name_segments = self.image_list[item].split('/')[-1].split('.')[0]+'_segments.npy'
+                sp_file_name_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_mask.npy'
+
+                sp_file_path_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_features )
+                sp_file_path_edge_index = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_index )
+                sp_file_path_edge_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_features )
+                sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_seq_mask )
+                sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_segments )
+                sp_file_path_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_mask)
+
+                features = np.load(sp_file_path_features)
+                seq_mask = np.load(sp_file_path_seq_mask)
+                segments = np.load(sp_file_path_segments)
+                edge_index = self.edge_indices
+                mask = np.load(sp_file_path_mask)
+                edge_attr = np.load(sp_file_path_edge_features)
+
+                self.features.append(features)
+                self.seq_mask.append(seq_mask)
+                self.segments.append(segments)
+                self.mask.append(mask)
+                self.edge_features.append(edge_attr)
             
        
      
@@ -477,41 +512,59 @@ class SPDataset(data.Dataset):
         return len(self.image_list)
 
     def __getitem__(self, item):
-        sp_file_name_features = self.image_list[item].split('/')[-1].split('.')[0]+'_features.npy'
-        sp_file_name_edge_index = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_index.npy'
-        sp_file_name_edge_features = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_features.npy'
-        sp_file_name_seq_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_seq_mask.npy'
-        sp_file_name_segments = self.image_list[item].split('/')[-1].split('.')[0]+'_segments.npy'
-        sp_file_name_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_mask.npy'
+        if not self.memory:
+            sp_file_name_features = self.image_list[item].split('/')[-1].split('.')[0]+'_features.npy'
+            sp_file_name_edge_index = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_index.npy'
+            sp_file_name_edge_features = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_features.npy'
+            sp_file_name_seq_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_seq_mask.npy'
+            sp_file_name_segments = self.image_list[item].split('/')[-1].split('.')[0]+'_segments.npy'
+            sp_file_name_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_mask.npy'
 
-        sp_file_path_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_features )
-        sp_file_path_edge_index = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_index )
-        sp_file_path_edge_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_features )
-        sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_seq_mask )
-        sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_segments )
-        sp_file_path_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_mask)
+            sp_file_path_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_features )
+            sp_file_path_edge_index = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_index )
+            sp_file_path_edge_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_features )
+            sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_seq_mask )
+            sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_segments )
+            sp_file_path_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_mask)
 
-        features = np.load(sp_file_path_features)
-        seq_mask = np.load(sp_file_path_seq_mask)
-        segments = np.load(sp_file_path_segments)
-        edge_index = self.edge_indices
-        mask = np.load(sp_file_path_mask)
-        edge_attr = np.load(sp_file_path_edge_features)
-        
+            features = np.load(sp_file_path_features)
+            seq_mask = np.load(sp_file_path_seq_mask)
+            segments = np.load(sp_file_path_segments)
+            edge_index = self.edge_indices
+            mask = np.load(sp_file_path_mask)
+            edge_attr = np.load(sp_file_path_edge_features)
+            
 
 
-        # edge_features = np.load(sp_file_path_edge_features)
-        
-        
-        if self.sigma is not None and self.dataloader == 'SPGSWIN':
-            features = horizontal_flip(features, self.coeff, 0.5, self.size)
-            gaussian_noise = np.random.normal(1, self.sigma, features.shape)
-            features = features*gaussian_noise
-        
-        sample = (Data(x=torch.tensor(features).float(),
-                        edge_index=edge_index,
-                            edge_attr=torch.tensor(edge_attr).float()),
-                    torch.tensor(seq_mask), torch.tensor(segments), torch.tensor(mask), self.image_list[item])
+            # edge_features = np.load(sp_file_path_edge_features)
+            
+            
+            if self.sigma is not None and self.dataloader == 'SPGSWIN':
+                features = horizontal_flip(features, self.coeff, 0.5, self.size)
+                gaussian_noise = np.random.normal(1, self.sigma, features.shape)
+                features = features*gaussian_noise
+            
+            sample = (Data(x=torch.tensor(features).float(),
+                            edge_index=edge_index,
+                                edge_attr=torch.tensor(edge_attr).float()),
+                        torch.tensor(seq_mask), torch.tensor(segments), torch.tensor(mask), self.image_list[item])
+        else:
+            features = self.features[item]
+            seq_mask = self.seq_mask[item]
+            segments = self.segments[item]
+            edge_index = self.edge_indices
+            mask = self.mask[item]
+            edge_attr = self.edge_features[item]
+
+            if self.sigma is not None and self.dataloader == 'SPGSWIN':
+                features = horizontal_flip(features, self.coeff, 0.5, self.size)
+                gaussian_noise = np.random.normal(1, self.sigma, features.shape)
+                features = features*gaussian_noise
+            
+            sample = (Data(x=torch.tensor(features).float(),
+                            edge_index=edge_index,
+                                edge_attr=torch.tensor(edge_attr).float()),
+                        torch.tensor(seq_mask), torch.tensor(segments), torch.tensor(mask), self.image_list[item])
 
     
         return sample
@@ -539,6 +592,7 @@ class SPGSWINDataModule(pl.LightningDataModule):
         self.debug = kwargs.get('debug', False)
         self.dilation_mode = kwargs.get('dilation_mode', 0)
         self.window_size = kwargs.get('window_size', 4)
+        self.memory = kwargs.get('memory', False)
         
         self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
         self.mask_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.train_dir, 'Mask'))]))
@@ -603,7 +657,7 @@ class SPGSWINDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.dataloader, self.window_size,
-                                  self.coeff,  self.sigma)
+                                  self.coeff,  self.sigma, self.memory)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=False)
@@ -611,10 +665,10 @@ class SPGSWINDataModule(pl.LightningDataModule):
     def val_dataloader(self):
         data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg,
                               self.res, self.dataloader,self.window_size,
-                                self.coeff, None)
+                                self.coeff, None, self.memory)
         data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res, self.dataloader,self.window_size,
-                               self.coeff, None)
+                               self.coeff, None, self.memory)
         val_dataloader = DataLoader(
                 data_val, batch_size=1, 
                 num_workers=self.num_workers, pin_memory=False)
@@ -626,7 +680,7 @@ class SPGSWINDataModule(pl.LightningDataModule):
     def test_dataloader(self):
         data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.dataloader, self.window_size,
-                                 self.coeff,None)
+                                 self.coeff,None, self.memory)
         return DataLoader(
                 data_test, batch_size=1, 
                 num_workers=self.num_workers, pin_memory=False)
