@@ -132,7 +132,7 @@ class TransformerConv(MessagePassing):
             else:
                 self.lin_beta = self.register_parameter('lin_beta', None)
         else:
-            self.lin_skip = Linear(in_channels[1], out_channels, bias=bias)
+            self.lin_skip = Linear(out_channels, in_channels[0], bias=bias)
             if self.beta:
                 self.lin_beta = Linear(3 * out_channels, 1, bias=False)
             else:
