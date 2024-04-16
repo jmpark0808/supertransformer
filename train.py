@@ -41,6 +41,7 @@ from Wrappers.SP_CTFM import SP_CTFM_Wrapper
 from Wrappers.SP_SWIN import SP_SWIN_Wrapper
 from Wrappers.SP_SWINU import SP_SWINU_Wrapper
 from Wrappers.SP_SWIN_Kernel import SP_SWIN_Kernel_Wrapper
+from Wrappers.SP_SWIN_PyG import SP_SWIN_PyG_Wrapper
 # from Wrappers.SP_MAMBA import SP_MAMBA_Wrapper
 
 
@@ -51,6 +52,7 @@ from dataset.superpixel_pyg_image import SPGIDataModule
 from dataset.superpixel_fast import SPFDataModule
 from dataset.superpixel_fast_cnn import SPFCDataModule
 from dataset.youtube_davis import YDDataModule
+from dataset.superpixel_pyg_swin import SPGSWINDataModule
 
 
 # Metric logging
@@ -100,7 +102,8 @@ MODEL_DIRECTORY = {
     'SP_SWIN': SP_SWIN_Wrapper,
     'SP_SWINU': SP_SWINU_Wrapper,
     # 'SP_MAMBA': SP_MAMBA_Wrapper,
-    'SP_SWIN_Kernel': SP_SWIN_Kernel_Wrapper
+    'SP_SWIN_Kernel': SP_SWIN_Kernel_Wrapper,
+    'SP_SWIN_PyG': SP_SWIN_PyG_Wrapper
 }
 DATALOADER_DIRECTORY = {
     'SP': SPDataModule,
@@ -116,7 +119,8 @@ DATALOADER_DIRECTORY = {
     'SPF': SPFDataModule,
     'SPFFFT': SPFDataModule,
     'SPFC': SPFCDataModule,
-    'YD': YDDataModule
+    'YD': YDDataModule,
+    'SPGSWIN': SPGSWINDataModule
 
 } 
 
@@ -143,7 +147,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', help="batchsize, default = 1", default=1, type=int)
     parser.add_argument('--epoch', help='# of epochs. default = 20', default=20, type=int)
     parser.add_argument('--num_workers', help="# of dataloader cpu process", default=0, type=int)
-    parser.add_argument('--val_freq', help='How often to run validation set within a training epoch, i.e. 0.25 will run 4 validation runs in 1 training epoch', default=0.1, type=float)
+    parser.add_argument('--val_freq', help='How often to run validation set within a training epoch, i.e. 0.25 will run 4 validation runs in 1 training epoch', default=1.0, type=float)
     parser.add_argument('--es_patience', help='Max # of consecutive validation runs w/o improvment', default=5, type=int)
     parser.add_argument('--logdir', help='logdir for models and losses. default = .', default='./', type=str)
     parser.add_argument('--lr', help='learning_rate for pose. default = 0.0001', default=0.0001, type=float)
@@ -233,7 +237,7 @@ if __name__ == "__main__":
     trainer = pl.Trainer(accelerator="gpu",
         callbacks=[early_stopping_callback, checkpoint_callback, lr_monitor],
         val_check_interval=dict_args['val_freq'],
-        deterministic=True,
+        deterministic=False,
         profiler='simple',
         logger=logger,
         max_epochs=dict_args["epoch"],
