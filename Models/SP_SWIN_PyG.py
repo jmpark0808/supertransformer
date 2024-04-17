@@ -3,6 +3,7 @@ from Blocks.GraphBlocks import *
 from Blocks.TransformerBlocks import *
 from dataset.constants import *
 from Blocks.GraphTransformer import TransformerConv
+from torch_geometric.nn.conv import GATv2Conv
 from torch_geometric.nn.norm import GraphNorm
 from Blocks.TransformerBlocks import FeedForward 
 
@@ -19,9 +20,12 @@ class SP_SWIN_PyG(nn.Module):
         self.elu = nn.ReLU()
         self.pos_linear = nn.Linear(2, nhid)
         assert ntfm%3==0, 'NTFM must be divisible by 3'
-        self.convs = nn.ModuleList([TransformerConv(in_channels=nhid, out_channels=head_dim,
+        # self.convs = nn.ModuleList([TransformerConv(in_channels=nhid, out_channels=head_dim,
+        #                                                                   heads=nheads, dropout=dropout, edge_dim=None,
+        #                                                                     concat=False, root_weight=False) for _ in range(ntfm)])
+        self.convs = nn.ModuleList([GATv2Conv(in_channels=nhid, out_channels=head_dim,
                                                                           heads=nheads, dropout=dropout, edge_dim=None,
-                                                                            concat=False, root_weight=False) for _ in range(ntfm)])
+                                                                            concat=False) for _ in range(ntfm)])
         self.ln1s = nn.ModuleList([GraphNorm(nhid) for _ in range(ntfm)])
         self.classifier = nn.Linear(nhid, 1)
         self.window_size = window_size
