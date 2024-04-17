@@ -2,11 +2,11 @@ import torch.nn as nn
 from Blocks.GraphBlocks import *
 from Blocks.TransformerBlocks import *
 from dataset.constants import *
-from Blocks.GraphTransformer import TransformerConv
-from torch_geometric.nn.conv import GATv2Conv
-from torch_geometric.nn.norm import GraphNorm
+# from Blocks.GraphTransformer import TransformerConv
+from torch_geometric.nn.conv import TransformerConv
+from torch_geometric.nn.norm import LayerNorm
 from Blocks.TransformerBlocks import FeedForward 
-
+from Blocks.swintransformer import Mlp
 
 class SP_SWIN_PyG(nn.Module):
     '''
@@ -20,13 +20,15 @@ class SP_SWIN_PyG(nn.Module):
         self.elu = nn.ReLU()
         self.pos_linear = nn.Linear(2, nhid)
         assert ntfm%3==0, 'NTFM must be divisible by 3'
-        # self.convs = nn.ModuleList([TransformerConv(in_channels=nhid, out_channels=head_dim,
-        #                                                                   heads=nheads, dropout=dropout, edge_dim=None,
-        #                                                                     concat=False, root_weight=False) for _ in range(ntfm)])
-        self.convs = nn.ModuleList([GATv2Conv(in_channels=nhid, out_channels=head_dim,
+        self.convs = nn.ModuleList([TransformerConv(in_channels=nhid, out_channels=head_dim,
                                                                           heads=nheads, dropout=dropout, edge_dim=None,
-                                                                            concat=False) for _ in range(ntfm)])
-        self.ln1s = nn.ModuleList([GraphNorm(nhid) for _ in range(ntfm)])
+                                                                            concat=False, root_weight=False) for _ in range(ntfm)])
+        # self.convs = nn.ModuleList([GATv2Conv(in_channels=nhid, out_channels=head_dim,
+        #                                                                   heads=nheads, dropout=dropout, edge_dim=None,
+        #                                                                     concat=False) for _ in range(ntfm)])
+        self.ln1s = nn.ModuleList([LayerNorm(nhid, mode='node') for _ in range(ntfm)])
+        self.ln2s = nn.ModuleList([LayerNorm(nhid, mode='node') for _ in range(ntfm)])
+        self.mlp = nn.ModuleList([Mlp(nhid, nhid*2, act_layer=nn.GELU)])
         self.classifier = nn.Linear(nhid, 1)
         self.window_size = window_size
         self.num_seg = num_seg
@@ -50,16 +52,17 @@ class SP_SWIN_PyG(nn.Module):
         
 
         # for b in range(batch_size):
-        #     xs = x[b*1024:b*1024+1024, 0]
-        #     ys = x[b*1024:b*1024+1024, 1]
+        #     xs = x[b*1024:b*1024+1024, 0].detach().cpu().numpy()
+        #     ys = x[b*1024:b*1024+1024, 1].detach().cpu().numpy()
         #     import matplotlib.pyplot as plt
-        #     plt.scatter(ys.detach().cpu().numpy(), -xs.detach().cpu().numpy())
+        #     plt.scatter(ys, -xs)
             
         #     for edge_ind in range(num_edges):     
-        #         plt.plot(ys[_index[:, b, edge_ind]].detach().cpu().numpy(), -xs[local_index[:, b, edge_ind]].detach().cpu().numpy())
+        #         plt.plot(ys[local_index[:, b, edge_ind]-b*1024], -xs[local_index[:, b, edge_ind]-b*1024])
         #     plt.show()
+        #     plt.clf()
             
-        
+       
 
 
         edge_attr_dim = edge_attr.size(1)
@@ -78,7 +81,7 @@ class SP_SWIN_PyG(nn.Module):
         x += pos
 
         att_weights = []
-        for idx, (ln, conv) in enumerate(zip(self.ln1s, self.convs)):
+        for idx, (ln1, ln2, mlp, conv) in enumerate(zip(self.ln1s, self.ln2s, self.mlp,  self.convs)):
             if idx % 3 == 0:
                 edge_index = local_index
                 edge_attr = local_edge_attr
@@ -90,14 +93,15 @@ class SP_SWIN_PyG(nn.Module):
                 edge_attr = dilated_edge_attr
 
             h = x
+            x = ln1(x, batch=batch_index)
             if return_attention:
                 x, (ei, att) = conv(x, edge_index=edge_index, edge_attr=None, return_attention_weights=return_attention)# adding edge features here
                 att_weights.append(att)
             else:
                 x = conv(x, edge_index=edge_index, edge_attr=None)
-           
-            x = ln(x, batch=batch_index)
-            x = self.elu(x) + h
+            x = h+x
+            x = x+mlp(ln2(x, batch=batch_index))
+            
         # for conv in self.convs:
         #     if return_attention:
         #         x, (ei, att) = conv(x, edge_index=edge_index, edge_attr=None, return_attention_weights=return_attention)# adding edge features here
