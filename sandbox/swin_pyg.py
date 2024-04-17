@@ -1,6 +1,6 @@
 import torch
 
-node_index = torch.arange(1024).reshape(1, 32, 32).float().cuda()
+node_index = torch.arange(1024).reshape(1, 32, 32).float()
 
 
 window_size = 4
@@ -27,4 +27,33 @@ all_local_indices = torch.cat(all_local_indices, dim=1)
 all_shifted_indices = torch.cat(all_shifted_indices, dim=1)
 all_dilated_indices = torch.cat(all_dilated_indices, dim=1)
 
-print(all_local_indices.size())
+a = torch.zeros([2, 16384])
+b = torch.ones([2, 16384])
+c = torch.ones([2, 16384])*2
+edge_index = torch.cat((a, b, c, a, b, c), dim=1).long()
+num_edges = (window_size**4)*((32//window_size)**2)
+
+edge_index = edge_index.reshape(2, -1, 3, num_edges)
+dilated_index = edge_index[:, :, 0, :].reshape(2, -1)
+local_index = edge_index[:, :, 1, :].reshape(2, -1)
+shifted_index = edge_index[:, :, 2, :].reshape(2, -1)
+print(dilated_index)
+print(local_index)
+print(shifted_index)
+
+
+# xs = torch.arange(0, 320, 10)
+# ys = torch.arange(0, 320, 10)
+# xs, ys = torch.meshgrid(xs, ys)
+# xs = xs.reshape(-1)
+# ys = ys.reshape(-1)
+# import matplotlib.pyplot as plt
+# plt.scatter(xs, -ys)
+    
+
+
+# for edge_ind in range(all_local_indices.size(1)):
+#     plt.plot(xs[all_local_indices[:, edge_ind].long()].detach().cpu().numpy(), -ys[all_local_indices[:, edge_ind].long()].detach().cpu().numpy())
+# plt.show()
+
+# print(all_local_indices.size())

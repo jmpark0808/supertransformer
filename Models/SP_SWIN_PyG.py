@@ -34,19 +34,37 @@ class SP_SWIN_PyG(nn.Module):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
         
         num_edges = (self.window_size**4)*((32//self.window_size)**2)
-        edge_index = edge_index.reshape(2, num_edges, 3, -1)
-        dilated_index = edge_index[:, :, 0, :].reshape(2, -1)
-        local_index = edge_index[:, :, 1, :].reshape(2, -1)
-        shifted_index = edge_index[:, :, 2, :].reshape(2, -1)
+        edge_index = edge_index.reshape(2, -1, 3, num_edges)
+        local_index = edge_index[:, :, 0, :].reshape(2, -1)
+        shifted_index = edge_index[:, :, 1, :].reshape(2, -1)
+        dilated_index = edge_index[:, :, 2, :].reshape(2, -1)
+ 
+        batch_size = x.size(0)//self.num_seg
+        
+        batch_index = torch.arange(0, batch_size).repeat(self.num_seg).reshape(self.num_seg, -1).T.reshape(-1).cuda()
+
+        
+
+        # for b in range(batch_size):
+        #     xs = x[b*1024:b*1024+1024, 0]
+        #     ys = x[b*1024:b*1024+1024, 1]
+        #     import matplotlib.pyplot as plt
+        #     plt.scatter(ys.detach().cpu().numpy(), -xs.detach().cpu().numpy())
+            
+        #     for edge_ind in range(num_edges):     
+        #         plt.plot(ys[_index[:, b, edge_ind]].detach().cpu().numpy(), -xs[local_index[:, b, edge_ind]].detach().cpu().numpy())
+        #     plt.show()
+            
+        
+
 
         edge_attr_dim = edge_attr.size(1)
-        edge_attr = edge_attr.reshape( num_edges, 3, -1, edge_attr_dim)
+        edge_attr = edge_attr.reshape(-1, 3,  num_edges, edge_attr_dim)
         dilated_edge_attr = edge_attr[:, 0, :, :].reshape( -1, edge_attr_dim)
         local_edge_attr = edge_attr[:, 1, :, :].reshape( -1, edge_attr_dim)
         shifted_edge_attr = edge_attr[:, 2, :, :].reshape( -1, edge_attr_dim)
         
-        batch_size = x.size(0)//self.num_seg
-        batch_index = torch.arange(0, batch_size).repeat(self.num_seg).reshape(self.num_seg, -1).T.reshape(-1).cuda()
+        
         pos = x[:, :2]
         x = x[:, 2:]
 
