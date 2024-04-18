@@ -19,16 +19,18 @@ class SP_SWIN_PyG(nn.Module):
         self.linear1 = nn.Linear(nfeat, nhid)
         self.elu = nn.ReLU()
         self.pos_linear = nn.Linear(2, nhid)
-        assert ntfm%3==0, 'NTFM must be divisible by 3'
+        assert ntfm%2==0, 'NTFM must be divisible by 2'
+        self.inp_ln = LayerNorm(nhid, mode='node')
         self.convs = nn.ModuleList([TransformerConv(in_channels=nhid, out_channels=head_dim,
                                                                           heads=nheads, dropout=dropout, edge_dim=None,
                                                                             concat=False, root_weight=False) for _ in range(ntfm)])
+        self.projs = nn.ModuleList([nn.Linear(head_dim, nhid) for _ in range(ntfm)])
         # self.convs = nn.ModuleList([GATv2Conv(in_channels=nhid, out_channels=head_dim,
         #                                                                   heads=nheads, dropout=dropout, edge_dim=None,
         #                                                                     concat=False) for _ in range(ntfm)])
         self.ln1s = nn.ModuleList([LayerNorm(nhid, mode='node') for _ in range(ntfm)])
         self.ln2s = nn.ModuleList([LayerNorm(nhid, mode='node') for _ in range(ntfm)])
-        self.mlp = nn.ModuleList([Mlp(nhid, nhid*2, act_layer=nn.GELU)])
+        self.mlp = nn.ModuleList([Mlp(nhid, nhid*2, act_layer=nn.GELU) for _ in range(ntfm)])
         self.classifier = nn.Linear(nhid, 1)
         self.window_size = window_size
         self.num_seg = num_seg
@@ -41,6 +43,9 @@ class SP_SWIN_PyG(nn.Module):
         
         num_edges = (self.window_size**4)*((32//self.window_size)**2)
         edge_index = edge_index.reshape(2, -1, 3, num_edges)
+        # local_index_ = edge_index[:, :, 0, :].detach().cpu().numpy()
+        # shifted_index_ = edge_index[:, :, 1, :].detach().cpu().numpy()
+        # dilated_index_ = edge_index[:, :, 2, :].detach().cpu().numpy()
         local_index = edge_index[:, :, 0, :].reshape(2, -1)
         shifted_index = edge_index[:, :, 1, :].reshape(2, -1)
         dilated_index = edge_index[:, :, 2, :].reshape(2, -1)
@@ -58,39 +63,44 @@ class SP_SWIN_PyG(nn.Module):
         #     plt.scatter(ys, -xs)
             
         #     for edge_ind in range(num_edges):     
-        #         plt.plot(ys[local_index[:, b, edge_ind]-b*1024], -xs[local_index[:, b, edge_ind]-b*1024])
+        #         plt.plot(ys[shifted_index_[:, b, edge_ind]-b*1024], -xs[shifted_index_[:, b, edge_ind]-b*1024])
         #     plt.show()
         #     plt.clf()
             
        
 
 
-        edge_attr_dim = edge_attr.size(1)
-        edge_attr = edge_attr.reshape(-1, 3,  num_edges, edge_attr_dim)
-        dilated_edge_attr = edge_attr[:, 0, :, :].reshape( -1, edge_attr_dim)
-        local_edge_attr = edge_attr[:, 1, :, :].reshape( -1, edge_attr_dim)
-        shifted_edge_attr = edge_attr[:, 2, :, :].reshape( -1, edge_attr_dim)
+        # edge_attr_dim = edge_attr.size(1)
+        # edge_attr = edge_attr.reshape(-1, 3,  num_edges, edge_attr_dim)
+        # dilated_edge_attr = edge_attr[:, 0, :, :].reshape( -1, edge_attr_dim)
+        # local_edge_attr = edge_attr[:, 1, :, :].reshape( -1, edge_attr_dim)
+        # shifted_edge_attr = edge_attr[:, 2, :, :].reshape( -1, edge_attr_dim)
+        dilated_edge_attr = None
+        local_edge_attr = None
+        shifted_edge_attr = None
         
         
         pos = x[:, :2]
         x = x[:, 2:]
 
-        x = self.linear1(x)
+        x = self.inp_ln(self.linear1(x))
         
         pos = self.pos_linear(pos)
         x += pos
-
+        
         att_weights = []
-        for idx, (ln1, ln2, mlp, conv) in enumerate(zip(self.ln1s, self.ln2s, self.mlp,  self.convs)):
-            if idx % 3 == 0:
+        local_shifted_flag = True
+        for idx, (ln1, ln2, mlp, conv, proj) in enumerate(zip(self.ln1s, self.ln2s, self.mlp,  self.convs, self.projs)):
+            if idx % 2 == 0 and local_shifted_flag:
                 edge_index = local_index
                 edge_attr = local_edge_attr
-            elif idx % 3 == 1:
+            elif idx % 2 == 0 and not local_shifted_flag:
                 edge_index = shifted_index
                 edge_attr = shifted_edge_attr
             else:
                 edge_index = dilated_index
                 edge_attr = dilated_edge_attr
+            local_shifted_flag = not local_shifted_flag
 
             h = x
             x = ln1(x, batch=batch_index)
@@ -99,7 +109,10 @@ class SP_SWIN_PyG(nn.Module):
                 att_weights.append(att)
             else:
                 x = conv(x, edge_index=edge_index, edge_attr=None)
+            x = proj(x)
+            
             x = h+x
+            
             x = x+mlp(ln2(x, batch=batch_index))
             
         # for conv in self.convs:
