@@ -526,12 +526,12 @@ class SPDataset(data.Dataset):
         
         edge_index = self.edge_indices
         
-        fig, ax = plt.subplots(1, 2)
-        img = Image.open(self.image_list[item]).resize((320, 320))
-        ax[0].imshow(img)
-        ax[1].imshow(np.squeeze(mask), cmap='gray')
-        fig.suptitle(f'{self.image_list[item]}')
-        plt.show()
+        # fig, ax = plt.subplots(1, 2)
+        # img = Image.open(self.image_list[item]).resize((320, 320))
+        # ax[0].imshow(img)
+        # ax[1].imshow(np.squeeze(mask), cmap='gray')
+        # fig.suptitle(f'{self.image_list[item]}')
+        # plt.show()
         
         
         if self.dataloader == 'SPFFFT' and self.sigma is not None:
@@ -570,9 +570,11 @@ class YDGDataModule(pl.LightningDataModule):
         self.window_size = kwargs.get('window_size', 4)
 
         davis_train_dir = os.path.join(self.root_dir, 'DAVIS2017')
-        youtube_vos_train_dir = os.path.join(self.root_dir, 'YoutubeVOS/train')
-        youtube_vos_valid_dir = os.path.join(self.root_dir, 'YoutubeVOS/valid')
-        youtube_vos_test_dir = os.path.join(self.root_dir, 'YoutubeVOS/test')
+        segtrack_train_dir = os.path.join(self.root_dir, 'SegTrackv2')
+
+        # youtube_vos_train_dir = os.path.join(self.root_dir, 'YoutubeVOS/train')
+        # youtube_vos_valid_dir = os.path.join(self.root_dir, 'YoutubeVOS/valid')
+        # youtube_vos_test_dir = os.path.join(self.root_dir, 'YoutubeVOS/test')
 
         self.image_list = []
         self.mask_list = []
@@ -584,6 +586,13 @@ class YDGDataModule(pl.LightningDataModule):
                 tag_image = tag_mask.replace('png', 'jpg')
                 self.mask_list.append(os.path.join(davis_train_dir, 'Annotations', tag_mask))
                 self.image_list.append(os.path.join(davis_train_dir, 'JPEGImages', tag_image))
+
+        for root, subdirs, files in os.walk(os.path.join(segtrack_train_dir, 'Annotations')):
+            for file in files:
+                tag_mask = os.path.join(root.split('/')[-1], file)
+                tag_image = tag_mask.replace('png', 'jpg')
+                self.mask_list.append(os.path.join(segtrack_train_dir, 'Annotations', tag_mask))
+                self.image_list.append(os.path.join(segtrack_train_dir, 'JPEGImages', tag_image))
 
         # for root, subdirs, files in os.walk(os.path.join(youtube_vos_train_dir, 'Annotations')):
         #     for file in files:
