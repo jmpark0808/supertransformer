@@ -52,6 +52,7 @@ from dataset.superpixel_pyg_image import SPGIDataModule
 from dataset.superpixel_fast import SPFDataModule
 from dataset.superpixel_fast_cnn import SPFCDataModule
 from dataset.youtube_davis import YDDataModule
+from dataset.youtube_davis_swin_pyg import YDGDataModule
 from dataset.superpixel_pyg_swin import SPGSWINDataModule
 
 
@@ -120,6 +121,7 @@ DATALOADER_DIRECTORY = {
     'SPFFFT': SPFDataModule,
     'SPFC': SPFCDataModule,
     'YD': YDDataModule,
+    'YDG':  YDGDataModule,
     'SPGSWIN': SPGSWINDataModule
 
 } 
