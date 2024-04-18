@@ -346,7 +346,7 @@ class SPDatasetExport(data.Dataset):
         
 
         local_index = local_unfold(node_index)
-        shifted_index = local_unfold(torch.roll(node_index, shifts=(-self.window_size//2, -self.window_size//2), dims=(0, 1)))
+        shifted_index = local_unfold(torch.roll(node_index, shifts=(-self.window_size//2, -self.window_size//2), dims=(1, 2)))
         dilated_index = dilated_unfold(node_index)
 
         all_local_indices = []
@@ -447,7 +447,7 @@ class SPDataset(data.Dataset):
         
 
         local_index = local_unfold(node_index)
-        shifted_index = local_unfold(torch.roll(node_index, shifts=(-self.window_size//2, -self.window_size//2), dims=(0, 1)))
+        shifted_index = local_unfold(torch.roll(node_index, shifts=(-self.window_size//2, -self.window_size//2), dims=(1, 2)))
         dilated_index = dilated_unfold(node_index)
 
         all_local_indices = []
@@ -670,10 +670,10 @@ class SPGSWINDataModule(pl.LightningDataModule):
                                self.res, self.dataloader,self.window_size,
                                self.coeff, None, self.memory)
         val_dataloader = DataLoader(
-                data_val, batch_size=1, 
+                data_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
         test_dataloader = DataLoader(
-                data_test, batch_size=1, 
+                data_test, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
         return [val_dataloader, test_dataloader]
 
@@ -682,5 +682,5 @@ class SPGSWINDataModule(pl.LightningDataModule):
                                self.res,  self.dataloader, self.window_size,
                                  self.coeff,None, self.memory)
         return DataLoader(
-                data_test, batch_size=1, 
+                data_test, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
