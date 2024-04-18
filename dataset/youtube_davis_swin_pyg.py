@@ -577,11 +577,6 @@ class YDGDataModule(pl.LightningDataModule):
         self.image_list = []
         self.mask_list = []
 
-        self.valid_image_list = []
-        self.valid_mask_list = []
-
-        self.test_image_list = []
-        self.test_mask_list = []
 
         for root, subdirs, files in os.walk(os.path.join(davis_train_dir, 'Annotations')):
             for file in files:
@@ -590,20 +585,23 @@ class YDGDataModule(pl.LightningDataModule):
                 self.mask_list.append(os.path.join(davis_train_dir, 'Annotations', tag_mask))
                 self.image_list.append(os.path.join(davis_train_dir, 'JPEGImages', tag_image))
 
-        for root, subdirs, files in os.walk(os.path.join(youtube_vos_train_dir, 'Annotations')):
-            for file in files:
-                tag_mask = os.path.join(root.split('/')[-1], file)
-                tag_image = tag_mask.replace('png', 'jpg')
-                self.mask_list.append(os.path.join(youtube_vos_train_dir, 'Annotations', tag_mask))
-                self.image_list.append(os.path.join(youtube_vos_train_dir, 'JPEGImages',  tag_image))
+        # for root, subdirs, files in os.walk(os.path.join(youtube_vos_train_dir, 'Annotations')):
+        #     for file in files:
+        #         tag_mask = os.path.join(root.split('/')[-1], file)
+        #         tag_image = tag_mask.replace('png', 'jpg')
+        #         self.mask_list.append(os.path.join(youtube_vos_train_dir, 'Annotations', tag_mask))
+        #         self.image_list.append(os.path.join(youtube_vos_train_dir, 'JPEGImages',  tag_image))
 
+        self.image_list = np.array(self.image_list)
+        self.mask_list = np.array(self.mask_list)
         indices = np.array(list(range(len(self.image_list))))
         np.random.shuffle(indices)
-        self.val_image_list = self.image_list[indices[int(len(self.image_list)*0.7):int(len(self.image_list)*0.85)]]
-        self.val_mask_list = self.mask_list[indices[int(len(self.mask_list)*0.7):int(len(self.mask_list)*0.85)]]
+        
+        self.valid_image_list = self.image_list[indices[int(len(self.image_list)*0.7):int(len(self.image_list)*0.85)]]
+        self.valid_mask_list = self.mask_list[indices[int(len(self.mask_list)*0.7):int(len(self.mask_list)*0.85)]]
     
-        self.tr_image_list = self.image_list[indices[:int(len(self.image_list)*0.7)]]
-        self.tr_mask_list = self.mask_list[indices[:int(len(self.mask_list)*0.7)]]
+        self.train_image_list = self.image_list[indices[:int(len(self.image_list)*0.7)]]
+        self.train_mask_list = self.mask_list[indices[:int(len(self.mask_list)*0.7)]]
 
         self.test_image_list =  self.image_list[indices[int(len(self.image_list)*0.85):]]
         self.test_mask_list = self.mask_list[indices[int(len(self.mask_list)*0.85):]]
