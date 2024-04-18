@@ -83,7 +83,7 @@ class SP_SWIN_PyG(nn.Module):
         pos = x[:, :2]
         x = x[:, 2:]
 
-        x = self.inp_ln(self.linear1(x))
+        x = self.inp_ln(self.linear1(x), batch=batch_index )
         
         pos = self.pos_linear(pos)
         x += pos
