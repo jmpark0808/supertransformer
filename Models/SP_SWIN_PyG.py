@@ -2,8 +2,8 @@ import torch.nn as nn
 from Blocks.GraphBlocks import *
 from Blocks.TransformerBlocks import *
 from dataset.constants import *
-# from Blocks.GraphTransformer import TransformerConv
-from torch_geometric.nn.conv import TransformerConv
+from Blocks.GraphTransformer import TransformerConv
+# from torch_geometric.nn.conv import TransformerConv
 from torch_geometric.nn.norm import LayerNorm
 from Blocks.TransformerBlocks import FeedForward 
 from Blocks.swintransformer import Mlp
