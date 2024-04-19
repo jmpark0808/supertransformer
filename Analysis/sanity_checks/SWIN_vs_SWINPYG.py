@@ -27,6 +27,8 @@ from torch_geometric.typing import Adj, OptTensor, PairTensor, SparseTensor
 from torch_geometric.utils import softmax
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn.norm import LayerNorm
+# from torchsummary import summary
+from torch_geometric.nn import summary
 
 
 
@@ -54,11 +56,13 @@ def init_weights(m):
             m.bias.data.fill_(0)
 
 pyg_swin = SP_SWIN_PyG(3, 5, 8, None, 0, 8, 6, 1024, 4).cuda()
+print(pyg_swin)
 pyg_swin.apply(init_weights)
 pyg_swin.eval()
 
 
 swin = SP_SWIN(3, 5, 8, 8, 6, 0, 0, [4, 4, 4], 4, 320).cuda()
+print(swin)
 swin.apply(init_weights)
 swin.eval()
 
@@ -97,12 +101,14 @@ pyg_x = Data(x=x, edge_index=edge_indices, edge_attr=torch.zeros_like(edge_indic
 
 out_pyg = pyg_swin(pyg_x)
 
-print(out_pyg)
+print(summary(pyg_swin, pyg_x, max_depth=8))
 # print(flop_count_table(flops))
 
 # flops = FlopCountAnalysis(pyt_tfm, (x, None, torch.tensor(neighbor_array_pyt), None))
 out_pyt = swin(x.cuda().unsqueeze(0))
-print(out_pyt)
+from torchsummary import summary
+
+print(summary(swin, (1024, 5)))
 # print(flop_count_table(flops))
 
 # print(torch.sum(torch.abs(out_pyg-out_pyt)))

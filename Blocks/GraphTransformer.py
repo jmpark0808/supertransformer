@@ -1,4 +1,5 @@
 import math
+import typing
 from typing import Optional, Tuple, Union
 
 import torch
@@ -7,14 +8,25 @@ from torch import Tensor
 
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.dense.linear import Linear
-from torch_geometric.typing import Adj, OptTensor, PairTensor, SparseTensor
+from torch_geometric.typing import (
+    Adj,
+    NoneType,
+    OptTensor,
+    PairTensor,
+    SparseTensor,
+)
 from torch_geometric.utils import softmax
+
+if typing.TYPE_CHECKING:
+    from typing import overload
+else:
+    from torch.jit import _overload_method as overload
 
 
 class TransformerConv(MessagePassing):
     r"""The graph transformer operator from the `"Masked Label Prediction:
     Unified Message Passing Model for Semi-Supervised Classification"
-    <https://arxiv.org/abs/2009.03509>`_ paper
+    <https://arxiv.org/abs/2009.03509>`_ paper.
 
     .. math::
         \mathbf{x}^{\prime}_i = \mathbf{W}_1 \mathbf{x}_i +
@@ -114,29 +126,27 @@ class TransformerConv(MessagePassing):
         if isinstance(in_channels, int):
             in_channels = (in_channels, in_channels)
 
-        self.lin_key = Linear(in_channels[0], heads * out_channels, bias=False)
-        self.lin_query = Linear(in_channels[1], heads * out_channels, bias=False)
-        self.lin_value = Linear(in_channels[0], heads * out_channels, bias=False)
+        self.lin_key = Linear(in_channels[0], heads * out_channels)
+        self.lin_query = Linear(in_channels[1], heads * out_channels)
+        self.lin_value = Linear(in_channels[0], heads * out_channels)
         if edge_dim is not None:
             self.lin_edge = Linear(edge_dim, heads * out_channels, bias=False)
         else:
             self.lin_edge = self.register_parameter('lin_edge', None)
 
-        if concat:
-            # self.lin_skip = Linear(in_channels[1], heads * out_channels,
-            #                        bias=bias)
-            self.lin_skip = Linear(heads * out_channels, in_channels[1],
-                                   bias=bias)
-            if self.beta:
-                self.lin_beta = Linear(3 * heads * out_channels, 1, bias=False)
-            else:
-                self.lin_beta = self.register_parameter('lin_beta', None)
-        else:
-            self.lin_skip = Linear(out_channels, in_channels[0], bias=bias)
-            if self.beta:
-                self.lin_beta = Linear(3 * out_channels, 1, bias=False)
-            else:
-                self.lin_beta = self.register_parameter('lin_beta', None)
+        # if concat:
+        #     self.lin_skip = Linear(in_channels[1], heads * out_channels,
+        #                            bias=bias)
+        #     if self.beta:
+        #         self.lin_beta = Linear(3 * heads * out_channels, 1, bias=False)
+        #     else:
+        #         self.lin_beta = self.register_parameter('lin_beta', None)
+        # else:
+        #     self.lin_skip = Linear(in_channels[1], out_channels, bias=bias)
+        #     if self.beta:
+        #         self.lin_beta = Linear(3 * out_channels, 1, bias=False)
+        #     else:
+        #         self.lin_beta = self.register_parameter('lin_beta', None)
 
         self.reset_parameters()
 
@@ -147,41 +157,81 @@ class TransformerConv(MessagePassing):
         self.lin_value.reset_parameters()
         if self.edge_dim:
             self.lin_edge.reset_parameters()
-        self.lin_skip.reset_parameters()
-        if self.beta:
-            self.lin_beta.reset_parameters()
+        # self.lin_skip.reset_parameters()
+        # if self.beta:
+        #     self.lin_beta.reset_parameters()
 
-    def forward(self, x: Union[Tensor, PairTensor], edge_index: Adj,
-                edge_attr: OptTensor = None, return_attention_weights=None):
-        # type: (Union[Tensor, PairTensor], Tensor, OptTensor, NoneType) -> Tensor  # noqa
-        # type: (Union[Tensor, PairTensor], SparseTensor, OptTensor, NoneType) -> Tensor  # noqa
-        # type: (Union[Tensor, PairTensor], Tensor, OptTensor, bool) -> Tuple[Tensor, Tuple[Tensor, Tensor]]  # noqa
-        # type: (Union[Tensor, PairTensor], SparseTensor, OptTensor, bool) -> Tuple[Tensor, SparseTensor]  # noqa
+    @overload
+    def forward(
+        self,
+        x: Union[Tensor, PairTensor],
+        edge_index: Adj,
+        edge_attr: OptTensor = None,
+        return_attention_weights: NoneType = None,
+    ) -> Tensor:
+        pass
+
+    @overload
+    def forward(  # noqa: F811
+        self,
+        x: Union[Tensor, PairTensor],
+        edge_index: Tensor,
+        edge_attr: OptTensor = None,
+        return_attention_weights: bool = None,
+    ) -> Tuple[Tensor, Tuple[Tensor, Tensor]]:
+        pass
+
+    @overload
+    def forward(  # noqa: F811
+        self,
+        x: Union[Tensor, PairTensor],
+        edge_index: SparseTensor,
+        edge_attr: OptTensor = None,
+        return_attention_weights: bool = None,
+    ) -> Tuple[Tensor, SparseTensor]:
+        pass
+
+    def forward(  # noqa: F811
+        self,
+        x: Union[Tensor, PairTensor],
+        edge_index: Adj,
+        edge_attr: OptTensor = None,
+        return_attention_weights: Optional[bool] = None,
+    ) -> Union[
+            Tensor,
+            Tuple[Tensor, Tuple[Tensor, Tensor]],
+            Tuple[Tensor, SparseTensor],
+    ]:
         r"""Runs the forward pass of the module.
 
         Args:
+            x (torch.Tensor or (torch.Tensor, torch.Tensor)): The input node
+                features.
+            edge_index (torch.Tensor or SparseTensor): The edge indices.
+            edge_attr (torch.Tensor, optional): The edge features.
+                (default: :obj:`None`)
             return_attention_weights (bool, optional): If set to :obj:`True`,
                 will additionally return the tuple
                 :obj:`(edge_index, attention_weights)`, holding the computed
                 attention weights for each edge. (default: :obj:`None`)
         """
-
         H, C = self.heads, self.out_channels
 
         if isinstance(x, Tensor):
-            x: PairTensor = (x, x)
+            x = (x, x)
 
         query = self.lin_query(x[1]).view(-1, H, C)
         key = self.lin_key(x[0]).view(-1, H, C)
         value = self.lin_value(x[0]).view(-1, H, C)
-        
-        # propagate_type: (query: Tensor, key:Tensor, value: Tensor, edge_attr: OptTensor) # noqa
+
+        # propagate_type: (query: Tensor, key:Tensor, value: Tensor,
+        #                  edge_attr: OptTensor)
         out = self.propagate(edge_index, query=query, key=key, value=value,
-                             edge_attr=edge_attr, size=None)
+                             edge_attr=edge_attr)
 
         alpha = self._alpha
         self._alpha = None
-        
+
         if self.concat:
             out = out.view(-1, self.heads * self.out_channels)
         else:
@@ -203,7 +253,7 @@ class TransformerConv(MessagePassing):
             elif isinstance(edge_index, SparseTensor):
                 return out, edge_index.set_value(alpha, layout='coo')
         else:
-            return self.lin_skip(out)
+            return out
 
     def message(self, query_i: Tensor, key_j: Tensor, value_j: Tensor,
                 edge_attr: OptTensor, index: Tensor, ptr: OptTensor,
@@ -219,7 +269,7 @@ class TransformerConv(MessagePassing):
         alpha = softmax(alpha, index, ptr, size_i)
         self._alpha = alpha
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
-        
+
         out = value_j
         if edge_attr is not None:
             out = out + edge_attr
