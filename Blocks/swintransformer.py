@@ -60,6 +60,7 @@ def scattered_partition(x, window_size, kernel_size, unfold1, unfold2):
     B, H, W, C = x.shape
     x = x.permute(0, 3, 1, 2) # B C H W
     x = unfold1(x) # B C*k*k n
+    
     x = x.reshape(B, C, kernel_size, kernel_size, -1) # B, C, k, k, n
     x = x.permute(0, 4, 1, 2, 3).contiguous().view(-1, C, kernel_size, kernel_size)# B*n, C, k, k 
     B_, _, _, _ = x.shape
@@ -178,14 +179,17 @@ class WindowAttention(nn.Module):
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
         B_, N, C = x.shape
+        
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple) B, H, N, D
-       
+        
+        
         q = q * self.scale
+
 
         
         attn = (q @ k.transpose(-2, -1)) 
-
+        # print(attn[0, 0, 0, :])
         # relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
         #     self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
         # relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
@@ -201,13 +205,15 @@ class WindowAttention(nn.Module):
         #     attn = self.softmax(attn)
         # else:
         attn = self.softmax(attn)
-
+        
         attn = self.attn_drop(attn)
 
         x = (attn @ v).transpose(1, 2).reshape(B_, N, self.num_heads,self.head_dim)
         x = torch.mean(x, dim=2)
+        
         x = self.proj(x)
         x = self.proj_drop(x)
+        
         return x
 
     def extra_repr(self) -> str:
@@ -569,7 +575,9 @@ class ScatteredTransformerBlock(nn.Module):
 
         shortcut = x
         x = self.norm1(x)
+       
         x = x.view(B, H, W, C)
+       
         # sin, cos = pos
         # sin = sin.view(B, H, W, -1)
         # cos = cos.view(B, H, W, -1)
@@ -581,11 +589,12 @@ class ScatteredTransformerBlock(nn.Module):
         else:
             shifted_x = x
 
+
+        # # partition windows
         
-        # partition windows
         x_windows = scattered_partition(shifted_x, self.window_size, self.kernel, self.unfold1, self.unfold2)  # B*n*m, window_size, window_size, C
         x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # B*n*m, window_size*window_size, C
-
+        
         # sin_windows = scattered_partition(shifted_sin, self.window_size, self.kernel, self.unfold1, self.unfold2)
         # sin_windows = sin_windows.view(-1, self.window_size * self.window_size, self.head_dim)
         # cos_windows = scattered_partition(shifted_cos, self.window_size, self.kernel, self.unfold1, self.unfold2)
@@ -594,9 +603,10 @@ class ScatteredTransformerBlock(nn.Module):
         # W-MSA/SW-MSA
         
         attn_windows = self.attn(x_windows, mask=self.attn_mask)  # B*n*m, window_size*window_size, C
-
+        
         # merge windows
         attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C) # B*n*m, window_size*window_size, C
+        
         shifted_x = scattered_reverse(attn_windows, self.window_size, self.kernel, H, W, self.fold1, self.fold2)  # B H' W' C
 
         # reverse cyclic shift
@@ -605,12 +615,14 @@ class ScatteredTransformerBlock(nn.Module):
         else:
             x = shifted_x
         x = x.view(B, H * W, C)
+     
         
         # FFN
         x = shortcut + self.drop_path(x)
         
         x = x + self.drop_path(self.mlp(self.norm2(x)))
-
+        # print(x)
+        
         return x
 
     def extra_repr(self) -> str:
@@ -1320,8 +1332,10 @@ class PatchEmbed(nn.Module):
         assert H == self.img_size[0] and W == self.img_size[1], \
             f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
         x = self.proj(x).flatten(2).transpose(1, 2)  # B Ph*Pw C
+        
         if self.norm is not None:
             x = self.norm(x)
+        
         return x
 
     def flops(self):
@@ -1611,6 +1625,7 @@ class SwinTransformer(nn.Module):
                                             drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
                                             norm_layer=norm_layer,
                                             rel_pos=self.rel_pos)
+            
             self.layers.append(layer)
             # GLOBAL Scattered
             layer = ScatteredTransformerBlock(dim=embed_dim,
@@ -1697,7 +1712,7 @@ class SwinTransformer(nn.Module):
         
         x = x + pos
         x = self.pos_drop(x)
-
+        
         
         for layer in self.layers:
             x = layer(x)

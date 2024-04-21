@@ -393,14 +393,16 @@ class SPDatasetExport(data.Dataset):
         sp_file_name_seq_mask = "".join(image.split('/')[-2:]).split('.')[0]+'_seq_mask.npy'
         sp_file_name_segments = "".join(image.split('/')[-2:]).split('.')[0]+'_segments.npy'
         sp_file_name_mask = "".join(image.split('/')[-2:]).split('.')[0]+'_mask.npy'
-
+        
         sp_file_path_features = os.path.join(self.parent_directory,sp_file_name_features )
         sp_file_path_edge_attr = os.path.join(self.parent_directory,sp_file_name_edge_attr )
         sp_file_path_seq_mask = os.path.join(self.parent_directory,sp_file_name_seq_mask )
         sp_file_path_segments = os.path.join(self.parent_directory,sp_file_name_segments )
         sp_file_path_mask = os.path.join(self.parent_directory,sp_file_name_mask )
+
         if os.path.exists(sp_file_path_features):
             return torch.empty(0)
+        
     
         img = Image.open(image)
         img = img.convert('RGB')
@@ -526,12 +528,13 @@ class SPDataset(data.Dataset):
         
         edge_index = self.edge_indices
         
-        # fig, ax = plt.subplots(1, 2)
-        # img = Image.open(self.image_list[item]).resize((320, 320))
-        # ax[0].imshow(img)
-        # ax[1].imshow(np.squeeze(mask), cmap='gray')
-        # fig.suptitle(f'{self.image_list[item]}')
-        # plt.show()
+        if 'SegTrackv2' in self.image_list[item]:
+            fig, ax = plt.subplots(1, 2)
+            img = Image.open(self.image_list[item]).resize((320, 320))
+            ax[0].imshow(img)
+            ax[1].imshow(np.squeeze(mask), cmap='gray')
+            fig.suptitle(f'{self.image_list[item]}')
+            plt.show()
         
         
         if self.dataloader == 'SPFFFT' and self.sigma is not None:
@@ -587,11 +590,13 @@ class YDGDataModule(pl.LightningDataModule):
                 self.mask_list.append(os.path.join(davis_train_dir, 'Annotations', tag_mask))
                 self.image_list.append(os.path.join(davis_train_dir, 'JPEGImages', tag_image))
 
-        for root, subdirs, files in os.walk(os.path.join(segtrack_train_dir, 'Annotations')):
+
+        for root, subdirs, files in os.walk(os.path.join(segtrack_train_dir, 'GroundTruth')):
             for file in files:
+                print(root, file)
                 tag_mask = os.path.join(root.split('/')[-1], file)
                 tag_image = tag_mask.replace('png', 'jpg')
-                self.mask_list.append(os.path.join(segtrack_train_dir, 'Annotations', tag_mask))
+                self.mask_list.append(os.path.join(segtrack_train_dir, 'GroundTruth', tag_mask))
                 self.image_list.append(os.path.join(segtrack_train_dir, 'JPEGImages', tag_image))
 
         # for root, subdirs, files in os.walk(os.path.join(youtube_vos_train_dir, 'Annotations')):

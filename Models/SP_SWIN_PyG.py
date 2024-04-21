@@ -41,20 +41,21 @@ class SP_SWIN_PyG(nn.Module):
     def forward(self, data, return_attention=False):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
         
-        num_edges = (self.window_size**4)*((32//self.window_size)**2)
-        edge_index = edge_index.reshape(2, -1, 3, num_edges)
-        # local_index_ = edge_index[:, :, 0, :].detach().cpu().numpy()
-        # shifted_index_ = edge_index[:, :, 1, :].detach().cpu().numpy()
-        # dilated_index_ = edge_index[:, :, 2, :].detach().cpu().numpy()
-        local_index = edge_index[:, :, 0, :].reshape(2, -1)
-        shifted_index = edge_index[:, :, 1, :].reshape(2, -1)
-        dilated_index = edge_index[:, :, 2, :].reshape(2, -1)
- 
+        num_edges_local = (self.window_size**4)*((32//self.window_size)**2)
+        num_edges_dilated = ((32//self.window_size)**4)*(self.window_size**2)
+        edge_index = edge_index.reshape(2, -1, num_edges_local*2+num_edges_dilated)
+        
+        local_index = edge_index[:, :, :num_edges_local].reshape(2, -1)
+        shifted_index = edge_index[:, :, num_edges_local:num_edges_local+num_edges_local].reshape(2, -1)
+        dilated_index = edge_index[:, :, num_edges_local+num_edges_local:].reshape(2, -1)
+        
         batch_size = x.size(0)//self.num_seg
         
         batch_index = torch.arange(0, batch_size).repeat(self.num_seg).reshape(self.num_seg, -1).T.reshape(-1).cuda()
 
-        
+        # local_index_ = edge_index[:, :, :num_edges_local].detach().cpu().numpy()
+        # shifted_index_ = edge_index[:, :, num_edges_local:num_edges_local+num_edges_local].detach().cpu().numpy()
+        # dilated_index_ = edge_index[:, :, num_edges_local+num_edges_local:].detach().cpu().numpy()
 
         # for b in range(batch_size):
         #     xs = x[b*1024:b*1024+1024, 0].detach().cpu().numpy()
@@ -62,7 +63,7 @@ class SP_SWIN_PyG(nn.Module):
         #     import matplotlib.pyplot as plt
         #     plt.scatter(ys, -xs)
             
-        #     for edge_ind in range(num_edges):     
+        #     for edge_ind in range(num_edges_local):     
         #         plt.plot(ys[shifted_index_[:, b, edge_ind]-b*1024], -xs[shifted_index_[:, b, edge_ind]-b*1024])
         #     plt.show()
         #     plt.clf()
@@ -82,11 +83,15 @@ class SP_SWIN_PyG(nn.Module):
         
         pos = x[:, :2]
         x = x[:, 2:]
-
-        x = self.inp_ln(self.linear1(x), batch=batch_index )
+        
+        x = self.linear1(x)
+        
+        x = self.inp_ln(x, batch=batch_index )
         
         pos = self.pos_linear(pos)
+        
         x += pos
+        
         
         att_weights = []
         local_shifted_flag = True
@@ -94,26 +99,33 @@ class SP_SWIN_PyG(nn.Module):
             if idx % 2 == 0 and local_shifted_flag:
                 edge_index = local_index
                 edge_attr = local_edge_attr
+                local_shifted_flag = not local_shifted_flag
             elif idx % 2 == 0 and not local_shifted_flag:
                 edge_index = shifted_index
                 edge_attr = shifted_edge_attr
+                local_shifted_flag = not local_shifted_flag
             else:
                 edge_index = dilated_index
                 edge_attr = dilated_edge_attr
-            local_shifted_flag = not local_shifted_flag
-
+            
+            
             h = x
             x = ln1(x, batch=batch_index)
+            
             if return_attention:
                 x, (ei, att) = conv(x, edge_index=edge_index, edge_attr=None, return_attention_weights=return_attention)# adding edge features here
                 att_weights.append(att)
             else:
                 x = conv(x, edge_index=edge_index, edge_attr=None)
+            
             x = proj(x)
+            
             
             x = h+x
             
             x = x+mlp(ln2(x, batch=batch_index))
+            # print(x, idx)
+            
             
         # for conv in self.convs:
         #     if return_attention:
