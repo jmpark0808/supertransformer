@@ -152,6 +152,7 @@ class SP_SWIN(nn.Module):
         # pos_y = self.pos_linear_y(pos_y)
         # pos_x = self.pos_linear_x(pos_x)
         pos_emb = self.pos_linear(pos)
+        
         # pos = pos.reshape(pos.size(0), 32, 32, -1)
         x = x.reshape(x.size(0), 32, 32, -1).permute(0, 3, 1, 2)
         x = self.model(x, pos_emb)

@@ -342,7 +342,7 @@ class SPDatasetExport(data.Dataset):
 
         node_index = torch.arange(1024).reshape(1, 32, 32).float().cuda()
         local_unfold = torch.nn.Unfold(self.window_size, stride=self.window_size)
-        dilated_unfold = torch.nn.Unfold(self.window_size, dilation=(32//self.window_size))
+        dilated_unfold = torch.nn.Unfold((32//window_size), dilation=window_size)
         
 
         local_index = local_unfold(node_index)
@@ -357,6 +357,7 @@ class SPDatasetExport(data.Dataset):
             all_local_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
             x, y = torch.meshgrid(shifted_index[:, i], shifted_index[:, i])
             all_shifted_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
+        for i in range(dilated_index.shape[1]):
             x, y = torch.meshgrid(dilated_index[:, i], dilated_index[:, i])
             all_dilated_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
             
@@ -441,7 +442,7 @@ class SPDataset(data.Dataset):
         
         node_index = torch.arange(1024).reshape(1, 32, 32).float()
         local_unfold = torch.nn.Unfold(self.window_size, stride=self.window_size)
-        dilated_unfold = torch.nn.Unfold(self.window_size, dilation=(32//self.window_size))
+        dilated_unfold = torch.nn.Unfold((32//window_size), dilation=window_size)
         
 
         local_index = local_unfold(node_index)
@@ -456,6 +457,7 @@ class SPDataset(data.Dataset):
             all_local_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
             x, y = torch.meshgrid(shifted_index[:, i], shifted_index[:, i])
             all_shifted_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
+        for i in range(dilated_index.shape[1]):
             x, y = torch.meshgrid(dilated_index[:, i], dilated_index[:, i])
             all_dilated_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
             

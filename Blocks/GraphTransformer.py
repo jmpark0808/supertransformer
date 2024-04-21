@@ -1,11 +1,11 @@
 import math
 import typing
 from typing import Optional, Tuple, Union
-
+from torch.nn import Parameter
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-
+from torch_geometric.utils import degree, scatter
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.dense.linear import Linear
 from torch_geometric.typing import (
@@ -126,9 +126,9 @@ class TransformerConv(MessagePassing):
         if isinstance(in_channels, int):
             in_channels = (in_channels, in_channels)
 
-        self.lin_key = Linear(in_channels[0], heads * out_channels)
-        self.lin_query = Linear(in_channels[1], heads * out_channels)
-        self.lin_value = Linear(in_channels[0], heads * out_channels)
+        self.lin_key = Linear(in_channels[0], heads * out_channels*3)
+        # self.lin_query = Linear(in_channels[1], heads * out_channels)
+        # self.lin_value = Linear(in_channels[0], heads * out_channels)
         if edge_dim is not None:
             self.lin_edge = Linear(edge_dim, heads * out_channels, bias=False)
         else:
@@ -153,8 +153,8 @@ class TransformerConv(MessagePassing):
     def reset_parameters(self):
         super().reset_parameters()
         self.lin_key.reset_parameters()
-        self.lin_query.reset_parameters()
-        self.lin_value.reset_parameters()
+        # self.lin_query.reset_parameters()
+        # self.lin_value.reset_parameters()
         if self.edge_dim:
             self.lin_edge.reset_parameters()
         # self.lin_skip.reset_parameters()
@@ -220,15 +220,21 @@ class TransformerConv(MessagePassing):
         if isinstance(x, Tensor):
             x = (x, x)
 
-        query = self.lin_query(x[1]).view(-1, H, C)
-        key = self.lin_key(x[0]).view(-1, H, C)
-        value = self.lin_value(x[0]).view(-1, H, C)
-
+        qkv = self.lin_key(x[1]).view(-1, 3, H, C)
+        query = qkv[:, 0, :, :]
+        key = qkv[:, 1, :, :]
+        value = qkv[:, 2, :, :]
+        
+        
+        # key = self.lin_key(x[0]).view(-1, H, C)
+        # value = self.lin_value(x[0]).view(-1, H, C)
+        
         # propagate_type: (query: Tensor, key:Tensor, value: Tensor,
         #                  edge_attr: OptTensor)
+        # print(edge_index[:, 0])
         out = self.propagate(edge_index, query=query, key=key, value=value,
                              edge_attr=edge_attr)
-
+        
         alpha = self._alpha
         self._alpha = None
 
@@ -236,7 +242,7 @@ class TransformerConv(MessagePassing):
             out = out.view(-1, self.heads * self.out_channels)
         else:
             out = out.mean(dim=1)
-
+        
         if self.root_weight:
             x_r = self.lin_skip(x[1])
             if self.lin_beta is not None:
@@ -266,17 +272,21 @@ class TransformerConv(MessagePassing):
             key_j = key_j + edge_attr
 
         alpha = (query_i * key_j).sum(dim=-1) / math.sqrt(self.out_channels)
+        
+        
         alpha = softmax(alpha, index, ptr, size_i)
         self._alpha = alpha
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
-
+        
         out = value_j
         if edge_attr is not None:
             out = out + edge_attr
 
         out = out * alpha.view(-1, self.heads, 1)
+        
         return out
 
     def __repr__(self) -> str:
         return (f'{self.__class__.__name__}({self.in_channels}, '
                 f'{self.out_channels}, heads={self.heads})')
+
