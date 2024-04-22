@@ -206,8 +206,6 @@ if __name__ == "__main__":
         model = model.load_from_checkpoint(dict_args['load'])
 
     # Initialize logging paths
-    random_sec = random.randint(1, 20)
-    time.sleep(random_sec)
     now = datetime.datetime.now().strftime('%m%d-%H%M%S')
     weight_save_dir = os.path.join(dict_args["logdir"], os.path.join('models', 'state_dict', now+'_'+dict_args["tag"]))
  
