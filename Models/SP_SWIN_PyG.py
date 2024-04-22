@@ -90,7 +90,7 @@ class SP_SWIN_PyG(nn.Module):
         
         pos = self.pos_linear(pos)
         
-        x += pos
+        # x += pos
         
         
         att_weights = []
