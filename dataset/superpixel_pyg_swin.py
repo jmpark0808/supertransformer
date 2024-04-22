@@ -534,7 +534,7 @@ class SPDataset(data.Dataset):
             mask = np.load(sp_file_path_mask)
             edge_attr = np.load(sp_file_path_edge_features)
             
-
+            
 
             # edge_features = np.load(sp_file_path_edge_features)
             

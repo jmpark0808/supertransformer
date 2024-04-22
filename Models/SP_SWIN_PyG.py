@@ -22,7 +22,7 @@ class SP_SWIN_PyG(nn.Module):
         assert ntfm%2==0, 'NTFM must be divisible by 2'
         self.inp_ln = LayerNorm(nhid, mode='node')
         self.convs = nn.ModuleList([TransformerConv(in_channels=nhid, out_channels=head_dim,
-                                                                          heads=nheads, dropout=dropout, edge_dim=None,
+                                                                          heads=nheads, dropout=dropout, edge_dim=edge_dim,
                                                                             concat=False, root_weight=False) for _ in range(ntfm)])
         self.projs = nn.ModuleList([nn.Linear(head_dim, nhid) for _ in range(ntfm)])
         # self.convs = nn.ModuleList([GATv2Conv(in_channels=nhid, out_channels=head_dim,
@@ -71,14 +71,14 @@ class SP_SWIN_PyG(nn.Module):
        
 
 
-        # edge_attr_dim = edge_attr.size(1)
-        # edge_attr = edge_attr.reshape(-1, 3,  num_edges, edge_attr_dim)
-        # dilated_edge_attr = edge_attr[:, 0, :, :].reshape( -1, edge_attr_dim)
-        # local_edge_attr = edge_attr[:, 1, :, :].reshape( -1, edge_attr_dim)
-        # shifted_edge_attr = edge_attr[:, 2, :, :].reshape( -1, edge_attr_dim)
-        dilated_edge_attr = None
-        local_edge_attr = None
-        shifted_edge_attr = None
+        edge_attr_dim = edge_attr.size(1)
+        edge_attr = edge_attr.reshape(-1, num_edges_local*2+num_edges_dilated, edge_attr_dim)
+        local_edge_attr = edge_attr[:, :num_edges_local, :].reshape( -1, edge_attr_dim)
+        shifted_edge_attr = edge_attr[:,num_edges_local:num_edges_local+num_edges_local, :].reshape( -1, edge_attr_dim)
+        dilated_edge_attr = edge_attr[:, num_edges_local+num_edges_local:, :].reshape( -1, edge_attr_dim)
+        # dilated_edge_attr = None
+        # local_edge_attr = None
+        # shifted_edge_attr = None
         
         
         pos = x[:, :2]
@@ -113,10 +113,10 @@ class SP_SWIN_PyG(nn.Module):
             x = ln1(x, batch=batch_index)
             
             if return_attention:
-                x, (ei, att) = conv(x, edge_index=edge_index, edge_attr=None, return_attention_weights=return_attention)# adding edge features here
+                x, (ei, att) = conv(x, edge_index=edge_index, edge_attr=edge_attr, return_attention_weights=return_attention)# adding edge features here
                 att_weights.append(att)
             else:
-                x = conv(x, edge_index=edge_index, edge_attr=None)
+                x = conv(x, edge_index=edge_index, edge_attr=edge_attr)
             
             x = proj(x)
             
