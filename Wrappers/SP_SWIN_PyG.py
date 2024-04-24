@@ -25,8 +25,10 @@ class SP_SWIN_PyG_Wrapper(pl.LightningModule):
         self.tfm_hp = kwargs.get('tfmhp')
         self.dropout_edge = kwargs.get('dropout_edge')
         self.window_size = kwargs.get('window_size')
+        
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
+        
         self.model = SP_SWIN_PyG(input_dim, self.tfm_hp[3],self.tfm_hp[1], 2, self.dropout_edge, self.tfm_hp[0], self.tfm_hp[2],
                                  self.num_seg, self.window_size)
         
@@ -64,7 +66,7 @@ class SP_SWIN_PyG_Wrapper(pl.LightningModule):
         return optimizer
       
 
-    def forward(self, input):
+    def forward(self, input, edge_sizes):
         """
         Forward pass through model
         :param x: Input features
@@ -72,7 +74,7 @@ class SP_SWIN_PyG_Wrapper(pl.LightningModule):
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
         
-        pred = self.model(input)
+        pred = self.model(input, edge_sizes)
         pred = pred.reshape(-1, self.num_seg)
         
         return pred
@@ -95,10 +97,12 @@ class SP_SWIN_PyG_Wrapper(pl.LightningModule):
         logging resources:
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
+        
         features = batch[0]
         seq_mask = batch[1]
         segments = batch[2]
         mask = batch[3]
+        edge_sizes = batch[4][0]
 
         # np.save(f'/mnt/dragon/gat_logs/features_x_{batch_idx}', features.x.detach().cpu().numpy())
         # np.save(f'/mnt/dragon/gat_logs/features_ei_{batch_idx}', features.edge_index.detach().cpu().numpy())
@@ -106,7 +110,7 @@ class SP_SWIN_PyG_Wrapper(pl.LightningModule):
         # torch.save(self.model.state_dict(), f'/mnt/dragon/gat_logs/model_weight_{batch_idx}.pt')
    
         # forward pass
-        pred = self.forward(features)
+        pred = self.forward(features, edge_sizes)
         # np.save(f'/mnt/dragon/gat_logs/output_{batch_idx}', pred.detach().cpu().numpy())
 
         loss = self.loss(pred, seq_mask)
@@ -153,13 +157,14 @@ class SP_SWIN_PyG_Wrapper(pl.LightningModule):
         seq_mask = batch[1]
         segments = batch[2]
         mask = batch[3]
-  
+        edge_sizes = batch[4][0]
+        
 
       
 
 
         # forward pass
-        pred = self.forward(features)
+        pred = self.forward(features, edge_sizes)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
@@ -265,10 +270,10 @@ class SP_SWIN_PyG_Wrapper(pl.LightningModule):
         seq_mask = batch[1]
         segments = batch[2]
         mask = batch[3]
-
+        edge_sizes = batch[4][0]
 
         # forward pass
-        pred = self.forward(features)
+        pred = self.forward(features, edge_sizes)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()

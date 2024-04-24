@@ -35,23 +35,33 @@ class SP_SWIN_PyG(nn.Module):
         self.window_size = window_size
         self.num_seg = num_seg
         
+        
 
 
         
-    def forward(self, data, return_attention=False):
+    def forward(self, data, edge_sizes, return_attention=False):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
         
-        num_edges_local = (self.window_size**4)*((32//self.window_size)**2)
-        num_edges_dilated = ((32//self.window_size)**4)*(self.window_size**2)
-        edge_index = edge_index.reshape(2, -1, num_edges_local*2+num_edges_dilated)
         
-        local_index = edge_index[:, :, :num_edges_local].reshape(2, -1)
-        shifted_index = edge_index[:, :, num_edges_local:num_edges_local+num_edges_local].reshape(2, -1)
-        dilated_index = edge_index[:, :, num_edges_local+num_edges_local:].reshape(2, -1)
+        edge_index = edge_index.reshape(2, -1, torch.sum(edge_sizes))
         
         batch_size = x.size(0)//self.num_seg
         
         batch_index = torch.arange(0, batch_size).repeat(self.num_seg).reshape(self.num_seg, -1).T.reshape(-1).cuda()
+        
+       
+        
+        s = edge_sizes[0]
+        edge_indices = []
+        for size in edge_sizes[1:]:
+            edge_indices.append(edge_index[:, :, s:s+size].reshape(2, -1))
+           
+                       
+            s += size
+        
+        edge_indices.append(edge_index[:, :, :edge_sizes[0]].reshape(2, -1))
+       
+        
 
         # local_index_ = edge_index[:, :, :num_edges_local].detach().cpu().numpy()
         # shifted_index_ = edge_index[:, :, num_edges_local:num_edges_local+num_edges_local].detach().cpu().numpy()
@@ -61,14 +71,21 @@ class SP_SWIN_PyG(nn.Module):
         #     xs = x[b*1024:b*1024+1024, 0].detach().cpu().numpy()
         #     ys = x[b*1024:b*1024+1024, 1].detach().cpu().numpy()
         #     import matplotlib.pyplot as plt
-        #     plt.scatter(ys, -xs)
             
-        #     for edge_ind in range(num_edges_local):     
-        #         plt.plot(ys[shifted_index_[:, b, edge_ind]-b*1024], -xs[shifted_index_[:, b, edge_ind]-b*1024])
-        #     plt.show()
-        #     plt.clf()
+        #     dilation_ind = 0
+        #     mask = edge_indices[dilation_ind][:, b*edge_sizes[dilation_ind+1]:b*edge_sizes[dilation_ind+1]+edge_sizes[dilation_ind+1]].detach().cpu().numpy()-b*1024
             
-       
+           
+        #     for k in range(0, 1024, 10):
+        #         for e in mask[:, mask[0, :] == k].T:
+        #             plt.plot(ys[e],
+        #                         -xs[e])
+        #         plt.scatter(ys, -xs)
+        #         plt.title(f'{b}')
+        #         plt.show()
+        #         plt.clf()
+            
+            
 
 
         # edge_attr_dim = edge_attr.size(1)
@@ -95,28 +112,17 @@ class SP_SWIN_PyG(nn.Module):
         
         att_weights = []
         local_shifted_flag = True
-        for idx, (ln1, ln2, mlp, conv, proj) in enumerate(zip(self.ln1s, self.ln2s, self.mlp,  self.convs, self.projs)):
-            if idx % 2 == 0 and local_shifted_flag:
-                edge_index = local_index
-                edge_attr = local_edge_attr
-                local_shifted_flag = not local_shifted_flag
-            elif idx % 2 == 0 and not local_shifted_flag:
-                edge_index = shifted_index
-                edge_attr = shifted_edge_attr
-                local_shifted_flag = not local_shifted_flag
-            else:
-                edge_index = dilated_index
-                edge_attr = dilated_edge_attr
-            
+        for idx, (ln1, ln2, mlp, conv, proj, ei) in enumerate(zip(self.ln1s, self.ln2s, self.mlp,  self.convs, self.projs, edge_indices)):
+                      
             
             h = x
             x = ln1(x, batch=batch_index)
             
             if return_attention:
-                x, (ei, att) = conv(x, edge_index=edge_index, edge_attr=None, return_attention_weights=return_attention)# adding edge features here
+                x, (ei, att) = conv(x, edge_index=ei, edge_attr=None, return_attention_weights=return_attention)# adding edge features here
                 att_weights.append(att)
             else:
-                x = conv(x, edge_index=edge_index, edge_attr=None)
+                x = conv(x, edge_index=ei, edge_attr=None)
             
             x = proj(x)
             

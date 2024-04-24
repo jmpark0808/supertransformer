@@ -199,6 +199,12 @@ if __name__ == "__main__":
     dict_args['git'] = sha
     
     pl.seed_everything(dict_args['seed'], True)
+
+    # Data: load data module
+    assert dict_args['dataloader'] in DATALOADER_DIRECTORY
+    data_module = DATALOADER_DIRECTORY[dict_args['dataloader']](**dict_args)
+
+
     # Initialize model to train
     assert dict_args['model'] in MODEL_DIRECTORY
     model = MODEL_DIRECTORY[dict_args['model']](**dict_args)
@@ -206,8 +212,6 @@ if __name__ == "__main__":
         model = model.load_from_checkpoint(dict_args['load'])
 
     # Initialize logging paths
-    random_sec = random.randint(1, 20)
-    time.sleep(random_sec)
     now = datetime.datetime.now().strftime('%m%d-%H%M%S')
     weight_save_dir = os.path.join(dict_args["logdir"], os.path.join('models', 'state_dict', now+'_'+dict_args["tag"]))
  
@@ -228,9 +232,7 @@ if __name__ == "__main__":
         dirpath=weight_save_dir, save_top_k=5, verbose=True, monitor="Validation MAE", mode="min"
     )
 
-    # Data: load data module
-    assert dict_args['dataloader'] in DATALOADER_DIRECTORY
-    data_module = DATALOADER_DIRECTORY[dict_args['dataloader']](**dict_args)
+    
 
     # Trainer: initialize training behaviour
    

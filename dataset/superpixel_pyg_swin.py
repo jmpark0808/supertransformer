@@ -317,7 +317,7 @@ class ToTensorSP(object):
         return features, seq_mask, segments, self.tensor(mask)
 
 class SPDatasetExport(data.Dataset):
-    def __init__(self, image_list, mask_list, num_seg, size, compactness, window_size, dataloader,
+    def __init__(self, image_list, mask_list, num_seg, size, compactness, window_size, dataloader, ntfm, 
                   coeff=None, ignore_phase=False, sigma=None):
         self.image_list = image_list
         self.mask_list = mask_list
@@ -340,33 +340,50 @@ class SPDatasetExport(data.Dataset):
 
         os.makedirs(os.path.join(str(Path(self.image_list[0]).parents[1]),self.dataloader), exist_ok=True)
 
-        node_index = torch.arange(1024).reshape(1, 32, 32).float().cuda()
-        local_unfold = torch.nn.Unfold(self.window_size, stride=self.window_size)
-        dilated_unfold = torch.nn.Unfold((32//window_size), dilation=window_size)
+        node_index = torch.arange(1, 1025).reshape(1, 32, 32).float()
+        assert self.window_size%2 == 1, 'Window size must be odd number'
+        local_unfold = nn.Unfold(self.window_size, 1, (self.window_size//2))
+        
+        dilated_unfold = [nn.Unfold(self.window_size, dilation, (window_size//2)*(dilation)) for dilation in range(2, 16, 14//ntfm)]
+        dilated_unfold = dilated_unfold[:ntfm]
         
 
         local_index = local_unfold(node_index)
-        shifted_index = local_unfold(torch.roll(node_index, shifts=(-self.window_size//2, -self.window_size//2), dims=(1, 2)))
-        dilated_index = dilated_unfold(node_index)
-
+        dilated_index = [du(node_index) for du in dilated_unfold]
+        dilated_index.reverse()
         all_local_indices = []
-        all_shifted_indices = []
         all_dilated_indices = []
+        edge_sizes = []
+        edge_size = 0
         for i in range(local_index.shape[1]):
-            x, y = torch.meshgrid(local_index[:, i], local_index[:, i])
-            all_local_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
-            x, y = torch.meshgrid(shifted_index[:, i], shifted_index[:, i])
-            all_shifted_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
-        for i in range(dilated_index.shape[1]):
-            x, y = torch.meshgrid(dilated_index[:, i], dilated_index[:, i])
-            all_dilated_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
+            x, y = torch.meshgrid(local_index[self.window_size**2//2, i], local_index[:, i])
+            stacked = torch.stack((x, y), dim=0).reshape(2, -1)
+            check_zero = stacked == 0
+            remove_zeros = torch.logical_or(check_zero[0], check_zero[1])
+            all_local_indices.append(stacked[:, ~remove_zeros]-1)
+            edge_size += torch.sum(~remove_zeros)
+        edge_sizes.append(edge_size)
+            
+        for j in range(len(dilated_index)):
+            edge_size = 0
+            for i in range(dilated_index[j].shape[1]):
+                x, y = torch.meshgrid(dilated_index[j][self.window_size**2//2, i], dilated_index[j][:, i])
+                stacked = torch.stack((x, y), dim=0).reshape(2, -1)
+                check_zero = stacked == 0
+                remove_zeros = torch.logical_or(check_zero[0], check_zero[1])
+                all_dilated_indices.append(stacked[:, ~remove_zeros]-1)
+                edge_size += torch.sum(~remove_zeros)
+            edge_sizes.append(edge_size)
+                
             
         all_local_indices = torch.cat(all_local_indices, dim=1)
-        all_shifted_indices = torch.cat(all_shifted_indices, dim=1)
         all_dilated_indices = torch.cat(all_dilated_indices, dim=1)
 
-        edge_indices = torch.cat((all_local_indices, all_shifted_indices, all_dilated_indices), dim=1).long().detach().cpu().numpy()
+        edge_indices = torch.cat((all_local_indices, all_dilated_indices), dim=1).long()
+        
         self.edge_indices = edge_indices
+        
+        
 
     def __len__(self):
         return len(self.image_list)
@@ -427,7 +444,7 @@ class SPDatasetExport(data.Dataset):
 
 class SPDataset(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, 
-                  dataloader, window_size,  coeff=None,
+                  dataloader, window_size, ntfm, coeff=None,
                      sigma=None, memory=False):
         self.image_list = image_list
         self.mask_list = mask_list
@@ -440,70 +457,62 @@ class SPDataset(data.Dataset):
         self.window_size = window_size
 
         
-        node_index = torch.arange(1024).reshape(1, 32, 32).float()
-        local_unfold = torch.nn.Unfold(self.window_size, stride=self.window_size)
-        dilated_unfold = torch.nn.Unfold((32//window_size), dilation=window_size)
+        node_index = torch.arange(1, 1025).reshape(1, 32, 32).float()
+        # dummy_unfold = nn.Unfold(5, 1, 2)
+        # result = dummy_unfold(node_index)
+        
+
+
+        assert self.window_size%2 == 1, 'Window size must be odd number'
+        local_unfold = nn.Unfold(self.window_size, 1, (self.window_size//2))
+        
+        
+        dilated_unfold = [nn.Unfold(self.window_size, dilation, (window_size//2)*(dilation)) for dilation in range(2, 16, 14//ntfm)]
+        dilated_unfold = dilated_unfold[:ntfm]
         
 
         local_index = local_unfold(node_index)
-        shifted_index = local_unfold(torch.roll(node_index, shifts=(-self.window_size//2, -self.window_size//2), dims=(1, 2)))
-        dilated_index = dilated_unfold(node_index)
-
+        dilated_index = [du(node_index) for du in dilated_unfold]
+        dilated_index.reverse()
+        
         all_local_indices = []
-        all_shifted_indices = []
         all_dilated_indices = []
+        edge_sizes = []
+        edge_size = 0
         for i in range(local_index.shape[1]):
-            x, y = torch.meshgrid(local_index[:, i], local_index[:, i])
-            all_local_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
-            x, y = torch.meshgrid(shifted_index[:, i], shifted_index[:, i])
-            all_shifted_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
-        for i in range(dilated_index.shape[1]):
-            x, y = torch.meshgrid(dilated_index[:, i], dilated_index[:, i])
-            all_dilated_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
+            x, y = torch.meshgrid(local_index[self.window_size**2//2, i], local_index[:, i])
+            stacked = torch.stack((x, y), dim=0).reshape(2, -1)
+            check_zero = stacked == 0
+            remove_zeros = torch.logical_or(check_zero[0], check_zero[1])
+            all_local_indices.append(stacked[:, ~remove_zeros]-1)
+            
+            
+            edge_size += torch.sum(~remove_zeros)
+            
+        edge_sizes.append(edge_size)
+            
+        for j in range(len(dilated_index)):
+            edge_size = 0
+            for i in range(dilated_index[j].shape[1]):
+                x, y = torch.meshgrid(dilated_index[j][self.window_size**2//2, i], dilated_index[j][:, i])
+                stacked = torch.stack((x, y), dim=0).reshape(2, -1)
+                check_zero = stacked == 0
+                remove_zeros = torch.logical_or(check_zero[0], check_zero[1])
+                all_dilated_indices.append(stacked[:, ~remove_zeros]-1)    
+                edge_size += torch.sum(~remove_zeros)
+            edge_sizes.append(edge_size)
+                
             
         all_local_indices = torch.cat(all_local_indices, dim=1)
-        all_shifted_indices = torch.cat(all_shifted_indices, dim=1)
         all_dilated_indices = torch.cat(all_dilated_indices, dim=1)
-
-        edge_indices = torch.cat((all_local_indices, all_shifted_indices, all_dilated_indices), dim=1).long()
-        self.edge_indices = edge_indices
         
-        self.features = []
-        self.edge_features = []
-        self.seq_mask = []
-        self.segments = []
-        self.mask = []
-        self.memory = memory
-        if memory:
 
-            for item in range(len(self.image_list)):
-                sp_file_name_features = self.image_list[item].split('/')[-1].split('.')[0]+'_features.npy'
-                sp_file_name_edge_index = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_index.npy'
-                sp_file_name_edge_features = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_features.npy'
-                sp_file_name_seq_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_seq_mask.npy'
-                sp_file_name_segments = self.image_list[item].split('/')[-1].split('.')[0]+'_segments.npy'
-                sp_file_name_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_mask.npy'
 
-                sp_file_path_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_features )
-                sp_file_path_edge_index = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_index )
-                sp_file_path_edge_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_features )
-                sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_seq_mask )
-                sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_segments )
-                sp_file_path_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_mask)
+        edge_indices = torch.cat((all_local_indices, all_dilated_indices), dim=1).long()
 
-                features = np.load(sp_file_path_features)
-                seq_mask = np.load(sp_file_path_seq_mask)
-                segments = np.load(sp_file_path_segments)
-                edge_index = self.edge_indices
-                mask = np.load(sp_file_path_mask)
-                edge_attr = np.load(sp_file_path_edge_features)
-
-                self.features.append(features)
-                self.seq_mask.append(seq_mask)
-                self.segments.append(segments)
-                self.mask.append(mask)
-                self.edge_features.append(edge_attr)
-            
+        self.edge_indices = edge_indices
+        self.edge_sizes = edge_sizes
+        
        
      
 
@@ -512,59 +521,42 @@ class SPDataset(data.Dataset):
         return len(self.image_list)
 
     def __getitem__(self, item):
-        if not self.memory:
-            sp_file_name_features = self.image_list[item].split('/')[-1].split('.')[0]+'_features.npy'
-            sp_file_name_edge_index = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_index.npy'
-            sp_file_name_edge_features = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_features.npy'
-            sp_file_name_seq_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_seq_mask.npy'
-            sp_file_name_segments = self.image_list[item].split('/')[-1].split('.')[0]+'_segments.npy'
-            sp_file_name_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_mask.npy'
+       
+        sp_file_name_features = self.image_list[item].split('/')[-1].split('.')[0]+'_features.npy'
+        sp_file_name_edge_index = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_index.npy'
+        sp_file_name_edge_features = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_features.npy'
+        sp_file_name_seq_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_seq_mask.npy'
+        sp_file_name_segments = self.image_list[item].split('/')[-1].split('.')[0]+'_segments.npy'
+        sp_file_name_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_mask.npy'
 
-            sp_file_path_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_features )
-            sp_file_path_edge_index = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_index )
-            sp_file_path_edge_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_features )
-            sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_seq_mask )
-            sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_segments )
-            sp_file_path_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_mask)
+        sp_file_path_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_features )
+        sp_file_path_edge_index = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_index )
+        sp_file_path_edge_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_features )
+        sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_seq_mask )
+        sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_segments )
+        sp_file_path_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_mask)
 
-            features = np.load(sp_file_path_features)
-            seq_mask = np.load(sp_file_path_seq_mask)
-            segments = np.load(sp_file_path_segments)
-            edge_index = self.edge_indices
-            mask = np.load(sp_file_path_mask)
-            edge_attr = np.load(sp_file_path_edge_features)
-            
+        features = np.load(sp_file_path_features)
+        seq_mask = np.load(sp_file_path_seq_mask)
+        segments = np.load(sp_file_path_segments)
+        edge_index = self.edge_indices
+        mask = np.load(sp_file_path_mask)
+        edge_attr = np.load(sp_file_path_edge_features)
+        
 
-
-            # edge_features = np.load(sp_file_path_edge_features)
-            
-            
-            if self.sigma is not None and self.dataloader == 'SPGSWIN':
-                features = horizontal_flip(features, self.coeff, 0.5, self.size)
-                gaussian_noise = np.random.normal(1, self.sigma, features.shape)
-                features = features*gaussian_noise
-            
-            sample = (Data(x=torch.tensor(features).float(),
-                            edge_index=edge_index,
-                                edge_attr=torch.tensor(edge_attr).float()),
-                        torch.tensor(seq_mask), torch.tensor(segments), torch.tensor(mask), self.image_list[item])
-        else:
-            features = self.features[item]
-            seq_mask = self.seq_mask[item]
-            segments = self.segments[item]
-            edge_index = self.edge_indices
-            mask = self.mask[item]
-            edge_attr = self.edge_features[item]
-
-            if self.sigma is not None and self.dataloader == 'SPGSWIN':
-                features = horizontal_flip(features, self.coeff, 0.5, self.size)
-                gaussian_noise = np.random.normal(1, self.sigma, features.shape)
-                features = features*gaussian_noise
-            
-            sample = (Data(x=torch.tensor(features).float(),
-                            edge_index=edge_index,
-                                edge_attr=torch.tensor(edge_attr).float()),
-                        torch.tensor(seq_mask), torch.tensor(segments), torch.tensor(mask), self.image_list[item])
+        # edge_features = np.load(sp_file_path_edge_features)
+        
+        
+        if self.sigma is not None and self.dataloader == 'SPGSWIN':
+            features = horizontal_flip(features, self.coeff, 0.5, self.size)
+            gaussian_noise = np.random.normal(1, self.sigma, features.shape)
+            features = features*gaussian_noise
+        
+        sample = (Data(x=torch.tensor(features).float(),
+                        edge_index=edge_index,
+                            edge_attr=torch.tensor(edge_attr).float()),
+                    torch.tensor(seq_mask), torch.tensor(segments), torch.tensor(mask), torch.tensor(self.edge_sizes), self.image_list[item])
+      
 
     
         return sample
@@ -593,6 +585,7 @@ class SPGSWINDataModule(pl.LightningDataModule):
         self.dilation_mode = kwargs.get('dilation_mode', 0)
         self.window_size = kwargs.get('window_size', 4)
         self.memory = kwargs.get('memory', False)
+        self.ntfm = kwargs.get('tfmhp')[2]
         
         self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
         self.mask_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.train_dir, 'Mask'))]))
@@ -620,7 +613,8 @@ class SPGSWINDataModule(pl.LightningDataModule):
             self.test_mask_list = self.test_mask_list[:100]
 
         dummy_tr = SPDatasetExport(self.tr_image_list, self.tr_mask_list, self.num_seg,
-                                self.res, self.compactness, self.window_size, self.dataloader,  self.coeff, self.ignore_phase, None)
+                                self.res, self.compactness, self.window_size, self.dataloader, 
+                                 self.ntfm, self.coeff, self.ignore_phase, None)
         dummy_tr_loader = DataLoader(
                 dummy_tr, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=False, pin_memory=False)
@@ -632,10 +626,10 @@ class SPGSWINDataModule(pl.LightningDataModule):
 
         dummy_val = SPDatasetExport(self.val_image_list, self.val_mask_list, self.num_seg,
                               self.res, self.compactness, self.window_size, self.dataloader,
-                                self.coeff, self.ignore_phase,  None)
+                                self.ntfm, self.coeff, self.ignore_phase,  None)
         dummy_test = SPDatasetExport(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.window_size, self.dataloader, 
-                               self.coeff, self.ignore_phase, None)
+                               self.ntfm, self.coeff, self.ignore_phase, None)
         dummy_val_loader = DataLoader(
                 dummy_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)
@@ -656,7 +650,7 @@ class SPGSWINDataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg,
-                                self.res, self.dataloader, self.window_size,
+                                self.res, self.dataloader, self.window_size,self.ntfm, 
                                   self.coeff,  self.sigma, self.memory)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
@@ -664,10 +658,10 @@ class SPGSWINDataModule(pl.LightningDataModule):
 
     def val_dataloader(self):
         data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg,
-                              self.res, self.dataloader,self.window_size,
+                              self.res, self.dataloader,self.window_size,self.ntfm, 
                                 self.coeff, None, self.memory)
         data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
-                               self.res, self.dataloader,self.window_size,
+                               self.res, self.dataloader,self.window_size,self.ntfm, 
                                self.coeff, None, self.memory)
         val_dataloader = DataLoader(
                 data_val, batch_size=self.batch_size, 
@@ -679,7 +673,7 @@ class SPGSWINDataModule(pl.LightningDataModule):
 
     def test_dataloader(self):
         data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
-                               self.res,  self.dataloader, self.window_size,
+                               self.res,  self.dataloader, self.window_size,self.ntfm, 
                                  self.coeff,None, self.memory)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
