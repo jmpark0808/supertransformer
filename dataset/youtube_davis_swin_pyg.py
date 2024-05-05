@@ -156,6 +156,7 @@ class ToTensorSPFFT(object):
         img_gray = np.array(img.convert('L'))
         img_np = np.array(img)
         mask_np = np.array(mask)/255.
+        mask_np = (mask_np > 0.001).astype(float)
         img_size = img_np.shape
 
         # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
@@ -214,7 +215,7 @@ class ToTensorSPFFT(object):
         for ind in range(8+2):
             features[label-1, ind+8+(self.coeff)*2] = regions_lbp[f'lbp-{ind}']
         
-        
+       
         for ind, coord in zip(regions['label'], regions['coords']):
             seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
 
@@ -328,7 +329,7 @@ class ToTensorSP(object):
 
 class SPDatasetExport(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, compactness,
-                  dataloader, coeff=None, window_size=4,
+                  dataloader, ntfm, coeff=None, window_size=4,
                     ignore_phase=False, sigma=None):
         self.image_list = image_list
         self.mask_list = mask_list
@@ -340,32 +341,49 @@ class SPDatasetExport(data.Dataset):
         self.coeff = coeff
         self.window_size = window_size
 
-        node_index = torch.arange(1024).reshape(1, 32, 32).float()
-        local_unfold = torch.nn.Unfold(self.window_size, stride=self.window_size)
-        dilated_unfold = torch.nn.Unfold(self.window_size, dilation=(32//self.window_size))
+        node_index = torch.arange(1, 1025).reshape(1, 32, 32).float()
+        assert self.window_size%2 == 1, 'Window size must be odd number'
+        local_unfold = nn.Unfold(self.window_size, 1, (self.window_size//2))
+        
+        dilated_unfold = [nn.Unfold(self.window_size, dilation, (window_size//2)*(dilation)) for dilation in range(2, 16, 14//ntfm)]
+        dilated_unfold = dilated_unfold[:ntfm]
         
 
         local_index = local_unfold(node_index)
-        shifted_index = local_unfold(torch.roll(node_index, shifts=(-self.window_size//2, -self.window_size//2), dims=(1, 2)))
-        dilated_index = dilated_unfold(node_index)
-
+        dilated_index = [du(node_index) for du in dilated_unfold]
+        dilated_index.reverse()
         all_local_indices = []
-        all_shifted_indices = []
         all_dilated_indices = []
+        edge_sizes = []
+        edge_size = 0
         for i in range(local_index.shape[1]):
-            x, y = torch.meshgrid(local_index[:, i], local_index[:, i])
-            all_local_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
-            x, y = torch.meshgrid(shifted_index[:, i], shifted_index[:, i])
-            all_shifted_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
-            x, y = torch.meshgrid(dilated_index[:, i], dilated_index[:, i])
-            all_dilated_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
+            x, y = torch.meshgrid(local_index[self.window_size**2//2, i], local_index[:, i])
+            stacked = torch.stack((x, y), dim=0).reshape(2, -1)
+            check_zero = stacked == 0
+            remove_zeros = torch.logical_or(check_zero[0], check_zero[1])
+            all_local_indices.append(stacked[:, ~remove_zeros]-1)
+            edge_size += torch.sum(~remove_zeros)
+        edge_sizes.append(edge_size)
+            
+        for j in range(len(dilated_index)):
+            edge_size = 0
+            for i in range(dilated_index[j].shape[1]):
+                x, y = torch.meshgrid(dilated_index[j][self.window_size**2//2, i], dilated_index[j][:, i])
+                stacked = torch.stack((x, y), dim=0).reshape(2, -1)
+                check_zero = stacked == 0
+                remove_zeros = torch.logical_or(check_zero[0], check_zero[1])
+                all_dilated_indices.append(stacked[:, ~remove_zeros]-1)
+                edge_size += torch.sum(~remove_zeros)
+            edge_sizes.append(edge_size)
+                
             
         all_local_indices = torch.cat(all_local_indices, dim=1)
-        all_shifted_indices = torch.cat(all_shifted_indices, dim=1)
         all_dilated_indices = torch.cat(all_dilated_indices, dim=1)
 
-        edge_indices = torch.cat((all_local_indices, all_shifted_indices, all_dilated_indices), dim=1).long()
+        edge_indices = torch.cat((all_local_indices, all_dilated_indices), dim=1).long()
+        
         self.edge_indices = edge_indices
+        
         
         
         totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase)
@@ -451,7 +469,7 @@ class SPDatasetExport(data.Dataset):
         return torch.empty(0)
 
 class SPDataset(data.Dataset):
-    def __init__(self, image_list, mask_list, num_seg, size, window_size,
+    def __init__(self, image_list, mask_list, num_seg, size, window_size, ntfm,
                   dataloader, coeff=None,
                   sigma=None):
         self.image_list = image_list
@@ -473,32 +491,50 @@ class SPDataset(data.Dataset):
         # for item in range(len(self.image_list)):
            
 
-        node_index = torch.arange(1024).reshape(1, 32, 32).float()
-        local_unfold = torch.nn.Unfold(self.window_size, stride=self.window_size)
-        dilated_unfold = torch.nn.Unfold(self.window_size, dilation=(32//self.window_size))
+        node_index = torch.arange(1, 1025).reshape(1, 32, 32).float()
+        assert self.window_size%2 == 1, 'Window size must be odd number'
+        local_unfold = nn.Unfold(self.window_size, 1, (self.window_size//2))
+        
+        dilated_unfold = [nn.Unfold(self.window_size, dilation, (window_size//2)*(dilation)) for dilation in range(2, 16, 14//ntfm)]
+        dilated_unfold = dilated_unfold[:ntfm]
         
 
         local_index = local_unfold(node_index)
-        shifted_index = local_unfold(torch.roll(node_index, shifts=(-self.window_size//2, -self.window_size//2), dims=(1, 2)))
-        dilated_index = dilated_unfold(node_index)
-
+        dilated_index = [du(node_index) for du in dilated_unfold]
+        dilated_index.reverse()
         all_local_indices = []
-        all_shifted_indices = []
         all_dilated_indices = []
+        edge_sizes = []
+        edge_size = 0
         for i in range(local_index.shape[1]):
-            x, y = torch.meshgrid(local_index[:, i], local_index[:, i])
-            all_local_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
-            x, y = torch.meshgrid(shifted_index[:, i], shifted_index[:, i])
-            all_shifted_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
-            x, y = torch.meshgrid(dilated_index[:, i], dilated_index[:, i])
-            all_dilated_indices.append(torch.stack((x, y), dim=0).reshape(2, -1))
+            x, y = torch.meshgrid(local_index[self.window_size**2//2, i], local_index[:, i])
+            stacked = torch.stack((x, y), dim=0).reshape(2, -1)
+            check_zero = stacked == 0
+            remove_zeros = torch.logical_or(check_zero[0], check_zero[1])
+            all_local_indices.append(stacked[:, ~remove_zeros]-1)
+            edge_size += torch.sum(~remove_zeros)
+        edge_sizes.append(edge_size)
+            
+        for j in range(len(dilated_index)):
+            edge_size = 0
+            for i in range(dilated_index[j].shape[1]):
+                x, y = torch.meshgrid(dilated_index[j][self.window_size**2//2, i], dilated_index[j][:, i])
+                stacked = torch.stack((x, y), dim=0).reshape(2, -1)
+                check_zero = stacked == 0
+                remove_zeros = torch.logical_or(check_zero[0], check_zero[1])
+                all_dilated_indices.append(stacked[:, ~remove_zeros]-1)
+                edge_size += torch.sum(~remove_zeros)
+            edge_sizes.append(edge_size)
+                
             
         all_local_indices = torch.cat(all_local_indices, dim=1)
-        all_shifted_indices = torch.cat(all_shifted_indices, dim=1)
         all_dilated_indices = torch.cat(all_dilated_indices, dim=1)
 
-        edge_indices = torch.cat((all_local_indices, all_shifted_indices, all_dilated_indices), dim=1).long()
+        edge_indices = torch.cat((all_local_indices, all_dilated_indices), dim=1).long()
+        
         self.edge_indices = edge_indices
+        self.edge_sizes = edge_sizes
+        
 
             
 
@@ -528,13 +564,13 @@ class SPDataset(data.Dataset):
         
         edge_index = self.edge_indices
         
-        if 'SegTrackv2' in self.image_list[item]:
-            fig, ax = plt.subplots(1, 2)
-            img = Image.open(self.image_list[item]).resize((320, 320))
-            ax[0].imshow(img)
-            ax[1].imshow(np.squeeze(mask), cmap='gray')
-            fig.suptitle(f'{self.image_list[item]}')
-            plt.show()
+        # if 'SegTrackv2' in self.image_list[item]:
+        #     fig, ax = plt.subplots(1, 2)
+        #     img = Image.open(self.image_list[item]).resize((320, 320))
+        #     ax[0].imshow(img)
+        #     ax[1].imshow(np.squeeze(mask), cmap='gray')
+        #     fig.suptitle(f'{self.image_list[item]}')
+        #     plt.show()
         
         
         if self.dataloader == 'SPFFFT' and self.sigma is not None:
@@ -545,7 +581,7 @@ class SPDataset(data.Dataset):
         sample = (Data(x=torch.tensor(features).float(),
                             edge_index=edge_index,
                                 edge_attr=torch.tensor(edge_attr).float()),
-                        torch.tensor(seq_mask), torch.tensor(segments), torch.tensor(mask), self.image_list[item])
+                        torch.tensor(seq_mask), torch.tensor(segments), torch.tensor(mask), torch.tensor(self.edge_sizes), self.image_list[item])
     
         return sample
 
@@ -571,6 +607,7 @@ class YDGDataModule(pl.LightningDataModule):
         self.dilation = kwargs.get('dilation')
         self.debug = kwargs.get('debug', False)
         self.window_size = kwargs.get('window_size', 4)
+        self.ntfm = kwargs.get('tfmhp')[2]
 
         davis_train_dir = os.path.join(self.root_dir, 'DAVIS2017')
         segtrack_train_dir = os.path.join(self.root_dir, 'SegTrackv2')
@@ -593,9 +630,8 @@ class YDGDataModule(pl.LightningDataModule):
 
         for root, subdirs, files in os.walk(os.path.join(segtrack_train_dir, 'GroundTruth')):
             for file in files:
-                print(root, file)
                 tag_mask = os.path.join(root.split('/')[-1], file)
-                tag_image = tag_mask.replace('png', 'jpg')
+                tag_image = tag_mask
                 self.mask_list.append(os.path.join(segtrack_train_dir, 'GroundTruth', tag_mask))
                 self.image_list.append(os.path.join(segtrack_train_dir, 'JPEGImages', tag_image))
 
@@ -634,7 +670,7 @@ class YDGDataModule(pl.LightningDataModule):
             self.test_mask_list = self.test_mask_list[:100]
 
         dummy_tr = SPDatasetExport(self.train_image_list, self.train_mask_list, self.num_seg,
-                                self.res, self.compactness, self.dataloader,
+                                self.res, self.compactness, self.dataloader, self.ntfm,
                                   self.coeff, self.window_size, self.ignore_phase,  None)
         dummy_tr_loader = DataLoader(
                 dummy_tr, batch_size=10, 
@@ -646,10 +682,10 @@ class YDGDataModule(pl.LightningDataModule):
         del dummy_tr, dummy_tr_loader
 
         dummy_val = SPDatasetExport(self.valid_image_list, self.valid_mask_list, self.num_seg,
-                              self.res, self.compactness, self.dataloader,
+                              self.res, self.compactness, self.dataloader,self.ntfm,
                                 self.coeff, self.window_size, self.ignore_phase, None)
         dummy_test = SPDatasetExport(self.test_image_list, self.test_mask_list, self.num_seg,
-                               self.res,  self.compactness, self.dataloader, 
+                               self.res,  self.compactness, self.dataloader, self.ntfm,
                                self.coeff, self.window_size, self.ignore_phase,  None)
         dummy_val_loader = DataLoader(
                 dummy_val, batch_size=10, 
@@ -672,7 +708,7 @@ class YDGDataModule(pl.LightningDataModule):
         
     def train_dataloader(self):
         data_train = SPDataset(self.train_image_list, self.train_mask_list, self.num_seg,
-                                self.res, self.window_size, self.dataloader,
+                                self.res, self.window_size, self.ntfm,self.dataloader,
                                   self.coeff,  self.sigma)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
@@ -680,10 +716,10 @@ class YDGDataModule(pl.LightningDataModule):
 
     def val_dataloader(self):
         data_val = SPDataset(self.valid_image_list, self.valid_mask_list, self.num_seg,
-                              self.res, self.window_size, self.dataloader,
+                              self.res, self.window_size, self.ntfm,self.dataloader,
                                 self.coeff, None)
         data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
-                               self.res,  self.window_size, self.dataloader,
+                               self.res,  self.window_size, self.ntfm,self.dataloader,
                                self.coeff, None)
         val_dataloader = DataLoader(
                 data_val, batch_size=self.batch_size, 
@@ -695,7 +731,7 @@ class YDGDataModule(pl.LightningDataModule):
 
     def test_dataloader(self):
         data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
-                               self.res,  self.window_size, self.dataloader, 
+                               self.res,  self.window_size, self.ntfm,self.dataloader, 
                                  self.coeff, None)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 

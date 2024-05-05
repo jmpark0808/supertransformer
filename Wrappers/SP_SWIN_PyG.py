@@ -160,7 +160,7 @@ class SP_SWIN_PyG_Wrapper(pl.LightningModule):
         edge_sizes = batch[4][0]
         
 
-      
+        
 
 
         # forward pass
@@ -178,6 +178,18 @@ class SP_SWIN_PyG_Wrapper(pl.LightningModule):
             samples.append(plt_image)
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
+   
+        samples_mask = []
+        for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
+            plt_image = masked[labels-1].reshape([img_size, img_size])
+            samples_mask.append(plt_image)
+
+        samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
+        if batch_idx == 0:
+            tensorboard.add_images('Pred', samples)
+            tensorboard.add_images('GT SP', samples_mask)
+            tensorboard.add_images('GT Mask', mask)
+
         # if batch_idx == 0:
         #     tensorboard.add_images('Validation Pred', samples, self.test_iteration)
         #     tensorboard.add_images('Validation GT', mask, self.test_iteration)
