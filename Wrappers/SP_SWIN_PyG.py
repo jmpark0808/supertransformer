@@ -25,6 +25,7 @@ class SP_SWIN_PyG_Wrapper(pl.LightningModule):
         self.tfm_hp = kwargs.get('tfmhp')
         self.dropout_edge = kwargs.get('dropout_edge')
         self.window_size = kwargs.get('window_size')
+        self.pretrain = kwargs.get('pretrain')
         
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
@@ -32,11 +33,11 @@ class SP_SWIN_PyG_Wrapper(pl.LightningModule):
         self.model = SP_SWIN_PyG(input_dim, self.tfm_hp[3],self.tfm_hp[1], 2, self.dropout_edge, self.tfm_hp[0], self.tfm_hp[2],
                                  self.num_seg, self.window_size)
         
-        # data = Data(x=torch.ones(self.num_seg, input_dim),
-        #              edge_index=torch.ones(self.num_seg,self.num_seg),
-        #                edge_attr=torch.ones(self.num_seg,self.num_seg, 1))
-        # flops = FlopCountAnalysis(self.model, data)
-        # print(flop_count_table(flops))
+        if self.pretrain:
+            ckpt = torch.load(self.pretrain)
+            for key in list(ckpt['state_dict'].keys()):
+                ckpt['state_dict'][key.replace('model.', '')] = ckpt['state_dict'].pop(key)
+            self.model.load_state_dict(ckpt['state_dict'])
         self.iteration = 0
         self.num_thresholds = 10
         self.test_iteration = 0
