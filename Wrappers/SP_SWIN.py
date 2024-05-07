@@ -36,13 +36,13 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         self.iteration = 0
         self.test_iteration = 0
         self.num_thresholds = 10
-        # if self.pretrain:
-        #     checkpoint = torch.load(self.pretrain)
-        #     for key in list(checkpoint['state_dict'].keys()):
-        #         checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
-        #     checkpoint['state_dict'].pop('out.weight')
-        #     checkpoint['state_dict'].pop('out.bias')
-        #     self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
+        if self.pretrain:
+            checkpoint = torch.load(self.pretrain)
+            for key in list(checkpoint['state_dict'].keys()):
+                checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
+            checkpoint['state_dict'].pop('out.weight')
+            checkpoint['state_dict'].pop('out.bias')
+            self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
         
         
         self.save_hyperparameters()
