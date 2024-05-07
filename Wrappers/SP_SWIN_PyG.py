@@ -38,6 +38,7 @@ class SP_SWIN_PyG_Wrapper(pl.LightningModule):
             for key in list(ckpt['state_dict'].keys()):
                 ckpt['state_dict'][key.replace('model.', '')] = ckpt['state_dict'].pop(key)
             self.model.load_state_dict(ckpt['state_dict'])
+            print('model loaded')
         self.iteration = 0
         self.num_thresholds = 10
         self.test_iteration = 0
