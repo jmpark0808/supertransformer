@@ -17,6 +17,7 @@ from Wrappers.SP_ImageNet_TFM import SP_ImageNet_TFM_Wrapper
 from Wrappers.SP_ImageNet_GAT_PyG import SP_ImageNet_GAT_PyG_Wrapper
 from Wrappers.SP_ImageNet_DGAT_PyG import SP_ImageNet_DGAT_PyG_Wrapper
 from Wrappers.SP_ImageNet_SWIN import SP_ImageNet_SWIN_Wrapper
+from Wrappers.image_swintransformer import ImageNet_SWIN_Wrapper
 
 
 # Import dataset modules
@@ -24,6 +25,7 @@ from dataset.imagenet import SPImageNetDataModule
 from dataset.imagenet_pyg import SPGImageNetDataModule
 from dataset.imagenet_aug import SPImageNetAugDataModule
 from dataset.imagenet_pyg_exp import SPGEImageNetDataModule
+from dataset.imagenet_images import ImageNetDataModule
 
 
 
@@ -36,14 +38,16 @@ MODEL_DIRECTORY = {
     'SP_ImageNet': SP_ImageNet_TFM_Wrapper,
     'SP_ImageNet_GAT': SP_ImageNet_GAT_PyG_Wrapper,
     'SP_ImageNet_DGAT': SP_ImageNet_DGAT_PyG_Wrapper,
-    'SP_ImageNet_SWIN': SP_ImageNet_SWIN_Wrapper
+    'SP_ImageNet_SWIN': SP_ImageNet_SWIN_Wrapper,
+    'SWIN': ImageNet_SWIN_Wrapper
 
 }
 DATALOADER_DIRECTORY = {
     'ImageNet': SPImageNetDataModule,
     'ImageNet_PyG': SPGImageNetDataModule,
     'ImageNet_Aug': SPImageNetAugDataModule,
-    'INPE': SPGEImageNetDataModule
+    'INPE': SPGEImageNetDataModule,
+    'ImageNet_Images': ImageNetDataModule
 } 
 
 if __name__ == "__main__":
@@ -66,7 +70,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', help="batchsize, default = 1", default=1, type=int)
     parser.add_argument('--epoch', help='# of epochs. default = 20', default=20, type=int)
     parser.add_argument('--num_workers', help="# of dataloader cpu process", default=0, type=int)
-    parser.add_argument('--val_freq', help='How often to run validation set within a training epoch, i.e. 0.25 will run 4 validation runs in 1 training epoch', default=0.1, type=float)
+    parser.add_argument('--val_freq', help='How often to run validation set within a training epoch, i.e. 0.25 will run 4 validation runs in 1 training epoch', default=1.0, type=float)
     parser.add_argument('--es_patience', help='Max # of consecutive validation runs w/o improvment', default=5, type=int)
     parser.add_argument('--logdir', help='logdir for models and losses. default = .', default='./', type=str)
     parser.add_argument('--lr', help='learning_rate for pose. default = 0.0001', default=0.0001, type=float)
