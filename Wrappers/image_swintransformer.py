@@ -5,7 +5,8 @@ import torch
 from Blocks.swintransformer_original import SwinTransformer
 import torch.nn.functional as F
 import numpy as np
-
+from dataset.mixup import Mixup
+from util.optimizers import SoftTargetCrossEntropy
 
 class ImageNet_SWIN_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
@@ -29,6 +30,10 @@ class ImageNet_SWIN_Wrapper(pl.LightningModule):
         # Generator that produces the HeatMap
 
         self.supert = SwinTransformer()
+        self.mixup = Mixup(
+            mixup_alpha=0.8, cutmix_alpha=1.0, cutmix_minmax=None,
+            prob=1.0, switch_prob=0.5, mode='batch',
+            label_smoothing=0.1, num_classes=1000)
         if self.load:
             ckpt = torch.load(self.load)
             for key in list(ckpt['state_dict'].keys()):
@@ -36,7 +41,7 @@ class ImageNet_SWIN_Wrapper(pl.LightningModule):
             self.supert.load_state_dict(ckpt['state_dict'])
 
         self.validation_step_outputs = []
-        self.loss_fn = torch.nn.CrossEntropyLoss()
+        self.loss_fn = SoftTargetCrossEntropy()
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()
@@ -95,7 +100,8 @@ class ImageNet_SWIN_Wrapper(pl.LightningModule):
         """
         features, target = batch
 
-
+        features, target = self.mixup(features, target)
+        
         # forward pass
         
         pred = self.forward(features)
@@ -103,8 +109,9 @@ class ImageNet_SWIN_Wrapper(pl.LightningModule):
         loss = self.loss(pred, target)
         
         max_scores, max_idx_class = pred.max(dim=1)
+        max_scores, max_idx_label = target.max(dim=1)
         n = pred.size(0)
-        acc = (max_idx_class == target).sum().item() 
+        acc = (max_idx_class == max_idx_label).sum().item() 
 
         self.train_acc += acc
         self.num_samples += n
@@ -142,7 +149,7 @@ class ImageNet_SWIN_Wrapper(pl.LightningModule):
         
         pred = self.forward(features)
 
-        loss = self.loss(pred, label)
+        loss = self.loss(pred, F.one_hot(label, num_classes=1000))
         
         max_scores, max_idx_class = pred.max(dim=1)
         n = pred.size(0)
@@ -177,7 +184,7 @@ class ImageNet_SWIN_Wrapper(pl.LightningModule):
         
         pred = self.forward(features)
 
-        loss = self.loss(pred, label)
+        loss = self.loss(pred, F.one_hot(label, num_classes=1000))
         
         max_scores, max_idx_class = pred.max(dim=1)
 
