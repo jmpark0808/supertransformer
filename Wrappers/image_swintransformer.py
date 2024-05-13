@@ -7,6 +7,7 @@ import torch.nn.functional as F
 import numpy as np
 from dataset.mixup import Mixup
 from util.optimizers import SoftTargetCrossEntropy
+from torch.optim.lr_scheduler import LambdaLR
 
 class ImageNet_SWIN_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
@@ -26,6 +27,7 @@ class ImageNet_SWIN_Wrapper(pl.LightningModule):
         self.dropout_edge = kwargs.get('dropout_edge')
         self.kernels = kwargs.get('kernels')
         self.window_size = kwargs.get('window_size')
+        self.warmup_epochs = kwargs.get('warmup_epochs')
         
         # Generator that produces the HeatMap
 
@@ -59,16 +61,46 @@ class ImageNet_SWIN_Wrapper(pl.LightningModule):
         """
         Choose what optimizers and learning-rate schedulers to use in your optimization.
         """
-        
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        skip_list = {'absolute_pos_embed'}
+        skip_keywords = {'relative_position_bias_table'}
+        has_decay = []
+        no_decay = []
+
+        def check_keywords_in_name(name, keywords=()):
+            isin = False
+            for keyword in keywords:
+                if keyword in name:
+                    isin = True
+            return isin
+
+        for name, param in self.supert.named_parameters():
+            if not param.requires_grad:
+                continue  # frozen weights
+            if len(param.shape) == 1 or name.endswith(".bias") or (name in skip_list) or \
+                    check_keywords_in_name(name, skip_keywords):
+                no_decay.append(param)
+                # print(f"{name} has no weight decay")
+            else:
+                has_decay.append(param)
+        parameters = [{'params': has_decay},
+                {'params': no_decay, 'weight_decay': 0.}]
+        optimizer = torch.optim.AdamW(parameters, lr=self.lr, weight_decay=0.05)
+
+        def lr_foo(epoch):
+            if epoch < self.warmup_epochs:
+                # warm up lr
+                lr_scale = 0.1 ** (self.warmup_epochs - epoch)
+            else:
+                lr_scale = 0.95 ** epoch
+
+            return lr_scale
+
+        scheduler = LambdaLR(
             optimizer,
-            mode='min',
-            factor=0.1,
-            patience=self.es_patience-3,
-            min_lr=1e-8,
-            verbose=True)
-        return optimizer
+            lr_lambda=lr_foo
+        )
+        
+        return [optimizer], [scheduler]
       
 
     def forward(self, input):
@@ -127,7 +159,7 @@ class ImageNet_SWIN_Wrapper(pl.LightningModule):
         acc = self.test_acc/self.test_num_samples
         self.log('Test Accuracy', acc, sync_dist=True)
 
-        self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
+        # self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
         self.validation_step_outputs.clear()
 
     def on_validation_start(self):
