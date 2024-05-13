@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import numpy as np
 from dataset.mixup import Mixup
 from util.optimizers import SoftTargetCrossEntropy
-from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 class ImageNet_SWIN_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
@@ -28,6 +28,7 @@ class ImageNet_SWIN_Wrapper(pl.LightningModule):
         self.kernels = kwargs.get('kernels')
         self.window_size = kwargs.get('window_size')
         self.warmup_epochs = kwargs.get('warmup_epochs')
+        self.total_train_epochs = kwargs.get('epoch')
         
         # Generator that produces the HeatMap
 
@@ -86,21 +87,27 @@ class ImageNet_SWIN_Wrapper(pl.LightningModule):
                 {'params': no_decay, 'weight_decay': 0.}]
         optimizer = torch.optim.AdamW(parameters, lr=self.lr, weight_decay=0.05)
 
-        def lr_foo(epoch):
-            if epoch < self.warmup_epochs:
-                # warm up lr
-                lr_scale = 0.1 ** (self.warmup_epochs - epoch)
-            else:
-                lr_scale = 0.95 ** epoch
-
-            return lr_scale
-
-        scheduler = LambdaLR(
-            optimizer,
-            lr_lambda=lr_foo
-        )
+        self.trainer.fit_loop.setup_data()
+        dataset= self.trainer.train_dataloader
+        self.scheduler = CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
+                                                      1, 5e-6)
         
-        return [optimizer], [scheduler]
+        return optimizer
+    
+    def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure):
+        # update params
+        optimizer.step(closure=optimizer_closure)
+
+        
+        dataset= self.trainer.train_dataloader
+        # manually warm up lr without a scheduler
+        
+        if epoch < self.warmup_epochs:
+            lr_scale = min(1.0, float(self.trainer.global_step + 1) / (len(dataset)*self.warmup_epochs))
+            for pg in optimizer.param_groups:
+                pg["lr"] = lr_scale * self.lr
+       
+        
       
 
     def forward(self, input):
@@ -150,6 +157,8 @@ class ImageNet_SWIN_Wrapper(pl.LightningModule):
 
         self.log('loss', loss.item(), sync_dist=True)
         self.iteration += 1
+        if self.current_epoch >= self.warmup_epochs:
+            self.scheduler.step()
         return loss
 
     def on_validation_epoch_end(self):

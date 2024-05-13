@@ -93,6 +93,8 @@ if __name__ == "__main__":
                     type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
     parser.add_argument('--window_size', help='Window size for SWIN Transformer', type=int, default=4)
     parser.add_argument('--warmup_epochs', help='Number of epochs for warmup', type=int, default=4)
+    parser.add_argument('--debug', help='Whether or not to switch to debug mode, only runs on 100 samples'
+                        , default=False, action="store_true")
 
 
 
