@@ -92,6 +92,8 @@ if __name__ == "__main__":
                     nargs="*", 
                     type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
     parser.add_argument('--window_size', help='Window size for SWIN Transformer', type=int, default=4)
+    parser.add_argument('--warmup_epochs', help='Number of epochs for warmup', type=int, default=4)
+
 
 
 
@@ -137,7 +139,7 @@ if __name__ == "__main__":
     lr_monitor = LearningRateMonitor(logging_interval='step')
     logger = TensorBoardLogger(save_dir=dict_args['logdir'], version=now+'_'+dict_args["tag"], name='lightning_logs', log_graph=True)
     trainer = pl.Trainer(
-        callbacks=[early_stopping_callback, checkpoint_callback, lr_monitor],
+        callbacks=[checkpoint_callback, lr_monitor],
         val_check_interval=dict_args['val_freq'],
         deterministic=True,
         profiler='simple',
