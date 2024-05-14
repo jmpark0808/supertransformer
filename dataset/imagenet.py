@@ -54,8 +54,18 @@ class ImageNetDataset(data.Dataset):
 
         if self.augmentation:
             features_np = horizontal_flip(features_np, self.coeff, 0.5, self.size)
+            features_np = rotate(features_np, self.coeff, 15, 0.5, self.size)
+
 
         features = torch.tensor(features_np).float()
+
+        randaug = transforms.RandAugment(9)
+        color_space = features[:, 3:6]
+        color_space = (color_space*255).to(torch.uint8)
+        color_space = randaug(color_space)
+        color_space /= 255.
+        
+        features[:, 3:6] = color_space
 
         target = torch.tensor(np.load(self.target_list[item]))
 
