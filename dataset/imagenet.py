@@ -23,6 +23,7 @@ from skimage.segmentation import mark_boundaries
 import torchvision 
 import xml.etree.ElementTree as ET
 from dataset.fft_transform import *
+from dataset.randaugment import RandAugment
 import pathlib
 import scipy
 import pickle
@@ -59,7 +60,7 @@ class ImageNetDataset(data.Dataset):
 
         features = torch.tensor(features_np).float()
 
-        randaug = transforms.RandAugment(9)
+        randaug = RandAugment(5)
         color_space = features[:, 3:6]
         color_space = (color_space*255).to(torch.uint8)
         color_space = randaug(color_space)
