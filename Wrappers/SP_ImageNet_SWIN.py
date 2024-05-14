@@ -7,6 +7,7 @@ import numpy as np
 from dataset.constants import *
 from dataset.constants import NUM_CHUNK
 from util.util import get_input_dim
+from dataset.mixup import Mixup
 
 class SP_ImageNet_SWIN_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
@@ -30,6 +31,11 @@ class SP_ImageNet_SWIN_Wrapper(pl.LightningModule):
         # Generator that produces the HeatMap
         self.supert = SP_SWIN_ImageNet(input_dim, self.tfm_hp[1], self.tfm_hp[3], self.tfm_hp[0],
                                        self.tfm_hp[2], self.dropout, self.dropout_edge, self.kernels, self.window_size)
+        
+        self.mixup = Mixup(
+            mixup_alpha=0.8, cutmix_alpha=1.0, cutmix_minmax=None,
+            prob=1.0, switch_prob=0.5, mode='batch',
+            label_smoothing=0.1, num_classes=1000)
         if self.load:
             ckpt = torch.load(self.load)
             for key in list(ckpt['state_dict'].keys()):
@@ -96,7 +102,9 @@ class SP_ImageNet_SWIN_Wrapper(pl.LightningModule):
         """
         features, target = batch
 
-
+        features = features.reshape(features.size(0), 32, 32, -1).permute(0, 3, 1, 2)
+        features, target = self.mixup(features, target)
+        features = features.permute(0, 2, 3, 1).reshape(features.size(0), 1024, -1)
         # forward pass
         
         pred = self.forward(features)
