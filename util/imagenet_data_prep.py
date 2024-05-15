@@ -1,4 +1,4 @@
-from dataset.imagenet import ImageNetDatasetTrainExport, ImageNetDatasetTestExport
+from dataset.imagenet import ImageNetDatasetExport
 import torch
 import torchvision.transforms as transforms
 import argparse
@@ -12,6 +12,9 @@ if __name__ == "__main__":
     parser.add_argument('--test_export_dir', help='Directory of the test saved graphs', required=True, default=None)
     parser.add_argument('--batch_size', help="batchsize, default = 1", default=1, type=int)
     parser.add_argument('--num_workers', help="# of dataloader cpu process", default=0, type=int)
+    parser.add_argument('--debug', help='Whether or not to switch to debug mode, only runs on 100 samples'
+                        , default=False, action="store_true")
+
   
 
 
@@ -36,25 +39,38 @@ if __name__ == "__main__":
                             transforms.ToTensor()
                             ])
 
-    train_dataset = ImageNetDatasetTrainExport(train_dir, num_seg, coeff, compactness, val_test_transform, 'train', train_export_dir, False)
-    class_to_idx = train_dataset.class_to_idx
+    train_dataset = ImageNetDatasetExport(train_dir, num_seg, coeff, compactness, val_test_transform, train_export_dir, False)
     train_size = int(0.8*len(train_dataset))
     val_size = len(train_dataset) - train_size
     train_dataset, val_dataset = torch.utils.data.random_split(train_dataset, [train_size, val_size], generator=generator)
     val_dataset.dataset.transform = val_test_transform
     val_dataset.mode = 'val'
 
-    test_dataset = ImageNetDatasetTestExport(test_dir, val_test_transform, num_seg, coeff, class_to_idx, compactness, test_export_dir, False)
+    test_dataset = ImageNetDatasetExport(test_dir, num_seg, coeff, compactness, val_test_transform, test_export_dir, False)
 
-    train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
-                                                            num_workers =num_workers, drop_last=False)
+    if dict_args['debug']:
+        tr_random_sampler = torch.utils.data.RandomSampler(train_dataset, num_samples=100)
+        val_random_sampler = torch.utils.data.RandomSampler(val_dataset, num_samples=100)
+        test_random_sampler = torch.utils.data.RandomSampler(test_dataset, num_samples=100)
+        train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, sampler=tr_random_sampler,
+                                                                num_workers =num_workers, drop_last=False)
 
-    val_source_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
-                                                            num_workers=num_workers, drop_last=False)
+        val_source_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, sampler=val_random_sampler,
+                                                                num_workers=num_workers, drop_last=False)
 
-    test_source_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
-                                                            num_workers=num_workers, drop_last=False)
-    
+        test_source_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, sampler=test_random_sampler,
+                                                                num_workers=num_workers, drop_last=False)
+    else:
+
+        train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                                                                num_workers =num_workers, drop_last=False)
+
+        val_source_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
+                                                                num_workers=num_workers, drop_last=False)
+
+        test_source_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
+                                                                num_workers=num_workers, drop_last=False)
+        
     for _ in tqdm(train_source_loader):
         pass
 
