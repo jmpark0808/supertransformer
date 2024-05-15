@@ -450,7 +450,7 @@ class PatchEmbed(nn.Module):
 
         self.in_chans = in_chans
         self.embed_dim = embed_dim
-
+        
         self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
         if norm_layer is not None:
             self.norm = norm_layer(embed_dim)
@@ -462,6 +462,7 @@ class PatchEmbed(nn.Module):
         # FIXME look at relaxing size constraints
         assert H == self.img_size[0] and W == self.img_size[1], \
             f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
+        
         x = self.proj(x).flatten(2).transpose(1, 2)  # B Ph*Pw C
         if self.norm is not None:
             x = self.norm(x)
@@ -519,6 +520,7 @@ class SwinTransformer(nn.Module):
         self.mlp_ratio = mlp_ratio
 
         # split image into non-overlapping patches
+
         self.patch_embed = PatchEmbed(
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim,
             norm_layer=norm_layer if self.patch_norm else None)
