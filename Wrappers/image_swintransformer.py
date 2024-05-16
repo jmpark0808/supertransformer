@@ -162,15 +162,15 @@ class ImageNet_SWIN_Wrapper(pl.LightningModule):
         return loss
 
     def on_validation_epoch_end(self):
-        acc = self.test_acc/self.test_num_samples
-        self.log('Test Accuracy', acc, sync_dist=True)
+        acc = self.val_acc/self.val_num_samples
+        self.log('Validation Accuracy', acc, sync_dist=True)
 
         # self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
         self.validation_step_outputs.clear()
 
     def on_validation_start(self):
-        self.test_acc = 0 
-        self.test_num_samples = 0
+        self.val_acc = 0
+        self.val_num_samples = 0
 
     def validation_step(self, batch, batch_idx):
         """
@@ -193,8 +193,8 @@ class ImageNet_SWIN_Wrapper(pl.LightningModule):
 
         self.validation_step_outputs.append(loss)
     
-        self.test_acc += acc
-        self.test_num_samples += n
+        self.val_acc += acc
+        self.val_num_samples += n
         return loss
 
 
