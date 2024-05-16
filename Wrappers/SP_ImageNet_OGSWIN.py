@@ -174,7 +174,7 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         self.test_acc = 0 
         self.test_num_samples = 0
 
-    def validation_step(self, batch, batch_idx, dataloader_idx):
+    def validation_step(self, batch, batch_idx):
         """
         Compute the metrics for validation batch
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
