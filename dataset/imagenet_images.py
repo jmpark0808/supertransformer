@@ -244,7 +244,7 @@ class ImageNetDataModule(pl.LightningDataModule):
         self.seed = kwargs.get('seed')
         self.size = kwargs.get('size')
         self.debug = kwargs.get('debug')
-        generator = torch.Generator().manual_seed(self.seed)
+        
 
         resize_im = self.size
         
@@ -282,11 +282,9 @@ class ImageNetDataModule(pl.LightningDataModule):
 
         train_dataset = ImageNetDataset(train_dir, transform_train)
         test_dataset = ImageNetDataset(test_dir, transform_val_test)
-        train_size = int(0.8*len(train_dataset))
-        val_size = len(train_dataset) - train_size
+
         if self.debug:
             tr_random_sampler = data.RandomSampler(train_dataset, num_samples=100)
-            val_random_sampler = data.RandomSampler(train_dataset, num_samples=100)
             test_random_sampler = data.RandomSampler(test_dataset, num_samples=100)
         
             
@@ -294,21 +292,12 @@ class ImageNetDataModule(pl.LightningDataModule):
             self.train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, sampler= tr_random_sampler, 
                                                                 num_workers =self.num_workers, drop_last=True)
             
-            self.val_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, sampler= val_random_sampler, 
-                                                                num_workers=self.num_workers, drop_last=False)
             
             self.test_source_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.batch_size, sampler= test_random_sampler, 
                                                                 num_workers=self.num_workers, drop_last=False)
         else:
-
-            train_dataset, val_dataset = torch.utils.data.random_split(train_dataset, [train_size, val_size], generator=generator)
-            val_dataset.dataset.transform = transform_val_test
-
             self.train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,
                                                                 num_workers =self.num_workers, drop_last=True)
-            
-            self.val_source_loader = torch.utils.data.DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False,
-                                                                num_workers=self.num_workers, drop_last=False)
             
             self.test_source_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False,
                                                                 num_workers=self.num_workers, drop_last=False)
@@ -318,7 +307,7 @@ class ImageNetDataModule(pl.LightningDataModule):
         return self.train_source_loader
 
     def val_dataloader(self):
-        return [self.val_source_loader, self.test_source_loader]
+        return self.test_source_loader
 
     def test_dataloader(self):
         return self.test_source_loader
