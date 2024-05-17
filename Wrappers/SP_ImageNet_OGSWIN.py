@@ -34,7 +34,8 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         input_dim = get_input_dim(kwargs)
         
         # Generator that produces the HeatMap
-        self.supert = SwinTransformer(img_size=32, in_chans=input_dim, patch_size=1, window_size=4)
+        self.supert = SwinTransformer(img_size=32, in_chans=input_dim, patch_size=1, window_size=4,
+                                       embed_dim=16, depths=[2, 2, 6, 2], num_heads=[4, 8, 16, 32])
         
         self.mixup = Mixup(
             mixup_alpha=0.8, cutmix_alpha=1.0, cutmix_minmax=None,
