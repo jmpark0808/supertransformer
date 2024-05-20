@@ -27,6 +27,7 @@ from dataset.imagenet_pyg import SPGImageNetDataModule
 from dataset.imagenet_aug import SPImageNetAugDataModule
 from dataset.imagenet_pyg_exp import SPGEImageNetDataModule
 from dataset.imagenet_images import ImageNetDataModule
+from dataset.imagenet_pyg_swin import SPGSImageNetDataModule
 
 
 
@@ -49,7 +50,8 @@ DATALOADER_DIRECTORY = {
     'ImageNet_PyG': SPGImageNetDataModule,
     'ImageNet_Aug': SPImageNetAugDataModule,
     'INPE': SPGEImageNetDataModule,
-    'ImageNet_Images': ImageNetDataModule
+    'ImageNet_Images': ImageNetDataModule,
+    'ImageNet_SWIN': SPGSImageNetDataModule
 } 
 
 if __name__ == "__main__":
@@ -145,7 +147,7 @@ if __name__ == "__main__":
     trainer = pl.Trainer(
         callbacks=[checkpoint_callback, lr_monitor],
         val_check_interval=dict_args['val_freq'],
-        deterministic=True,
+        deterministic=False,
         profiler='simple',
         logger=logger,
         max_epochs=dict_args["epoch"],
