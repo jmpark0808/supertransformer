@@ -32,6 +32,11 @@ class Mlp(nn.Module):
         x = self.drop(x)
         return x
 
+def dilated_partition(x, window_size):
+    B, H, W, C = x.shape
+    x = x.view(B, H // window_size, window_size, W // window_size, window_size, C)
+    windows = x.permute(0, 2, 4, 1, 3, 5).contiguous().view(-1, H //window_size, W //window_size, C)
+    return windows
 
 def window_partition(x, window_size):
     """
@@ -102,6 +107,22 @@ def window_reverse(windows, window_size, H, W):
     x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, H, W, -1)
     return x
 
+def dilation_reverse(windows, window_size, H, W):
+    """
+    Args:
+        windows: (num_windows*B, window_size, window_size, C)
+        window_size (int): Window size
+        H (int): Height of image
+        W (int): Width of image
+
+    Returns:
+        x: (B, H, W, C)
+    """
+    B = int(windows.shape[0] / (window_size * window_size))
+    x = windows.view(B, window_size, window_size, H // window_size, W // window_size,  -1)
+    x = x.permute(0, 3, 1, 4, 2, 5).contiguous().view(B, H, W, -1)
+    return x
+
 def scattered_reverse(windows, window_size, kernel_size, H, W, fold1, fold2):
     """
     Args:
@@ -168,8 +189,8 @@ class WindowAttention(nn.Module):
         self.softmax = nn.Softmax(dim=-1)
         # self.pos_linear_k = nn.Linear(2, head_dim)
         # self.pos_linear_v = nn.Linear(2, head_dim)
-        self.pos_linear_k = rel_pos[:, :, :2, :] # 1, 1, 2, D
-        self.pos_linear_v = rel_pos[:, :, 2:, :] # 1, 1, 2, D
+        # self.pos_linear_k = rel_pos[:, :, :2, :] # 1, 1, 2, D
+        # self.pos_linear_v = rel_pos[:, :, 2:, :] # 1, 1, 2, D
 
     def forward(self, x, mask=None):
         """
@@ -869,7 +890,7 @@ class SwinTransformerBlock(nn.Module):
 
     def __init__(self, dim, head_dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm):
+                 act_layer=nn.GELU, norm_layer=nn.LayerNorm, dilated=False):
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
@@ -877,6 +898,7 @@ class SwinTransformerBlock(nn.Module):
         self.window_size = window_size
         self.shift_size = shift_size
         self.mlp_ratio = mlp_ratio
+        self.dilated = dilated
         if min(self.input_resolution) <= self.window_size:
             # if window size is larger than input resolution, we don't partition windows
             self.shift_size = 0
@@ -891,7 +913,7 @@ class SwinTransformerBlock(nn.Module):
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(in_features=head_dim, hidden_features=mlp_hidden_dim, out_feautres=dim, act_layer=act_layer, drop=drop)
+        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, out_features=dim, act_layer=act_layer, drop=drop)
 
         if self.shift_size > 0:
             # calculate attention mask for SW-MSA
@@ -934,15 +956,25 @@ class SwinTransformerBlock(nn.Module):
             shifted_x = x
 
         # partition windows
-        x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
-        x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
+        
+        if self.dilated:
+            x_windows = dilated_partition(shifted_x, self.window_size)
+            x_windows = x_windows.view(-1,  (32//self.window_size) * (32//self.window_size), C) # nW*B, window_size*window_size, C
+        else:
+            x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
+            x_windows = x_windows.view(-1, self.window_size * self.window_size, C) # nW*B, window_size*window_size, C
 
+        
         # W-MSA/SW-MSA
         attn_windows = self.attn(x_windows, mask=self.attn_mask)  # nW*B, window_size*window_size, C
 
         # merge windows
-        attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
-        shifted_x = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
+        if self.dilated:
+            attn_windows = attn_windows.view(-1, 32//self.window_size, 32//self.window_size, C)
+            shifted_x = dilation_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
+        else:
+            attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
+            shifted_x = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
 
         # reverse cyclic shift
         if self.shift_size > 0:
@@ -1592,10 +1624,34 @@ class SwinTransformer(nn.Module):
 
         # stochastic depth
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, self.num_layers+1)]  # stochastic depth decay rule
-
+       
         # build layers
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
+            layer = SwinTransformerBlock(dim=embed_dim,
+                                                head_dim=head_dim,
+                                                input_resolution=(patches_resolution[0],
+                                                                patches_resolution[1]),
+                                                num_heads=num_heads, window_size=window_size,
+                                                shift_size=0,
+                                                mlp_ratio=mlp_ratio,
+                                                qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                                drop=drop_rate, attn_drop=attn_drop_rate,
+                                                drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
+                                                norm_layer=norm_layer, dilated=False)
+            self.layers.append(layer)
+            layer = SwinTransformerBlock(dim=embed_dim,
+                                                head_dim=head_dim,
+                                                input_resolution=(patches_resolution[0],
+                                                                patches_resolution[1]),
+                                                num_heads=num_heads, window_size=window_size,
+                                                shift_size=0,
+                                                mlp_ratio=mlp_ratio,
+                                                qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                                drop=drop_rate, attn_drop=attn_drop_rate,
+                                                drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
+                                                norm_layer=norm_layer, dilated=True)
+            self.layers.append(layer)
             # if kernels[i_layer] == 32:
             #     layer = ScatteredTransformerBlock(dim=embed_dim,
             #                                     head_dim=head_dim,
@@ -1612,37 +1668,37 @@ class SwinTransformer(nn.Module):
             #     self.layers.append(layer)
             # else:
             # LOCAL attention
-            layer = ScatteredTransformerBlock(dim=embed_dim,
-                                            head_dim=head_dim,
-                                            kernel=kernels[i_layer],
-                                            input_resolution=(patches_resolution[0],
-                                                            patches_resolution[1]),
-                                            num_heads=num_heads, window_size=window_size,
-                                            shift_size=0 if (i_layer % 2 == 0) else kernels[i_layer] // 2,
-                                            mlp_ratio=mlp_ratio,
-                                            qkv_bias=qkv_bias, qk_scale=qk_scale,
-                                            drop=drop_rate, attn_drop=attn_drop_rate,
-                                            drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
-                                            norm_layer=norm_layer,
-                                            rel_pos=self.rel_pos)
+            # layer = ScatteredTransformerBlock(dim=embed_dim,
+            #                                 head_dim=head_dim,
+            #                                 kernel=kernels[i_layer],
+            #                                 input_resolution=(patches_resolution[0],
+            #                                                 patches_resolution[1]),
+            #                                 num_heads=num_heads, window_size=window_size,
+            #                                 shift_size=0 if (i_layer % 2 == 0) else kernels[i_layer] // 2,
+            #                                 mlp_ratio=mlp_ratio,
+            #                                 qkv_bias=qkv_bias, qk_scale=qk_scale,
+            #                                 drop=drop_rate, attn_drop=attn_drop_rate,
+            #                                 drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
+            #                                 norm_layer=norm_layer,
+            #                                 rel_pos=self.rel_pos)
             
-            self.layers.append(layer)
-            # GLOBAL Scattered
-            layer = ScatteredTransformerBlock(dim=embed_dim,
-                                            head_dim=head_dim,
-                                            kernel=32,
-                                            input_resolution=(patches_resolution[0],
-                                                            patches_resolution[1]),
-                                            num_heads=num_heads, window_size=32//window_size,
-                                            shift_size=0,
-                                            mlp_ratio=mlp_ratio,
-                                            qkv_bias=qkv_bias, qk_scale=qk_scale,
-                                            drop=drop_rate, attn_drop=attn_drop_rate,
-                                            drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
-                                            norm_layer=norm_layer,
-                                            rel_pos=self.rel_pos)
+            # self.layers.append(layer)
+            # # GLOBAL Scattered
+            # layer = ScatteredTransformerBlock(dim=embed_dim,
+            #                                 head_dim=head_dim,
+            #                                 kernel=32,
+            #                                 input_resolution=(patches_resolution[0],
+            #                                                 patches_resolution[1]),
+            #                                 num_heads=num_heads, window_size=32//window_size,
+            #                                 shift_size=0,
+            #                                 mlp_ratio=mlp_ratio,
+            #                                 qkv_bias=qkv_bias, qk_scale=qk_scale,
+            #                                 drop=drop_rate, attn_drop=attn_drop_rate,
+            #                                 drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
+            #                                 norm_layer=norm_layer,
+            #                                 rel_pos=self.rel_pos)
             
-            self.layers.append(layer)
+            # self.layers.append(layer)
         # self.layers.append(KernelTransformerBlock(dim=embed_dim,
         #                                     head_dim=head_dim,
         #                                     input_resolution=(patches_resolution[0],
