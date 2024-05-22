@@ -11,7 +11,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks.lr_monitor import LearningRateMonitor
-from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.loggers import WandbLogger
 
 from Wrappers.SP_ImageNet_TFM import SP_ImageNet_TFM_Wrapper
 from Wrappers.SP_ImageNet_GAT_PyG import SP_ImageNet_GAT_PyG_Wrapper
@@ -133,7 +133,7 @@ if __name__ == "__main__":
 
     # Callback: model checkpoint strategy
     checkpoint_callback = ModelCheckpoint(
-        dirpath=weight_save_dir, save_top_k=5, verbose=True, monitor="Validation Accuracy", mode="max"
+        dirpath=weight_save_dir, save_top_k=1, verbose=True, monitor="Validation Accuracy", mode="max"
     )
 
     # Data: load data module
@@ -143,7 +143,8 @@ if __name__ == "__main__":
     # Trainer: initialize training behaviour
     
     lr_monitor = LearningRateMonitor(logging_interval='step')
-    logger = TensorBoardLogger(save_dir=dict_args['logdir'], version=now+'_'+dict_args["tag"], name='lightning_logs', log_graph=True)
+    logger = WandbLogger(project='SP_IMGNET', log_model="all", version=now+'_'+dict_args["tag"], save_dir=dict_args['logdir'])
+    # logger = TensorBoardLogger(save_dir=dict_args['logdir'], version=now+'_'+dict_args["tag"], name='lightning_logs', log_graph=True)
     trainer = pl.Trainer(
         callbacks=[checkpoint_callback, lr_monitor],
         val_check_interval=dict_args['val_freq'],
