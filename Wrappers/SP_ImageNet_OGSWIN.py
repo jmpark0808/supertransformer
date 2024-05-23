@@ -34,9 +34,13 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         self.total_train_epochs = kwargs.get('epoch')
         input_dim = get_input_dim(kwargs)
         
+        
         # Generator that produces the HeatMap
         self.supert = SwinTransformer(img_size=32, in_chans=input_dim, patch_size=1, window_size=4,
-                                       embed_dim=16, depths=[2, 2, 2, 2], num_heads=[1, 2, 4, 8])
+                                       embed_dim=self.tfm_hp[1], depths=[2, 2, 2, 2], num_heads=[self.tfm_hp[0],
+                                                                                                  self.tfm_hp[0]*2,
+                                                                                                    self.tfm_hp[0]*4,
+                                                                                                     self.tfm_hp[0]*8])
         
         self.mixup = Mixup(
             mixup_alpha=0.8, cutmix_alpha=1.0, cutmix_minmax=None,
