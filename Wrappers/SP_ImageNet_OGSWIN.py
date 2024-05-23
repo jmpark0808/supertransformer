@@ -10,7 +10,7 @@ from util.util import get_input_dim
 from dataset.mixup import Mixup
 from util.optimizers import SoftTargetCrossEntropy
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
-from torchsummary import summary
+
 
 class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
