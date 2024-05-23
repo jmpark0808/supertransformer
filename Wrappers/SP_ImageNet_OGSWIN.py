@@ -1,6 +1,6 @@
 import pytorch_lightning as pl
 import torch
-from Blocks.swintransformer_original import SwinTransformer
+from Blocks.swintransformer_original_rpe import SwinTransformer
 
 import torch.nn.functional as F
 import numpy as np
@@ -10,6 +10,7 @@ from util.util import get_input_dim
 from dataset.mixup import Mixup
 from util.optimizers import SoftTargetCrossEntropy
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+from torchsummary import summary
 
 class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
@@ -35,7 +36,7 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         
         # Generator that produces the HeatMap
         self.supert = SwinTransformer(img_size=32, in_chans=input_dim, patch_size=1, window_size=4,
-                                       embed_dim=16, depths=[2, 2, 6, 2], num_heads=[4, 8, 16, 32])
+                                       embed_dim=16, depths=[2, 2, 2, 2], num_heads=[1, 2, 4, 8])
         
         self.mixup = Mixup(
             mixup_alpha=0.8, cutmix_alpha=1.0, cutmix_minmax=None,
@@ -145,7 +146,7 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         features, target = self.mixup(features, target)
         # features = features.permute(0, 2, 3, 1).reshape(features.size(0), 1024, -1)
         # forward pass
-        features = features[:, 2:, :, :]
+        
         pred = self.forward(features)
 
         loss = self.loss(pred, target)
@@ -184,7 +185,7 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
 
         # forward pass
         features = features.reshape(features.size(0), 32, 32, -1).permute(0, 3, 1, 2)
-        features = features[:, 2:, :, :]
+        
         pred = self.forward(features)
 
         loss = self.loss(pred, F.one_hot(label, num_classes=1000))
@@ -217,8 +218,7 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         features, label = batch
 
         # forward pass
-        features = features.reshape(features.size(0), 32, 32, -1).permute(0, 3, 1, 2)
-        features = features[:, 2:, :, :]
+        
         pred = self.forward(features)
 
         loss = self.loss(pred, F.one_hot(label, num_classes=1000))
