@@ -88,6 +88,7 @@ class WindowAttention(nn.Module):
         self.window_size = window_size  # Wh, Ww
         self.num_heads = num_heads
         head_dim = dim // num_heads
+        self.head_dim = head_dim
         self.scale = qk_scale or head_dim ** -0.5
 
         # # define a parameter table of relative position bias
@@ -110,7 +111,7 @@ class WindowAttention(nn.Module):
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim)
+        self.proj = nn.Linear(head_dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
         # trunc_normal_(self.relative_position_bias_table, std=.02)
@@ -156,7 +157,8 @@ class WindowAttention(nn.Module):
 
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B_, N, C) + (attn.permute(0, 2, 1, 3) @ rpe_v).reshape(B_, N, C)
+        x = (attn @ v).transpose(1, 2).reshape(B_, N, self.num_heads,self.head_dim) + (attn.permute(0, 2, 1, 3) @ rpe_v).reshape(B_, N, self.num_heads,self.head_dim)
+        x = torch.mean(x, 2)
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
