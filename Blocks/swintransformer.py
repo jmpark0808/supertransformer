@@ -14,14 +14,56 @@ import numpy as np
 import math
 from einops import repeat, rearrange
 
+class GroupedLinear(nn.Module):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        groups=1,
+        device=None,
+        dtype=None,
+    ) -> None:
+        super().__init__()
+
+        assert in_features % groups == 0
+        assert out_features % groups == 0
+
+        self.in_features = in_features
+        self.out_features = out_features
+        self.groups = groups
+
+        self._linear_layers = nn.ModuleList(
+            [
+                nn.Linear(
+                    in_features // groups,
+                    out_features // groups,
+                    bias=bias,
+                    device=device,
+                    dtype=dtype,
+                )
+                for _ in range(groups)
+            ]
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.view(x.shape[:-1]+(-1, self.groups))
+
+        result = [
+            l(x[..., i])
+            for i, l in enumerate(self._linear_layers)
+        ]
+        return torch.cat(result, dim=-1)
+
+
 class Mlp(nn.Module):
-    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
+    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0., groups=1):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
-        self.fc1 = nn.Linear(in_features, hidden_features)
+        self.fc1 = GroupedLinear(in_features, hidden_features, groups=groups)
         self.act = act_layer()
-        self.fc2 = nn.Linear(hidden_features, out_features)
+        self.fc2 = GroupedLinear(hidden_features, out_features, groups=groups)
         self.drop = nn.Dropout(drop)
 
     def forward(self, x):
@@ -170,8 +212,8 @@ class WindowAttention(nn.Module):
         self.dim = dim
         self.window_size = window_size  # Wh, Ww
         self.num_heads = num_heads
-        self.scale = qk_scale or head_dim ** -0.5
-        self.head_dim = head_dim
+        self.head_dim = dim // num_heads
+        self.scale = qk_scale or self.head_dim ** -0.5
 
         # define a parameter table of relative position bias
         # self.relative_position_bias_table = nn.Parameter(
@@ -179,9 +221,9 @@ class WindowAttention(nn.Module):
 
         # get pair-wise relative position index for each token inside the window
  
-        self.qkv = nn.Linear(dim, num_heads*head_dim * 3, bias=qkv_bias)
+        self.qkv = GroupedLinear(dim, dim * 3, bias=qkv_bias, groups=num_heads)
         self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(head_dim, dim)
+        self.proj = GroupedLinear(dim, dim, groups=num_heads)
         self.proj_drop = nn.Dropout(proj_drop)
         # self.pe_linear = nn.Linear(2, num_heads)
 
@@ -229,8 +271,8 @@ class WindowAttention(nn.Module):
         
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B_, N, self.num_heads,self.head_dim)
-        x = torch.mean(x, dim=2)
+        x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
+        # x = torch.mean(x, dim=2)
         
         x = self.proj(x)
         x = self.proj_drop(x)
@@ -913,7 +955,7 @@ class SwinTransformerBlock(nn.Module):
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, out_features=dim, act_layer=act_layer, drop=drop)
+        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, out_features=dim, act_layer=act_layer, drop=drop, groups=num_heads)
 
         if self.shift_size > 0:
             # calculate attention mask for SW-MSA
