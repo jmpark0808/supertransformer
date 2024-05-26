@@ -71,7 +71,7 @@ class SP_ImageNet_SWIN_Wrapper(pl.LightningModule):
         # dataset= self.trainer.train_dataloader
         # self.scheduler = CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
         #                                               1, 5e-6)
-        self.scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=5, min_lr = 5e-6)
+        self.scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=self.es_patience, min_lr = 5e-6)
         return optimizer
     
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure):
