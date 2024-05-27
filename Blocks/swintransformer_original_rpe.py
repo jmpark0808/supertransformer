@@ -15,15 +15,47 @@ WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
 
+class GroupedLinear(nn.Module):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        groups=1,
+        device=None,
+        dtype=None,
+    ) -> None:
+        super().__init__()
+
+        assert in_features % groups == 0
+        assert out_features % groups == 0
+
+        self.in_features = in_features
+        self.out_features = out_features
+        self.groups = groups
+
+        self._linear_layers = nn.Conv1d(in_features, out_features, 1, groups=groups) 
+        # self.dilation_layers = nn.Conv1d(out_features, out_features, 1, groups=out_features//groups)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        assert len(x.size()) == 3
+        x = x.permute(0, 2, 1)
+        x = self._linear_layers(x)
+        # x = x.reshape(x.size(0), self.groups, -1, x.size(2))
+        # x = x.permute(0, 2, 1, 3)
+        # x = x.reshape(x.size(0), -1, x.size(3))
+        # x = self.dilation_layers(x)
+        x = x.permute(0, 2, 1)
+        return x
 
 class Mlp(nn.Module):
-    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
+    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0., groups=1):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
-        self.fc1 = nn.Linear(in_features, hidden_features)
+        self.fc1 = GroupedLinear(in_features, hidden_features, groups=groups)
         self.act = act_layer()
-        self.fc2 = nn.Linear(hidden_features, out_features)
+        self.fc2 = GroupedLinear(hidden_features, out_features, groups=groups)
         self.drop = nn.Dropout(drop)
 
     def forward(self, x):
@@ -109,9 +141,11 @@ class WindowAttention(nn.Module):
         # self.register_buffer("relative_position_index", relative_position_index)
 
 
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.q = GroupedLinear(dim, dim, bias=qkv_bias, groups=num_heads)
+        self.k = GroupedLinear(dim, dim, bias=qkv_bias, groups=num_heads)
+        self.v = GroupedLinear(dim, dim, bias=qkv_bias, groups=num_heads)
         self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(head_dim, dim)
+        self.proj = GroupedLinear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
         # trunc_normal_(self.relative_position_bias_table, std=.02)
@@ -128,9 +162,12 @@ class WindowAttention(nn.Module):
         """
         B_, N, C = x.shape
         
-        qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        # qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
 
-        q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+        # q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+        q = self.q(x).reshape(B_, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        k = self.k(x).reshape(B_, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        v = self.v(x).reshape(B_, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
 
         q = q * self.scale
 
@@ -157,8 +194,8 @@ class WindowAttention(nn.Module):
 
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B_, N, self.num_heads,self.head_dim) + (attn.permute(0, 2, 1, 3) @ rpe_v).reshape(B_, N, self.num_heads,self.head_dim)
-        x = torch.mean(x, 2)
+        x = (attn @ v).transpose(1, 2).reshape(B_, N, C) + (attn.permute(0, 2, 1, 3) @ rpe_v).reshape(B_, N, C)
+        # x = torch.mean(x, 2)
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
@@ -225,7 +262,7 @@ class SwinTransformerBlock(nn.Module):
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop, groups=num_heads)
 
         if self.shift_size > 0:
             # calculate attention mask for SW-MSA
@@ -337,11 +374,11 @@ class PatchMerging(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
 
-    def __init__(self, input_resolution, dim, norm_layer=nn.LayerNorm):
+    def __init__(self, input_resolution, dim, norm_layer=nn.LayerNorm, groups=1):
         super().__init__()
         self.input_resolution = input_resolution
         self.dim = dim
-        self.reduction = nn.Linear(4 * dim, 2 * dim, bias=False)
+        self.reduction = GroupedLinear(4 * dim, 2 * dim, bias=False, groups=groups)
         self.norm = norm_layer(4 * dim)
 
     def forward(self, x, centroids):
@@ -431,7 +468,7 @@ class BasicLayer(nn.Module):
 
         # patch merging layer
         if downsample is not None:
-            self.downsample = downsample(input_resolution, dim=dim, norm_layer=norm_layer)
+            self.downsample = downsample(input_resolution, dim=dim, norm_layer=norm_layer, groups=num_heads)
         else:
             self.downsample = None
 
