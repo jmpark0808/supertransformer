@@ -33,27 +33,19 @@ class GroupedLinear(nn.Module):
         self.out_features = out_features
         self.groups = groups
 
-        self._linear_layers = nn.ModuleList(
-            [
-                nn.Linear(
-                    in_features // groups,
-                    out_features // groups,
-                    bias=bias,
-                    device=device,
-                    dtype=dtype,
-                )
-                for _ in range(groups)
-            ]
-        )
+        self._linear_layers = nn.Conv1d(in_features, out_features, 1, groups=groups) 
+        self.dilation_layers = nn.Conv1d(out_features, out_features, 1, groups=out_features//groups)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = x.view(x.shape[:-1]+(-1, self.groups))
-
-        result = [
-            l(x[..., i])
-            for i, l in enumerate(self._linear_layers)
-        ]
-        return torch.cat(result, dim=-1)
+        assert len(x.size()) == 3
+        x = x.permute(0, 2, 1)
+        x = self._linear_layers(x)
+        x = x.reshape(x.size(0), self.groups, -1, x.size(2))
+        x = x.permute(0, 2, 1, 3)
+        x = x.reshape(x.size(0), -1, x.size(3))
+        x = self.dilation_layers(x)
+        x = x.permute(0, 2, 1)
+        return x
 
 
 class Mlp(nn.Module):
