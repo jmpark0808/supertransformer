@@ -34,16 +34,16 @@ class GroupedLinear(nn.Module):
         self.groups = groups
 
         self._linear_layers = nn.Conv1d(in_features, out_features, 1, groups=groups) 
-        self.dilation_layers = nn.Conv1d(out_features, out_features, 1, groups=out_features//groups)
+        # self.dilation_layers = nn.Conv1d(out_features, out_features, 1, groups=out_features//groups)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         assert len(x.size()) == 3
         x = x.permute(0, 2, 1)
         x = self._linear_layers(x)
-        x = x.reshape(x.size(0), self.groups, -1, x.size(2))
-        x = x.permute(0, 2, 1, 3)
-        x = x.reshape(x.size(0), -1, x.size(3))
-        x = self.dilation_layers(x)
+        # x = x.reshape(x.size(0), self.groups, -1, x.size(2))
+        # x = x.permute(0, 2, 1, 3)
+        # x = x.reshape(x.size(0), -1, x.size(3))
+        # x = self.dilation_layers(x)
         x = x.permute(0, 2, 1)
         return x
 
@@ -213,7 +213,9 @@ class WindowAttention(nn.Module):
 
         # get pair-wise relative position index for each token inside the window
  
-        self.qkv = GroupedLinear(dim, dim * 3, bias=qkv_bias, groups=num_heads)
+        self.q = GroupedLinear(dim, dim, bias=qkv_bias, groups=num_heads)
+        self.k = GroupedLinear(dim, dim, bias=qkv_bias, groups=num_heads)
+        self.v = GroupedLinear(dim, dim, bias=qkv_bias, groups=num_heads)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = GroupedLinear(dim, dim, groups=num_heads)
         self.proj_drop = nn.Dropout(proj_drop)
@@ -235,9 +237,11 @@ class WindowAttention(nn.Module):
         """
         B_, N, C = x.shape
         
-        qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple) B, H, N, D
-        
+        # qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
+        # q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple) B, H, N, D
+        q = self.q(x).reshape(B_, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        k = self.k(x).reshape(B_, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        v = self.v(x).reshape(B_, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
         
         q = q * self.scale
 
