@@ -9,7 +9,7 @@ from dataset.constants import NUM_CHUNK
 from util.util import get_input_dim
 from dataset.mixup import Mixup
 from util.optimizers import SoftTargetCrossEntropy
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 
 class SP_ImageNet_SWIN_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
@@ -67,11 +67,11 @@ class SP_ImageNet_SWIN_Wrapper(pl.LightningModule):
         """
         
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=0.05)
-        # self.trainer.fit_loop.setup_data()
-        # dataset= self.trainer.train_dataloader
-        # self.scheduler = CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
-        #                                               1, 5e-6)
-        self.scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=self.es_patience, min_lr = 5e-6)
+        self.trainer.fit_loop.setup_data()
+        dataset= self.trainer.train_dataloader
+        self.scheduler = CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
+                                                      1, 5e-6)
+        # self.scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=self.es_patience, min_lr = 5e-6)
         return optimizer
     
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure):
