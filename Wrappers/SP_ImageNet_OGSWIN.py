@@ -9,8 +9,8 @@ from dataset.constants import NUM_CHUNK
 from util.util import get_input_dim
 from dataset.mixup import Mixup
 from util.optimizers import SoftTargetCrossEntropy
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-
+from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingWarmRestarts
+from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 
 class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
@@ -39,10 +39,11 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         
         # Generator that produces the HeatMap
         self.supert = SwinTransformer(img_size=32, in_chans=input_dim, patch_size=1, window_size=4,
-                                       embed_dim=self.tfm_hp[1], depths=[2, 2, 2, 2], num_heads=[self.tfm_hp[0],
+                                       embed_dim=self.tfm_hp[1], depths=[2, 2, 6, 2], num_heads=[self.tfm_hp[0],
                                                                                                   self.tfm_hp[0]*2,
                                                                                                     self.tfm_hp[0]*4,
-                                                                                                     self.tfm_hp[0]*8], mlp_ratio=1)
+                                                                                                     self.tfm_hp[0]*8], mlp_ratio=4)
+        kwargs['parameters'] = parameter_count(self.supert)['model']
         # from fvcore.nn import FlopCountAnalysis, flop_count_table
         # inp = torch.randn([1, input_dim+2, 32, 32])
         # flops = FlopCountAnalysis(self.supert, inp)
@@ -102,9 +103,11 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
                 {'params': no_decay, 'weight_decay': 0.}]
         optimizer = torch.optim.AdamW(parameters, lr=self.lr, weight_decay=0.05)
 
-        # self.trainer.fit_loop.setup_data()
-        # dataset= self.trainer.train_dataloader
-        self.scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=5, min_lr = 5e-6)
+        self.trainer.fit_loop.setup_data()
+        dataset= self.trainer.train_dataloader
+        self.scheduler = CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
+                                                      1, 5e-6)
+        # self.scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=5, min_lr = 5e-6)
         
         return optimizer
     
