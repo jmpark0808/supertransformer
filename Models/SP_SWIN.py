@@ -206,14 +206,13 @@ class SP_SWIN_ImageNet(nn.Module):
     '''
     SWIN Transformer for ImageNet 
     '''
-    def __init__(self, nfeat, nhid, head_dim, nheads, ntfm, dropout, dropout_edge, kernels, window_size):
+    def __init__(self, nfeat, nhid, nheads, ntfm, dropout, dropout_edge, kernels, window_size):
         """Dense version of GAT."""
         super().__init__()
         self.pos_linear = nn.Linear(2, nhid)
         options = {'swin_hp': {'patch_size': 1,  # (int | tuple(int)): Patch size. Default: 4
         'embed_dim': nhid, #(int): Patch embedding dimension. Default: 96
-        'head_dim': head_dim,
-        'depths': None, #(tuple(int)): Depth of each Swin Transformer layer.
+        'depths': ntfm, #(tuple(int)): Depth of each Swin Transformer layer.
         'num_heads': nheads, #(tuple(int)): Number of attention heads in different layers.
         'kernels': kernels,
         'window_size': window_size, #(int): Window size. Default: 8

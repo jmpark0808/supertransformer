@@ -32,6 +32,8 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         self.window_size = kwargs.get('window_size')
         self.warmup_epochs = kwargs.get('warmup_epochs')
         self.total_train_epochs = kwargs.get('epoch')
+        self.git = kwargs.get('git')
+        
         input_dim = get_input_dim(kwargs)
         
         
