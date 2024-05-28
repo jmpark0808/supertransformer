@@ -164,14 +164,16 @@ class WindowAttention(nn.Module):
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
 
-    def __init__(self, dim, head_dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0., rel_pos=None):
+    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0., rel_pos=None):
 
         super().__init__()
         self.dim = dim
         self.window_size = window_size  # Wh, Ww
         self.num_heads = num_heads
-        self.scale = qk_scale or head_dim ** -0.5
-        self.head_dim = head_dim
+        assert dim % num_heads == 0
+        self.head_dim = dim//num_heads
+        self.scale = qk_scale or self.head_dim ** -0.5
+        
 
         # define a parameter table of relative position bias
         # self.relative_position_bias_table = nn.Parameter(
@@ -179,9 +181,9 @@ class WindowAttention(nn.Module):
 
         # get pair-wise relative position index for each token inside the window
  
-        self.qkv = nn.Linear(dim, num_heads*head_dim * 3, bias=qkv_bias)
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(head_dim, dim)
+        self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
         # self.pe_linear = nn.Linear(2, num_heads)
 
@@ -229,8 +231,8 @@ class WindowAttention(nn.Module):
         
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B_, N, self.num_heads,self.head_dim)
-        x = torch.mean(x, dim=2)
+        x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
+        # x = torch.mean(x, dim=2)
         
         x = self.proj(x)
         x = self.proj_drop(x)
@@ -552,12 +554,11 @@ class ScatteredTransformerBlock(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
 
-    def __init__(self, dim, head_dim, kernel, input_resolution, num_heads, window_size=7, shift_size=0,
+    def __init__(self, dim, kernel, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm, rel_pos=None):
         super().__init__()
         self.dim = dim
-        self.head_dim = head_dim
         self.kernel = kernel
         self.input_resolution = input_resolution
         self.num_heads = num_heads
@@ -577,7 +578,7 @@ class ScatteredTransformerBlock(nn.Module):
 
         self.norm1 = norm_layer(dim)
         self.attn = WindowAttention(
-            dim, head_dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
+            dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop, rel_pos=rel_pos)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
@@ -888,7 +889,7 @@ class SwinTransformerBlock(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
 
-    def __init__(self, dim, head_dim, input_resolution, num_heads, window_size=7, shift_size=0,
+    def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm, dilated=False):
         super().__init__()
@@ -907,7 +908,7 @@ class SwinTransformerBlock(nn.Module):
 
         self.norm1 = norm_layer(dim)
         self.attn = WindowAttention(
-            dim, head_dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
+            dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
@@ -1136,7 +1137,7 @@ class BasicLayer(nn.Module):
         # build blocks
         self.blocks = nn.ModuleList([])
         for i in range(depth):
-            self.blocks.append(SwinTransformerBlock(dim=dim, head_dim=head_dim, input_resolution=input_resolution,
+            self.blocks.append(SwinTransformerBlock(dim=dim, input_resolution=input_resolution,
                                  num_heads=num_heads, window_size=window_size,
                                  shift_size=0 if (i % 2 == 0) else window_size // 2,
                                  mlp_ratio=mlp_ratio,
@@ -1144,7 +1145,7 @@ class BasicLayer(nn.Module):
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                  norm_layer=norm_layer))
-            self.blocks.append(ScatteredTransformerBlock(dim=dim, head_dim=head_dim, input_resolution=input_resolution,
+            self.blocks.append(ScatteredTransformerBlock(dim=dim, input_resolution=input_resolution,
                                  num_heads=num_heads, window_size=window_size,
                                  shift_size=0 if (i % 2 == 0) else window_size // 2,
                                  mlp_ratio=mlp_ratio,
@@ -1583,7 +1584,6 @@ class SwinTransformer(nn.Module):
         in_chans = options['in_channels']
         embed_dim = options['swin_hp']['embed_dim']
         kernels = options['swin_hp']['kernels']
-        head_dim = options['swin_hp']['head_dim']
         depths = options['swin_hp']['depths']
         num_heads = options['swin_hp']['num_heads']
         window_size = options['swin_hp']['window_size']
@@ -1599,7 +1599,7 @@ class SwinTransformer(nn.Module):
         use_checkpoint = options['swin_hp']['use_checkpoint']
         
         self.net_name = 'SwinTransformer'
-        self.num_layers = len(kernels)
+        self.num_layers = depths
         self.embed_dim = embed_dim
         self.ape = ape
         self.patch_norm = patch_norm
@@ -1620,7 +1620,7 @@ class SwinTransformer(nn.Module):
         #     trunc_normal_(self.absolute_pos_embed, std=.02)
 
         self.pos_drop = nn.Dropout(p=drop_rate)
-        self.rel_pos = nn.Parameter(torch.randn(1, 1, 4, head_dim)).cuda()
+        
 
         # stochastic depth
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, self.num_layers+1)]  # stochastic depth decay rule
@@ -1629,7 +1629,6 @@ class SwinTransformer(nn.Module):
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
             layer = SwinTransformerBlock(dim=embed_dim,
-                                                head_dim=head_dim,
                                                 input_resolution=(patches_resolution[0],
                                                                 patches_resolution[1]),
                                                 num_heads=num_heads, window_size=window_size,
@@ -1641,7 +1640,6 @@ class SwinTransformer(nn.Module):
                                                 norm_layer=norm_layer, dilated=False)
             self.layers.append(layer)
             layer = SwinTransformerBlock(dim=embed_dim,
-                                                head_dim=head_dim,
                                                 input_resolution=(patches_resolution[0],
                                                                 patches_resolution[1]),
                                                 num_heads=num_heads, window_size=window_size,

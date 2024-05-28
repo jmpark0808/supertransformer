@@ -29,7 +29,7 @@ from dataset.imagenet_pyg_exp import SPGEImageNetDataModule
 from dataset.imagenet_images import ImageNetDataModule
 from dataset.imagenet_pyg_swin import SPGSImageNetDataModule
 
-
+import git
 
 
 # Metric logging
@@ -85,8 +85,8 @@ if __name__ == "__main__":
                         default=42, type=int)
     parser.add_argument('--clip_grad_norm', help='Clipping gradient norm, 0 means no clipping', type=float, default=0.)
     parser.add_argument('--tag', help='Tag for differentiating runs on CC', default='', type=str)
-    parser.add_argument('--tfmhp', default=[8, 16, 6, 128], 
-                    nargs=4, metavar=('Heads', 'Head Dim', 'Number of Layers', 'Embed dim'),
+    parser.add_argument('--tfmhp', default=[8, 6, 128], 
+                    nargs=3, metavar=('Heads', 'Number of Layers', 'Embed dim'),
                     type=int, help='Hyperparameters for Transformer')
     parser.add_argument('--coeff', help='Number of coefficients for fft', type=int, default=10)
     parser.add_argument('--compactness', help='Compactness for SLIC', type=float, default=10)
@@ -106,6 +106,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     dict_args = vars(args)
+    repo = git.Repo(search_parent_directories=True)
+    sha = repo.head.object.hexsha
+    dict_args['git'] = sha
     
     pl.seed_everything(dict_args['seed'])
     # Initialize model to train
