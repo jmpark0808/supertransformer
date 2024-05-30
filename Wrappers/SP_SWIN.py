@@ -29,6 +29,7 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         self.kernels = kwargs.get('kernels')
         self.window_size = kwargs.get('window_size')
         self.image_size = kwargs.get('size')
+        self.warmup_epochs = kwargs.get('warmup_epochs')
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
         self.supert = SP_SWIN(input_dim, self.tfm_hp[2], self.tfm_hp[0], self.tfm_hp[1],
@@ -79,6 +80,19 @@ class SP_SWIN_Wrapper(pl.LightningModule):
             min_lr=1e-8,
             verbose=True)
         return optimizer
+    
+    def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure):
+        # update params
+        optimizer.step(closure=optimizer_closure)
+
+        
+        dataset= self.trainer.train_dataloader
+        # manually warm up lr without a scheduler
+        
+        if epoch < self.warmup_epochs:
+            lr_scale = min(1.0, float(self.trainer.global_step + 1) / (len(dataset)*self.warmup_epochs))
+            for pg in optimizer.param_groups:
+                pg["lr"] = lr_scale * self.lr
       
 
     def forward(self, input):
@@ -272,7 +286,9 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         pred = torch.cat(self.preds_test, 0)
         mask = torch.cat(self.masks_test, 0).round().float()
         self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
-        self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
+        if self.current_epoch >= self.warmup_epochs:
+            self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
+        
         self.validation_step_outputs.clear()
 
     def on_validation_start(self):
@@ -371,7 +387,7 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         pred = torch.cat(self.preds, 0).cuda()
         mask = torch.cat(self.masks, 0).cuda().round().float()
         self.log('Final Test MAE', torch.mean(torch.abs(pred-mask)))
-        self.scheduler.step(torch.mean(torch.stack(self.test_step_outputs)))
+        
                     
     
 

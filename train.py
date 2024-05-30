@@ -183,6 +183,7 @@ if __name__ == "__main__":
                     nargs="*", 
                     type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
     parser.add_argument('--window_size', help='Window size for SWIN Transformer', type=int, default=4)
+    parser.add_argument('--warmup_epochs', help='Number of epochs for warmup', type=int, default=4)
 
     
     
