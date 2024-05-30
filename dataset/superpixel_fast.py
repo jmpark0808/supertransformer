@@ -523,7 +523,7 @@ class SPFDataModule(pl.LightningDataModule):
                                   self.coeff)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
-                num_workers=self.num_workers, shuffle=True, pin_memory=False)
+                num_workers=self.num_workers, shuffle=True, pin_memory=True, drop_last=True)
 
     def val_dataloader(self):
         data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg,
@@ -534,10 +534,10 @@ class SPFDataModule(pl.LightningDataModule):
                                self.coeff)
         val_dataloader = DataLoader(
                 data_val, batch_size=self.batch_size, 
-                num_workers=self.num_workers, pin_memory=False)
+                num_workers=self.num_workers, pin_memory=True)
         test_dataloader = DataLoader(
                 data_test, batch_size=self.batch_size, 
-                num_workers=self.num_workers, pin_memory=False)
+                num_workers=self.num_workers, pin_memory=True)
         return [val_dataloader, test_dataloader]
 
     def test_dataloader(self):
@@ -546,4 +546,4 @@ class SPFDataModule(pl.LightningDataModule):
                                  self.coeff)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
-                num_workers=self.num_workers, pin_memory=False)
+                num_workers=self.num_workers, pin_memory=True)

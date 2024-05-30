@@ -666,24 +666,24 @@ class SPDataModule(pl.LightningDataModule):
         data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg, self.res, self.compactness, True, self.dataloader, self.coeff, self.ignore_phase)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
-                num_workers=self.num_workers, shuffle=True, pin_memory=False)
+                num_workers=self.num_workers, shuffle=True, pin_memory=True, drop_last=True)
 
     def val_dataloader(self):
         data_val = SPDataset(self.val_image_list, self.val_mask_list,self.num_seg, self.res, self.compactness, False, self.dataloader, self.coeff, self.ignore_phase)
         data_test = SPDataset(self.test_image_list, self.test_mask_list,  self.num_seg, self.res,  self.compactness, False, self.dataloader, self.coeff, self.ignore_phase)
         val_dataloader = DataLoader(
                 data_val, batch_size=self.batch_size, 
-                num_workers=self.num_workers, pin_memory=False)
+                num_workers=self.num_workers, pin_memory=True)
         test_dataloader = DataLoader(
                 data_test, batch_size=self.batch_size, 
-                num_workers=self.num_workers, pin_memory=False)
+                num_workers=self.num_workers, pin_memory=True)
         return [val_dataloader, test_dataloader]
 
     def test_dataloader(self):
         data_test = SPDataset(self.test_image_list, self.test_mask_list,  self.num_seg, self.res,  self.compactness, False, self.dataloader, self.coeff, self.ignore_phase)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
-                num_workers=self.num_workers, pin_memory=False)
+                num_workers=self.num_workers, pin_memory=True)
 
 
 
