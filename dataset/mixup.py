@@ -313,4 +313,64 @@ class FastCollateMixup(Mixup):
         target = mixup_target(target, self.num_classes, lam, self.label_smoothing, device='cpu')
         target = target[:batch_size]
         return output, target
+    
+
+class MixupSaliency:
+    """ Mixup/Cutmix that applies different params to each element or whole batch
+
+    Args:
+        cutmix_alpha (float): cutmix alpha value, cutmix is active if > 0.
+        cutmix_minmax (List[float]): cutmix min/max image ratio, cutmix is active and uses this vs alpha if not None.
+        prob (float): probability of applying mixup or cutmix per batch or element
+        switch_prob (float): probability of switching to cutmix instead of mixup when both are active
+        mode (str): how to apply mixup/cutmix params (per 'batch', 'pair' (pair of elements), 'elem' (element)
+        correct_lam (bool): apply lambda correction when cutmix bbox clipped by image borders
+        label_smoothing (float): apply label smoothing to the mixed target tensor
+        num_classes (int): number of classes for target
+    """
+    def __init__(self,  cutmix_alpha=0., cutmix_minmax=None, prob=1.0, mode='batch',
+                  correct_lam=True):
+        self.cutmix_alpha = cutmix_alpha
+        self.cutmix_minmax = cutmix_minmax
+        if self.cutmix_minmax is not None:
+            assert len(self.cutmix_minmax) == 2
+            # force cutmix alpha == 1.0 when minmax active to keep logic simple & safe
+            self.cutmix_alpha = 1.0
+        self.mix_prob = prob
+        self.mode = mode
+        self.correct_lam = correct_lam  # correct lambda based on clipped area for cutmix
+        self.mixup_enabled = True  # set to false to disable mixing (intended tp be set by train loop)
+
+ 
+
+    def _params_per_batch(self):
+        lam = 1.
+        use_cutmix = False
+        if self.mixup_enabled and np.random.rand() < self.mix_prob:
+            if self.cutmix_alpha > 0.:
+                use_cutmix = True
+                lam_mix = np.random.beta(self.cutmix_alpha, self.cutmix_alpha)
+            else:
+                assert False, "One of mixup_alpha > 0., cutmix_alpha > 0., cutmix_minmax not None should be true."
+            lam = float(lam_mix)
+        return lam, use_cutmix
+
+
+    def _mix_batch(self, x, mask):
+        lam, use_cutmix = self._params_per_batch()
+        if lam == 1.:
+            return 1.
+        if use_cutmix:
+            (yl, yh, xl, xh), lam = cutmix_bbox_and_lam(
+                x.shape, lam, ratio_minmax=self.cutmix_minmax, correct_lam=self.correct_lam)
+            x[:, :, yl:yh, xl:xh] = x.flip(0)[:, :, yl:yh, xl:xh]
+            mask[:, yl:yh, xl:xh] = mask.flip(0)[:, yl:yh, xl:xh]
+        
+        return lam
+
+    def __call__(self, x, mask):
+        assert len(x) % 2 == 0, 'Batch size should be even when using this'
+        lam = self._mix_batch(x, mask)
+        
+        return x, mask
 

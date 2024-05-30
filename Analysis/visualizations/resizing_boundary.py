@@ -11,7 +11,8 @@ import pickle
 
 dataset_images = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Image'
 masks = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Mask'
-image_resolutions = [300, 256, 128, 64, 32, 16, 8]
+# image_resolutions = [300, 256, 128, 64, 32, 16, 8]
+image_resolutions = [10, 15, 20, 25, 30, 40, 50, 100, 200, 300]
 
 d= {}
 d['image_resolutions'] = image_resolutions

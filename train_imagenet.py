@@ -17,7 +17,7 @@ from Wrappers.SP_ImageNet_TFM import SP_ImageNet_TFM_Wrapper
 from Wrappers.SP_ImageNet_GAT_PyG import SP_ImageNet_GAT_PyG_Wrapper
 from Wrappers.SP_ImageNet_DGAT_PyG import SP_ImageNet_DGAT_PyG_Wrapper
 from Wrappers.SP_ImageNet_SWIN import SP_ImageNet_SWIN_Wrapper
-from Wrappers.image_swintransformer import ImageNet_SWIN_Wrapper
+from Wrappers.image_CLS_swintransformer import ImageNet_SWIN_Wrapper
 from Wrappers.SP_ImageNet_OGSWIN import SP_ImageNet_OGSWIN_Wrapper
 
 

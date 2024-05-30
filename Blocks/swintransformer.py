@@ -35,6 +35,7 @@ class Mlp(nn.Module):
 def dilated_partition(x, window_size):
     B, H, W, C = x.shape
     x = x.view(B, H // window_size, window_size, W // window_size, window_size, C)
+    
     windows = x.permute(0, 2, 4, 1, 3, 5).contiguous().view(-1, H //window_size, W //window_size, C)
     return windows
 
@@ -118,6 +119,7 @@ def dilation_reverse(windows, window_size, H, W):
     Returns:
         x: (B, H, W, C)
     """
+
     B = int(windows.shape[0] / (window_size * window_size))
     x = windows.view(B, window_size, window_size, H // window_size, W // window_size,  -1)
     x = x.permute(0, 3, 1, 4, 2, 5).contiguous().view(B, H, W, -1)
@@ -949,7 +951,7 @@ class SwinTransformerBlock(nn.Module):
         shortcut = x
         x = self.norm1(x)
         x = x.view(B, H, W, C)
-
+        
         # cyclic shift
         if self.shift_size > 0:
             shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
@@ -960,7 +962,7 @@ class SwinTransformerBlock(nn.Module):
         
         if self.dilated:
             x_windows = dilated_partition(shifted_x, self.window_size)
-            x_windows = x_windows.view(-1,  (32//self.window_size) * (32//self.window_size), C) # nW*B, window_size*window_size, C
+            x_windows = x_windows.view(-1,  (H//self.window_size) * (W//self.window_size), C) # nW*B, window_size*window_size, C
         else:
             x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
             x_windows = x_windows.view(-1, self.window_size * self.window_size, C) # nW*B, window_size*window_size, C
@@ -971,7 +973,7 @@ class SwinTransformerBlock(nn.Module):
 
         # merge windows
         if self.dilated:
-            attn_windows = attn_windows.view(-1, 32//self.window_size, 32//self.window_size, C)
+            attn_windows = attn_windows.view(-1, H//self.window_size, W//self.window_size, C)
             shifted_x = dilation_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
         else:
             attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
