@@ -731,19 +731,19 @@ class DUTSDataModule(pl.LightningDataModule):
         data_train = DUTSDataset(self.tr_image_list, self.tr_mask_list, self.num_seg, self.image_size,  True)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
-                num_workers=self.num_workers, shuffle=True, pin_memory=False)
+                num_workers=self.num_workers, shuffle=True, pin_memory=True, drop_last=True)
 
     def val_dataloader(self):
         data_val = DUTSDataset(self.val_image_list, self.val_mask_list, self.num_seg, self.image_size, False)
         data_test = DUTSDataset(self.test_image_list, self.test_mask_list, self.num_seg, self.image_size,  False)
         return [DataLoader(
                 data_val, batch_size=self.batch_size, 
-                num_workers=self.num_workers, pin_memory=False), DataLoader(
+                num_workers=self.num_workers, pin_memory=True), DataLoader(
                 data_test, batch_size=self.batch_size, 
-                num_workers=self.num_workers, pin_memory=False)]
+                num_workers=self.num_workers, pin_memory=True)]
 
     def test_dataloader(self):
         data_test = DUTSDataset(self.test_image_list, self.test_mask_list, self.num_seg, self.image_size,  False)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
-                num_workers=self.num_workers, pin_memory=False)
+                num_workers=self.num_workers, pin_memory=True)
