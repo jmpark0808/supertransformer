@@ -165,8 +165,8 @@ if __name__ == "__main__":
     parser.add_argument('--dilation', help='Dilation for local transformer', type=int, default=5)
     parser.add_argument('--downsample', help='Downsample resolution', type=int, default=28)
     parser.add_argument('--tag', help='Tag for differentiating runs on CC', default='', type=str)
-    parser.add_argument('--tfmhp', default=[8, 16, 6, 128], 
-                    nargs=4, metavar=('Heads', 'Head Dim', 'Number of Layers', 'Embed dim'),
+    parser.add_argument('--tfmhp', default=[8, 6, 128], 
+                    nargs=3, metavar=('Heads', 'Number of Layers', 'Embed dim'),
                     type=int, help='Hyperparameters for Transformer')
     parser.add_argument('--ignore_phase', help='Whether or not to use phase of FFT'
                         , default=False, action="store_true")
@@ -183,8 +183,7 @@ if __name__ == "__main__":
                     nargs="*", 
                     type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
     parser.add_argument('--window_size', help='Window size for SWIN Transformer', type=int, default=4)
-    parser.add_argument('--memory', help='Whether to put the data into memory'
-                        , default=False, action="store_true")
+
     
     
 

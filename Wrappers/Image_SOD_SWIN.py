@@ -8,9 +8,9 @@ import torch.nn.functional as F
 import numpy as np
 from dataset.constants import *
 from util.util import get_input_dim
-from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 
-class SP_SWIN_Wrapper(pl.LightningModule):
+
+class Image_SWIN_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -32,15 +32,10 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
         self.supert = SP_SWIN(input_dim, self.tfm_hp[2], self.tfm_hp[0], self.tfm_hp[1],
-                               self.dropout, self.dropout_edge, self.kernels, self.window_size, int(self.num_seg**0.5))
+                               self.dropout, self.dropout_edge, self.kernels, self.window_size)
         self.iteration = 0
         self.test_iteration = 0
         self.num_thresholds = 10
-        
-        kwargs['parameters'] = parameter_count(self.supert)['model']
-        inp = torch.randn([1, self.num_seg, input_dim+2])
-        flops = FlopCountAnalysis(self.supert, inp)
-        kwargs['flops'] = flops.total()
         self.mixup = MixupSaliency(
             cutmix_alpha=1.0, cutmix_minmax=None,
             prob=1.0,  mode='batch',
@@ -114,7 +109,7 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         features = batch['features']
         seq_mask = batch['seq_mask']
         segments = batch['segments']
-        mask = batch['mask']
+        mask = batch['mask'].cpu()
 
 
 
@@ -122,11 +117,11 @@ class SP_SWIN_Wrapper(pl.LightningModule):
 
         # features = features.cuda()
         # seq_mask = seq_mask.cuda()
-        res = int(self.num_seg**0.5)
-        features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
+
+        features = features.reshape(features.size(0), 32, 32, -1).permute(0, 3, 1, 2)
+        seq_mask = seq_mask.reshape(seq_mask.size(0), 32, 32)
         features, seq_mask = self.mixup(features, seq_mask)
-        features = features.permute(0, 2, 3, 1).reshape(features.size(0), self.num_seg, -1)
+        features = features.permute(0, 2, 3, 1).reshape(features.size(0), 1024, -1)
         seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
 
 
@@ -140,29 +135,21 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
         batch_size = mask.shape[0]
         img_size = mask.shape[2]
-        if torch.sum(segments) != 0 :
+        segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
-            segments = segments.reshape([batch_size, -1]) # batch, img_size^2
+        samples = []
+        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+            plt_image = masked[labels-1].reshape([img_size, img_size])
+            samples.append(plt_image)
 
-            samples = []
-            for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-                plt_image = masked[labels-1].reshape([img_size, img_size])
-                samples.append(plt_image)
-
-            samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
-        else:
-            samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
-            samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
-            
+        samples = torch.tensor(np.expand_dims(np.array(samples), 1))
         
 
         prec, recall = torch.zeros(samples.shape[0], 1), torch.zeros(samples.shape[0], 1)
         pred = samples.reshape(samples.shape[0], -1)
         mask = mask.reshape(mask.shape[0], -1)
         
-        
         y_temp = (pred >= 0.5).float()
-
         tp = (y_temp * mask).sum(dim=-1)
         # avoid prec becomes 0
         prec[:, 0], recall[:, 0] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
@@ -186,6 +173,7 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         seq_mask = batch['seq_mask']
         segments = batch['segments']
         mask = batch['mask']
+
         
 
         # features = features.cuda()
@@ -194,26 +182,22 @@ class SP_SWIN_Wrapper(pl.LightningModule):
     
         # mask = mask.cuda()
 
+
         # forward pass
         pred = self.forward(features)
-        res = int(self.num_seg**0.5)
+
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
         batch_size = mask.shape[0]
         img_size = mask.shape[2]
-        if torch.sum(segments) != 0 :
+        segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
-            segments = segments.reshape([batch_size, -1]) # batch, img_size^2
+        samples = []
+        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+            plt_image = masked[labels-1].reshape([img_size, img_size])
+            samples.append(plt_image)
 
-            samples = []
-            for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-                plt_image = masked[labels-1].reshape([img_size, img_size])
-                samples.append(plt_image)
-
-            samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
-        else:
-            samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
-            samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
+        samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
         if batch_idx == 0 and dataloader_idx == 0:
             tensorboard.add_images('Validation Pred', samples, self.test_iteration)
             tensorboard.add_images('Validation GT', mask, self.test_iteration)
@@ -317,24 +301,19 @@ class SP_SWIN_Wrapper(pl.LightningModule):
 
         # forward pass
         pred = self.forward(features)
-        res = int(self.num_seg**0.5)
+
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
         batch_size = mask.shape[0]
         img_size = mask.shape[2]
-        if torch.sum(segments) != 0 :
+        segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
-            segments = segments.reshape([batch_size, -1]) # batch, img_size^2
+        samples = []
+        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+            plt_image = masked[labels-1].reshape([img_size, img_size])
+            samples.append(plt_image)
 
-            samples = []
-            for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-                plt_image = masked[labels-1].reshape([img_size, img_size])
-                samples.append(plt_image)
-
-            samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
-        else:
-            samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
-            samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
+        samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
         # tensorboard.add_images('Test Pred', samples, self.test_iteration)
 
         # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)

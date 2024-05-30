@@ -19,6 +19,8 @@ from scipy import sparse as sp
 from scipy.spatial.distance import pdist, squareform
 from dataset.attributes import *
 from pathlib import Path
+from dataset.randaugment import RandAugment
+
 
 class Resize(object):
     def __init__(self, size):
@@ -28,7 +30,20 @@ class Resize(object):
         img, mask = sample['image'], sample['mask']
         img, mask = img.resize((self.size, self.size), resample=Image.BILINEAR), mask.resize((self.size, self.size),
                                                                                              resample=Image.BILINEAR)
+        
         return {'image': img, 'mask': mask}
+    
+class ResizeDownsample(object):
+    def __init__(self, resolution, size):
+        self.size = size
+        self.resolution = resolution
+
+    def __call__(self, sample):
+        img, mask = sample['image'], sample['mask']
+        img, mask = img.resize((self.resolution, self.resolution), resample=Image.BILINEAR), mask.resize((self.resolution, self.resolution),
+                                                                                             resample=Image.BILINEAR)
+        mask_og = mask.resize((self.size, self.size), resample=Image.BILINEAR)
+        return {'image': img, 'mask': mask, 'mask_og': mask_og, 'file_name': sample['file_name']}
 
 
 class RandomCrop(object):
@@ -496,13 +511,26 @@ class ToTensorSPCNN(object):
         return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask, 'img': img}
 
 class ToTensorRaw(object):
-    def __init__(self):
+    def __init__(self, data_augmentation):
         self.tensor = transforms.ToTensor()
+        self.data_augmentation = data_augmentation
 
     def __call__(self, sample):
-        img, mask = sample['image'], sample['mask']
-        img, mask = self.tensor(img), self.tensor(mask)
-        return {'image': img, 'mask': mask}
+        img, mask, mask_og = sample['image'], sample['mask'], sample['mask_og']
+        img, mask, mask_og = self.tensor(img), self.tensor(mask), self.tensor(mask_og)
+        if self.data_augmentation:
+            randaug = RandAugment(5)
+            img = (img*255).to(torch.uint8)
+            img = randaug(img).float()
+            img /= 255.
+            
+        # Add centroids
+        
+
+        # return {'image': img, 'mask': mask}
+        return {'features': img.permute(1, 2, 0).reshape(-1, 3), 'seq_mask': mask.reshape(-1),
+                 'segments': torch.empty(0), 'mask': mask_og, 
+                   'file_name': sample['file_name']}
 
 class SPDataset(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, compactness, data_augmentation=True, dataloader=None, coeff=None, ignore_phase=False):
@@ -566,32 +594,38 @@ class SPDataset(data.Dataset):
 
 
 class DUTSDataset(data.Dataset):
-    def __init__(self, root_dir, size, train=True, data_augmentation=True):
-        self.root_dir = root_dir
-        self.image_list = sorted(os.listdir('{}/Image'.format(root_dir)))
-        self.mask_list = sorted(os.listdir('{}/Mask'.format(root_dir)))
-        self.transform = transforms.Compose(
-            [RandomFlip(0.5),
-             RandomCrop(size, int(size*1.2)),
-             ToTensorRaw()])
-        if not (train and data_augmentation):
-            self.transform = transforms.Compose([Resize(size), ToTensorRaw()])
-        self.root_dir = root_dir
+    def __init__(self, image_list, mask_list,  num_seg, size,  data_augmentation=True):
+        self.image_list = image_list
+        self.mask_list = mask_list
+        resolution = int(num_seg**0.5)
+        
+        if data_augmentation:
+            self.transform = transforms.Compose([ResizeDownsample(resolution, size), ToTensorRaw(True)])
+        else:
+            self.transform = transforms.Compose([ResizeDownsample(resolution, size), ToTensorRaw(False)])
+        self.centroids = torch.zeros(resolution, resolution, 2).float()
+        for i in range(resolution):
+            for j in range(resolution):
+                self.centroids[ i, j, :] = torch.tensor([i, j]).float()
+        self.centroids = self.centroids.reshape(-1, 2)
+
+        
 
 
     def __len__(self):
         return len(self.image_list)
 
     def __getitem__(self, item):
-        img_name = '{}/Image/{}'.format(self.root_dir, self.image_list[item])
-        mask_name = '{}/Mask/{}'.format(self.root_dir, self.mask_list[item])
+        img_name = self.image_list[item]
+        mask_name = self.mask_list[item]
         img = Image.open(img_name)
         mask = Image.open(mask_name)
         img = img.convert('RGB')
         mask = mask.convert('L')
-        sample = {'image': img, 'mask': mask}
+        sample = {'image': img, 'mask': mask, 'file_name': img_name}
 
         sample = self.transform(sample)
+        sample['features'] = torch.cat((self.centroids, sample['features']), dim=1)
         return sample
 
 class SPDataModule(pl.LightningDataModule):
@@ -660,27 +694,56 @@ class DUTSDataModule(pl.LightningDataModule):
         super().__init__()
 
         self.train_dir = kwargs.get('dataset_tr')
-        self.val_dir = kwargs.get('dataset_val')
         self.test_dir = kwargs.get('dataset_test')
         self.batch_size = kwargs.get('batch_size')
+        self.num_seg = kwargs.get('num_seg')
         self.num_workers = kwargs.get('num_workers', 0)
         self.image_size = kwargs.get('size')
+        self.debug = kwargs.get('debug')
+
+        self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
+        self.mask_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.train_dir, 'Mask'))]))
+
+        indices = np.array(list(range(len(self.image_list))))
+        np.random.shuffle(indices)
+        
+        self.val_image_list = self.image_list[indices[int(len(self.image_list)*0.95):]]
+        self.val_mask_list = self.mask_list[indices[int(len(self.mask_list)*0.95):]]
+    
+        self.tr_image_list = self.image_list[indices[:int(len(self.image_list)*0.95)]]
+        self.tr_mask_list = self.mask_list[indices[:int(len(self.mask_list)*0.95)]]
+
+        self.test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'Image'))])
+        self.test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'Mask'))])
+
+        if self.debug:
+            self.val_image_list = self.val_image_list[:100]
+            self.val_mask_list = self.val_mask_list[:100]
+
+            self.tr_image_list = self.tr_image_list[:100]
+            self.tr_mask_list = self.tr_mask_list[:100]
+
+            self.test_image_list = self.test_image_list[:100]
+            self.test_mask_list = self.test_mask_list[:100]
 
         
     def train_dataloader(self):
-        data_train = DUTSDataset(self.train_dir, self.image_size, True, True)
+        data_train = DUTSDataset(self.tr_image_list, self.tr_mask_list, self.num_seg, self.image_size,  True)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=False)
 
     def val_dataloader(self):
-        data_val = DUTSDataset(self.val_dir, self.image_size, False, False)
-        return DataLoader(
+        data_val = DUTSDataset(self.val_image_list, self.val_mask_list, self.num_seg, self.image_size, False)
+        data_test = DUTSDataset(self.test_image_list, self.test_mask_list, self.num_seg, self.image_size,  False)
+        return [DataLoader(
                 data_val, batch_size=self.batch_size, 
-                num_workers=self.num_workers, pin_memory=False)
+                num_workers=self.num_workers, pin_memory=False), DataLoader(
+                data_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=False)]
 
     def test_dataloader(self):
-        data_test = DUTSDataset(self.test_dir, self.image_size, False, False)
+        data_test = DUTSDataset(self.test_image_list, self.test_mask_list, self.num_seg, self.image_size,  False)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=False)

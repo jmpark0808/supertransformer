@@ -32,7 +32,7 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         self.window_size = kwargs.get('window_size')
         self.warmup_epochs = kwargs.get('warmup_epochs')
         self.total_train_epochs = kwargs.get('epoch')
-        self.git = kwargs.get('git')
+        
         
         input_dim = get_input_dim(kwargs)
         
@@ -44,6 +44,9 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
                                                                                                     self.tfm_hp[0]*4,
                                                                                                      self.tfm_hp[0]*8], mlp_ratio=4)
         kwargs['parameters'] = parameter_count(self.supert)['model']
+        inp = torch.randn([1, self.num_seg, input_dim+2])
+        flops = FlopCountAnalysis(self.supert, inp)
+        kwargs['flops'] = flops.total()
         # from fvcore.nn import FlopCountAnalysis, flop_count_table
         # inp = torch.randn([1, input_dim+2, 32, 32])
         # flops = FlopCountAnalysis(self.supert, inp)
@@ -173,13 +176,13 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
 
         self.log('loss', loss.item(), sync_dist=True)
         self.iteration += 1
+        if self.current_epoch >= self.warmup_epochs:
+            self.scheduler.step()
         return loss
 
     def on_validation_epoch_end(self):
         acc = self.val_acc/self.val_num_samples
         self.log('Validation Accuracy', acc, sync_dist=True)
-        if self.current_epoch >= self.warmup_epochs:
-            self.scheduler.step(acc)
         self.validation_step_outputs.clear()
 
     def on_validation_start(self):

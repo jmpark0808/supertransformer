@@ -114,14 +114,13 @@ class SP_SWIN(nn.Module):
     Pure Global aggregation using transformers
     Deterministic Positional Encoding 
     '''
-    def __init__(self, nfeat, nhid, head_dim, nheads, ntfm, dropout, dropout_edge, kernels, window_size, image_size):
+    def __init__(self, nfeat, nhid, nheads, ntfm, dropout, dropout_edge, kernels, window_size, resolution):
         """Dense version of GAT."""
         super().__init__()
-        
+        self.pos_linear = nn.Linear(2, nhid)
         options = {'swin_hp': {'patch_size': 1,  # (int | tuple(int)): Patch size. Default: 4
         'embed_dim': nhid, #(int): Patch embedding dimension. Default: 96
-        'head_dim': head_dim,
-        'depths': None, #(tuple(int)): Depth of each Swin Transformer layer.
+        'depths': ntfm, #(tuple(int)): Depth of each Swin Transformer layer.
         'num_heads': nheads, #(tuple(int)): Number of attention heads in different layers.
         'kernels': kernels,
         'window_size': window_size, #(int): Window size. Default: 8
@@ -137,13 +136,13 @@ class SP_SWIN(nn.Module):
         'use_checkpoint': False,#(bool): Whether to use checkpointing to save memory. Default: False
         }, 
         'in_channels': nfeat,
-        'patch_size': 32}
-        self.pos_linear = nn.Linear(2, nhid)
+        'patch_size': resolution}
         # self.pos_linear_y = nn.Linear(1, nhid//2)
+        self.resolution = resolution
         self.model = SwinTransformer(options = options)
         self.out = nn.Linear(nhid, 1)
         # self.pos_emb =  AxialRotaryEmbedding(head_dim, max_freq=image_size)
-        self.image_size = image_size
+        
     def forward(self, x):
         pos = x[:, :, :2]
         # rel_pos = torch.sqrt(torch.sum(torch.pow(pos.unsqueeze(2) - pos.unsqueeze(1), 2), dim=-1)) # B, N, N
@@ -154,7 +153,8 @@ class SP_SWIN(nn.Module):
         pos_emb = self.pos_linear(pos)
         
         # pos = pos.reshape(pos.size(0), 32, 32, -1)
-        x = x.reshape(x.size(0), 32, 32, -1).permute(0, 3, 1, 2)
+        x = x.reshape(x.size(0), self.resolution, self.resolution, -1).permute(0, 3, 1, 2)
+ 
         x = self.model(x, pos_emb)
 
         x = self.out(x)
@@ -206,7 +206,7 @@ class SP_SWIN_ImageNet(nn.Module):
     '''
     SWIN Transformer for ImageNet 
     '''
-    def __init__(self, nfeat, nhid, nheads, ntfm, dropout, dropout_edge, kernels, window_size):
+    def __init__(self, nfeat, nhid, nheads, ntfm, dropout, dropout_edge, kernels, window_size, resolution):
         """Dense version of GAT."""
         super().__init__()
         self.pos_linear = nn.Linear(2, nhid)
@@ -229,6 +229,7 @@ class SP_SWIN_ImageNet(nn.Module):
         }, 
         'in_channels': nfeat,
         'patch_size': 32}
+        self.resolution = resolution
         self.model = SwinTransformer(options = options)
         self.out = nn.Linear(nhid, 1000)
        
@@ -238,7 +239,7 @@ class SP_SWIN_ImageNet(nn.Module):
        
         pos = self.pos_linear(pos)
 
-        x = x.reshape(x.size(0), 32, 32, -1).permute(0, 3, 1, 2)
+        x = x.reshape(x.size(0), self.resolution, self.resolution, -1).permute(0, 3, 1, 2)
         x = self.model(x, pos)
         x = torch.mean(x, dim=1) 
         x = self.out(x)

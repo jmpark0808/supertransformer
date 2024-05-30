@@ -21,7 +21,7 @@ for compact in compactness:
 
 fs = 30
 
-with open('/home/eddie/waterloo/supertransformer/Analysis/resizing_plot_data.pkl', 'rb') as f:
+with open('/home/eddie/waterloo/supertransformer/Analysis/resizing_plot_data_updated.pkl', 'rb') as f:
     loaded_dict = pickle.load(f)
 
 segment_numbers = loaded_dict['image_resolutions']
@@ -37,14 +37,14 @@ for i, j in zip(segment_numbers, all_ious):
     else:
         plt.text(i**2, j+0.002, '{}'.format(i**2))
 
-plt.title(f'Upperbound F1-score accuracy as a \n function of segmentation number', fontsize=fs)
-plt.xlabel('Number of Segments (log scale)', fontsize=fs)
+plt.title(f'Maximum F1-score accuracy For a Given \n  Number of Pixels/Superpixels', fontsize=fs)
+plt.xlabel('Number of Pixels/Superpixels (log scale)', fontsize=fs)
 plt.ylabel('F1-score', fontsize=fs)
 plt.xscale('log')
 plt.xticks(fontsize=fs, rotation=45)
 plt.yticks(fontsize=fs)
 plt.legend(loc="lower right", fontsize=fs, title_fontsize=fs)
-# plt.vlines(x=np.power(segment_numbers, 2), ymin=0.93, ymax=1, ls=":")
+plt.vlines(x=np.power(segment_numbers, 2), ymin=0.85, ymax=1, ls=":")
 plt.tight_layout()
 # plt.savefig(f'compactness.jpg', bbox_inches='tight')
 plt.show()
