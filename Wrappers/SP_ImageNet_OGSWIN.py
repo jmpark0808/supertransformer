@@ -45,7 +45,7 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
                                                     self.tfm_hp[0]*4,
                                                         self.tfm_hp[0]*8], mlp_ratio=1)
         kwargs['parameters'] = parameter_count(self.supert)['model']
-        inp = torch.randn([1, self.num_seg, input_dim+2])
+        inp = torch.randn([1, input_dim+2, self.res, self.res])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
         # from fvcore.nn import FlopCountAnalysis, flop_count_table
