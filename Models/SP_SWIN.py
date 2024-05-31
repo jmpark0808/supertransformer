@@ -244,3 +244,31 @@ class SP_SWIN_ImageNet(nn.Module):
         x = torch.mean(x, dim=1) 
         x = self.out(x)
         return x
+    
+
+
+if __name__ == "__main__":
+    options = {'swin_hp': {'patch_size': 1,  # (int | tuple(int)): Patch size. Default: 4
+        'embed_dim': 16, #(int): Patch embedding dimension. Default: 96
+        'depths': [2, 2, 6, 2], #(tuple(int)): Depth of each Swin Transformer layer.
+        'num_heads': [2, 4, 8, 16], #(tuple(int)): Number of attention heads in different layers.
+        'window_size': 4, #(int): Window size. Default: 8
+        'mlp_ratio': 2.,#(float): Ratio of mlp hidden dim to embedding dim. Default: 4
+        'qkv_bias': True,#(bool): If True, add a learnable bias to query, key, value. Default: True
+        'qk_scale': None,#(float): Override default qk scale of head_dim ** -0.5 if set. Default: None
+        'drop_rate': 0,#(float): Dropout rate. Default: 0
+        'attn_drop_rate': 0,#(float): Attention dropout rate. Default: 0
+        'drop_path_rate': 0.1,#(float): Stochastic depth rate. Default: 0.1
+        'norm_layer': nn.LayerNorm,#(nn.Module): Normalization layer. Default: nn.LayerNorm.
+        'ape': False,#(bool): If True, add absolute position embedding to the patch embedding. Default: False
+        'patch_norm': True,#(bool): If True, add normalization after patch embedding. Default: True
+        'use_checkpoint': False,#(bool): Whether to use checkpointing to save memory. Default: False
+        }, 
+        'in_channels': 3,
+        'patch_size': 32}
+    model = SwinUTransformer(options = options)
+    inp = torch.randn(1, 3, 32, 32)
+    pos = torch.randn(1, 1024, 16)
+    output = model(inp, pos)
+    
+ 

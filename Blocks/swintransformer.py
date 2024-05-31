@@ -1147,14 +1147,14 @@ class BasicLayer(nn.Module):
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                  norm_layer=norm_layer))
-            self.blocks.append(ScatteredTransformerBlock(dim=dim, input_resolution=input_resolution,
-                                 num_heads=num_heads, window_size=window_size,
-                                 shift_size=0 if (i % 2 == 0) else window_size // 2,
-                                 mlp_ratio=mlp_ratio,
-                                 qkv_bias=qkv_bias, qk_scale=qk_scale,
-                                 drop=drop, attn_drop=attn_drop,
-                                 drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                                 norm_layer=norm_layer))
+            # self.blocks.append(ScatteredTransformerBlock(dim=dim, input_resolution=input_resolution,
+            #                      num_heads=num_heads, window_size=window_size,
+            #                      shift_size=0 if (i % 2 == 0) else window_size // 2,
+            #                      mlp_ratio=mlp_ratio,
+            #                      qkv_bias=qkv_bias, qk_scale=qk_scale,
+            #                      drop=drop, attn_drop=attn_drop,
+            #                      drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+            #                      norm_layer=norm_layer))
         # self.blocks.append(KernelTransformerBlock(dim=dim, input_resolution=input_resolution,
         #                         num_heads=num_heads, window_size=5,
         #                         shift_size=depth,
@@ -1269,7 +1269,7 @@ class BasicLayerKernel(nn.Module):
 
 
 
-'''
+
 class BasicLayerUpsample(nn.Module):
     """ A basic Swin Transformer layer for one stage.
 
@@ -1317,8 +1317,9 @@ class BasicLayerUpsample(nn.Module):
         features = torch.cat((feat1, feat2, feat3, feat4), dim=3)
         features = features.reshape(features.size(0), -1, features.size(3))
         features = self.linear(features)
-
+        
         out = self.blocks(x_q, features)
+        print(out.size())
 
         return out
 
@@ -1332,7 +1333,7 @@ class BasicLayerUpsample(nn.Module):
         if self.downsample is not None:
             flops += self.downsample.flops()
         return flops
-'''
+
 
 class PatchEmbed(nn.Module):
     r""" Image to Patch Embedding
@@ -1439,9 +1440,9 @@ class SwinUTransformer(nn.Module):
         self.mlp_ratio = mlp_ratio
 
         # split image into non-overlapping patches
-        # self.patch_embed = PatchEmbed(
-        #     img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim,
-        #     norm_layer=norm_layer if self.patch_norm else None)
+        self.patch_embed = PatchEmbed(
+            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim,
+            norm_layer=norm_layer if self.patch_norm else None)
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
         patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
@@ -1463,6 +1464,7 @@ class SwinUTransformer(nn.Module):
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
             layer = BasicLayer(dim=int(embed_dim * 2 ** (i_layer-1)) if i_layer!=0 else embed_dim, 
+                               head_dim=None,
                                input_resolution=(patches_resolution[0] // (2 ** (i_layer-1)),
                                                  patches_resolution[1] // (2 ** (i_layer-1))) if i_layer!=0 else (patches_resolution[0],
                                                  patches_resolution[1]),
@@ -1527,6 +1529,7 @@ class SwinUTransformer(nn.Module):
         for idx, layer in enumerate(self.upsample_layers):
             x = layer(ft[len(ft)-idx-1], ft)
             ft[len(ft)-idx-1] = x
+            print([f.size() for f in ft])
             res = int(math.sqrt(x.size(1)))
             x = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
             x = self.upsample(x).permute(0, 2, 3, 1)
