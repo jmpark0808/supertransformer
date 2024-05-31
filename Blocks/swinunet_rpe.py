@@ -475,10 +475,10 @@ class SwinTransformerDecoderBlock(nn.Module):
         self.window_size = window_size
         self.shift_size = shift_size
         self.mlp_ratio = mlp_ratio
-        if min(self.input_resolution) <= self.window_size:
+        if min(self.q_resolution) <= self.window_size:
             # if window size is larger than input resolution, we don't partition windows
             self.shift_size = 0
-            self.window_size = min(self.input_resolution)
+            self.window_size = min(self.q_resolution)
         assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
 
         self.norm1_q = norm_layer(q_dim)
@@ -494,7 +494,7 @@ class SwinTransformerDecoderBlock(nn.Module):
 
         if self.shift_size > 0:
             # calculate attention mask for SW-MSA
-            H, W = self.input_resolution
+            H, W = self.q_resolution
             img_mask = torch.zeros((1, H, W, 1))  # 1 H W 1
             h_slices = (slice(0, -self.window_size),
                         slice(-self.window_size, -self.shift_size),
@@ -508,12 +508,45 @@ class SwinTransformerDecoderBlock(nn.Module):
                     img_mask[:, h, w, :] = cnt
                     cnt += 1
 
-            mask_windows = window_partition(img_mask, self.window_size)  # nW, window_size, window_size, 1
-            mask_windows = mask_windows.view(-1, self.window_size * self.window_size)
-            attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
+            mask_windows_q = window_partition(img_mask, self.window_size)  # nW, window_size, window_size, 1
+            mask_windows_q = mask_windows_q.view(-1, self.window_size * self.window_size)
+            
+            # calculate attention mask for SW-MSA
+            H, W = self.kv_resolution
+            img_mask = torch.zeros((1, H, W, 1))  # 1 H W 1
+            if self.kv_resolution[0] == self.q_resolution[0]:
+                h_slices = (slice(0, -self.window_size),
+                            slice(-self.window_size, -self.shift_size),
+                            slice(-self.shift_size//2, None))
+                w_slices = (slice(0, -self.window_size),
+                            slice(-self.window_size, -self.shift_size),
+                            slice(-self.shift_size//2, None))
+            else:
+
+                h_slices = (slice(0, -self.window_size),
+                            slice(-self.window_size, -self.shift_size//2),
+                            slice(-self.shift_size//2, None))
+                w_slices = (slice(0, -self.window_size),
+                            slice(-self.window_size, -self.shift_size//2),
+                            slice(-self.shift_size//2, None))
+            cnt = 0
+            for h in h_slices:
+                for w in w_slices:
+                    img_mask[:, h, w, :] = cnt
+                    cnt += 1
+            if self.kv_resolution[0] == self.q_resolution[0]:
+                mask_windows_kv = window_partition(img_mask, self.window_size)
+                mask_windows_kv = mask_windows_kv.view(-1, self.window_size*self.window_size)
+
+            else:
+                mask_windows_kv = kv_partition(img_mask, self.window_size)  # nW, window_size, window_size, 1
+                mask_windows_kv = mask_windows_kv.view(-1, self.window_size * self.window_size)
+
+            attn_mask = mask_windows_q.unsqueeze(1) - mask_windows_kv.unsqueeze(2)
             attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
         else:
             attn_mask = None
+
 
         self.register_buffer("attn_mask", attn_mask)
         self.fused_window_process = fused_window_process
@@ -823,7 +856,7 @@ class BasicLayerUpsample(nn.Module):
 
     def __init__(self, q_dim, kv_dim, q_resolution, kv_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., norm_layer=nn.LayerNorm, upsample=None, use_checkpoint=False,
+                 drop_path=0., norm_layer=nn.LayerNorm, use_checkpoint=False,
                  fused_window_process=False):
 
         super().__init__()
@@ -976,6 +1009,8 @@ class SwinUTransformer(nn.Module):
 
         # build layers
         self.layers = nn.ModuleList()
+        dim_list = []
+        resolution_list = []
         for i_layer in range(self.num_layers):
             layer = BasicLayer(dim=int(embed_dim * 2 ** i_layer),
                                input_resolution=(patches_resolution[0] // (2 ** i_layer),
@@ -992,13 +1027,21 @@ class SwinUTransformer(nn.Module):
                                use_checkpoint=use_checkpoint,
                                fused_window_process=fused_window_process)
             self.layers.append(layer)
+            dim_list.append(int(embed_dim * 2 ** i_layer))
+            resolution_list.append((patches_resolution[0] // (2 ** i_layer),
+                                                 patches_resolution[1] // (2 ** i_layer)))
+        dim_list.append(int(embed_dim * 2 ** i_layer))
+        resolution_list.append((patches_resolution[0] // (2 ** i_layer),
+                                                 patches_resolution[1] // (2 ** i_layer)))
+        dim_list.reverse()
+        resolution_list.reverse()
+
 
         self.upsample_layers = nn.ModuleList()
-        for i_layer in range(self.num_layers-1):
-            layer = BasicLayerUpsample(dim=int(embed_dim * 2 ** (self.num_layers-i_layer-1)),
-                               input_resolution=(patches_resolution[0] // (2 ** (self.num_layers-i_layer-1)),
-                                                 patches_resolution[1] // (2 ** (self.num_layers-i_layer-1))),
-                               depth=depths[-(i_layer+1)],
+        for i_layer in range(self.num_layers):
+            layer = BasicLayerUpsample(q_dim=dim_list[i_layer+1], kv_dim=dim_list[i_layer],
+                                        q_resolution=resolution_list[i_layer+1], kv_resolution=resolution_list[i_layer],
+                                       depth=depths[-(i_layer+1)],
                                num_heads=num_heads[-(i_layer+1)],
                                window_size=window_size,
                                mlp_ratio=self.mlp_ratio,
@@ -1006,7 +1049,6 @@ class SwinUTransformer(nn.Module):
                                drop=drop_rate, attn_drop=attn_drop_rate,
                                drop_path=0,
                                norm_layer=norm_layer,
-                               upsample=PatchUnmerging,
                                use_checkpoint=use_checkpoint,
                                fused_window_process=fused_window_process)
             self.upsample_layers.append(layer)
@@ -1041,24 +1083,18 @@ class SwinUTransformer(nn.Module):
             x = x + self.absolute_pos_embed
         x = self.pos_drop(x)
 
-        all_centroids = [centroids]
+        all_centroids = []
         all_layers = []
         for idx, layer in enumerate(self.layers):
+            all_layers.append(x)
             x, centroids = layer(x, centroids)
-            if idx >= len(self.layers)-2:
-                pass
-            else:
-                all_centroids.append(centroids)
-                all_layers.append(x)
+            all_centroids.append(centroids)
 
 
         all_centroids.reverse()
         all_layers.reverse()
         for idx, layer in enumerate(self.upsample_layers):
-            if idx == len(self.upsample_layers)-1:
-                x = layer(x, all_centroids[idx])
-            else:
-                x = layer(x, all_centroids[idx]) + all_layers[idx]
+            x = layer(all_layers[idx], x, all_centroids[idx])
 
        
         return x
