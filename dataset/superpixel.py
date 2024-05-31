@@ -746,4 +746,4 @@ class DUTSDataModule(pl.LightningDataModule):
         data_test = DUTSDataset(self.test_image_list, self.test_mask_list, self.num_seg, self.image_size,  False)
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
-                num_workers=self.num_workers, pin_memory=True)
+                num_workers=self.num_workers, pin_memory=True) 

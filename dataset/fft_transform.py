@@ -1,7 +1,7 @@
 import numpy as np
 import math
 
-def horizontal_flip(array, coeff, chance, size):
+def horizontal_flip(array, coeff, chance, size, resolution, seq_mask=None):
     if np.random.random() < chance:
         phase = array[:, 8+coeff:8+coeff+coeff]
         mask = phase > 0
@@ -14,7 +14,17 @@ def horizontal_flip(array, coeff, chance, size):
         mid_x = size/2.
         diff_x = xs-mid_x
         array[:, 1] = mid_x-diff_x
-    return array
+        array = array.reshape(resolution, resolution, -1)
+        array = np.fliplr(array)
+        array = array.reshape(resolution*resolution, -1)
+        if seq_mask is not None:
+            seq_mask = seq_mask.reshape(resolution, resolution)
+            seq_mask= np.fliplr(seq_mask)
+            seq_mask= seq_mask.reshape(-1)
+    if seq_mask is not None:
+        return array, seq_mask
+    else:
+        return array
 
 def rotate_points(origin, point, angle):
     """
