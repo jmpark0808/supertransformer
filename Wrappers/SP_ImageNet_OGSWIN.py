@@ -35,14 +35,15 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         
         
         input_dim = get_input_dim(kwargs)
-        
+        self.res = int(self.num_seg**0.5)
         
         # Generator that produces the HeatMap
-        self.supert = SwinTransformer(img_size=32, in_chans=input_dim, patch_size=1, window_size=4,
-                                       embed_dim=self.tfm_hp[1], depths=[2, 2, 6, 2], num_heads=[self.tfm_hp[0],
-                                                                                                  self.tfm_hp[0]*2,
-                                                                                                    self.tfm_hp[0]*4,
-                                                                                                     self.tfm_hp[0]*8], mlp_ratio=4)
+        self.supert = SwinTransformer(img_size=self.res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
+                                       embed_dim=self.tfm_hp[2], depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
+                                         num_heads=[self.tfm_hp[0],
+                                                    self.tfm_hp[0]*2,
+                                                    self.tfm_hp[0]*4,
+                                                        self.tfm_hp[0]*8], mlp_ratio=1)
         kwargs['parameters'] = parameter_count(self.supert)['model']
         inp = torch.randn([1, self.num_seg, input_dim+2])
         flops = FlopCountAnalysis(self.supert, inp)

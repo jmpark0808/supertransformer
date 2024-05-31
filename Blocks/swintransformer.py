@@ -1267,6 +1267,9 @@ class BasicLayerKernel(nn.Module):
         return flops
     
 
+
+
+'''
 class BasicLayerUpsample(nn.Module):
     """ A basic Swin Transformer layer for one stage.
 
@@ -1329,7 +1332,7 @@ class BasicLayerUpsample(nn.Module):
         if self.downsample is not None:
             flops += self.downsample.flops()
         return flops
-
+'''
 
 class PatchEmbed(nn.Module):
     r""" Image to Patch Embedding

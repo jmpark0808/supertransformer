@@ -413,7 +413,7 @@ class SPDataset(data.Dataset):
         
         
         if self.data_augmentation:
-            features = horizontal_flip(features, self.coeff, 0.5, self.size)
+            features, seq_mask = horizontal_flip(features, self.coeff, 0.5, self.size, int(self.num_seg**0.5), seq_mask)
             features = rotate(features, self.coeff, 15, 0.5, self.size)
             
 
