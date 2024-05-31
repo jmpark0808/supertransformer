@@ -1,16 +1,9 @@
 import torch
 
-a = torch.zeros(1, 4, 4, 1)
-b = torch.ones(1, 4, 4, 1)
-c = torch.ones(1, 4, 4, 1)*2
-d = torch.ones(1, 4, 4, 1)*3
-
-
-t = torch.cat([a, b ], 1)
-h = torch.cat([c, d], 1)
-f = torch.cat([t, h], 2)
-
-# print(torch.squeeze(f))
-
-k = torch.stack([a, b, c, d], 1)
-print(k.reshape(2, 2, 4, 4).permute(2, 0, 3, 1).reshape(8, 8))
+x = torch.arange(64).reshape(1, 8, 8, 1)
+B, H, W, C = x.shape
+window_size = 4
+x = x.view(B, H // window_size, window_size, W // window_size, window_size, C)
+x = x.repeat_interleave(2, dim=1).repeat_interleave(2, dim=3)
+windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
+print(torch.squeeze(windows))

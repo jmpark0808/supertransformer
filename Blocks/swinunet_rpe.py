@@ -49,6 +49,21 @@ def window_partition(x, window_size):
     windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
     return windows
 
+def kv_partition(x, window_size):
+    """
+    Args:
+        x: (B, H, W, C)
+        window_size (int): window size
+
+    Returns:
+        windows: (num_windows*B, window_size, window_size, C)
+    """
+    B, H, W, C = x.shape
+    x = x.view(B, H // window_size, window_size, W // window_size, window_size, C)
+    x = x.repeat_interleave(2, dim=1).repeat_interleave(2, dim=3)
+    windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
+    return windows
+
 
 def window_reverse(windows, window_size, H, W):
     """
@@ -146,6 +161,104 @@ class WindowAttention(nn.Module):
         #     self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
         # relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
         # attn = attn + relative_position_bias.unsqueeze(0)
+
+        if mask is not None:
+            nW = mask.shape[0]
+            attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
+            attn = attn.view(-1, self.num_heads, N, N)
+            attn = self.softmax(attn)
+        else:
+            attn = self.softmax(attn)
+
+        attn = self.attn_drop(attn)
+
+        x = (attn @ v).transpose(1, 2).reshape(B_, N, C) + (attn.permute(0, 2, 1, 3) @ rpe_v).reshape(B_, N, C)
+        # x = torch.mean(x, 2)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
+
+    def extra_repr(self) -> str:
+        return f'dim={self.dim}, window_size={self.window_size}, num_heads={self.num_heads}'
+
+    def flops(self, N):
+        # calculate flops for 1 window with token length of N
+        flops = 0
+        # qkv = self.qkv(x)
+        flops += N * self.dim * 3 * self.dim
+        # attn = (q @ k.transpose(-2, -1))
+        flops += self.num_heads * N * (self.dim // self.num_heads) * N
+        #  x = (attn @ v)
+        flops += self.num_heads * N * N * (self.dim // self.num_heads)
+        # x = self.proj(x)
+        flops += N * self.dim * self.dim
+        return flops
+    
+class WindowAttentionDecoder(nn.Module):
+    r""" Window based multi-head self attention (W-MSA) module with relative position bias.
+    It supports both of shifted and non-shifted window.
+
+    Args:
+        dim (int): Number of input channels.
+        window_size (tuple[int]): The height and width of the window.
+        num_heads (int): Number of attention heads.
+        qkv_bias (bool, optional):  If True, add a learnable bias to query, key, value. Default: True
+        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set
+        attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
+        proj_drop (float, optional): Dropout ratio of output. Default: 0.0
+    """
+
+    def __init__(self, q_dim, kv_dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+
+        super().__init__()
+        self.q_dim = q_dim
+        self.kv_dim = kv_dim
+        self.window_size = window_size  # Wh, Ww
+        self.num_heads = num_heads
+        head_dim = q_dim // num_heads
+    
+        self.head_dim = head_dim
+        self.scale = qk_scale or head_dim ** -0.5
+
+
+
+        self.q = nn.Linear(q_dim, q_dim, bias=qkv_bias)
+        self.k = nn.Linear(kv_dim, q_dim, bias=qkv_bias)
+        self.v = nn.Linear(kv_dim, q_dim, bias=qkv_bias)
+
+        
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(q_dim, q_dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+        # trunc_normal_(self.relative_position_bias_table, std=.02)
+        self.softmax = nn.Softmax(dim=-1)
+
+        self.pos_linear_k = nn.Linear(2, head_dim)
+        self.pos_linear_v = nn.Linear(2, head_dim)
+
+    def forward(self, q, kv, centroids, mask=None):
+        """
+        Args:
+            x: input features with shape of (num_windows*B, N, C)
+            mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
+        """
+        B_, N, C = q.shape
+       
+       
+        
+        q = self.q(q).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+        k = self.k(kv).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+        v = self.v(kv).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+
+        q = q * self.scale
+
+        rpe = centroids.unsqueeze(2) - centroids.unsqueeze(1) # B, N, N, 2
+        rpe_k = self.pos_linear_k(rpe) # B, N, N, D
+        
+        rpe_v = self.pos_linear_v(rpe) # B, N, N, D
+
+        attn = (q @ k.transpose(-2, -1)) + (q.transpose(1, 2) @ rpe_k.permute(0, 1, 3, 2)).permute(0, 2, 1, 3)
 
         if mask is not None:
             nW = mask.shape[0]
@@ -309,6 +422,182 @@ class SwinTransformerBlock(nn.Module):
         x = x + self.drop_path(self.mlp(self.norm2(x)))
 
         return x
+
+    def extra_repr(self) -> str:
+        return f"dim={self.dim}, input_resolution={self.input_resolution}, num_heads={self.num_heads}, " \
+               f"window_size={self.window_size}, shift_size={self.shift_size}, mlp_ratio={self.mlp_ratio}"
+
+    def flops(self):
+        flops = 0
+        H, W = self.input_resolution
+        # norm1
+        flops += self.dim * H * W
+        # W-MSA/SW-MSA
+        nW = H * W / self.window_size / self.window_size
+        flops += nW * self.attn.flops(self.window_size * self.window_size)
+        # mlp
+        flops += 2 * H * W * self.dim * self.dim * self.mlp_ratio
+        # norm2
+        flops += self.dim * H * W
+        return flops
+    
+
+class SwinTransformerDecoderBlock(nn.Module):
+    r""" Swin Transformer Block.
+
+    Args:
+        dim (int): Number of input channels.
+        input_resolution (tuple[int]): Input resulotion.
+        num_heads (int): Number of attention heads.
+        window_size (int): Window size.
+        shift_size (int): Shift size for SW-MSA.
+        mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
+        qkv_bias (bool, optional): If True, add a learnable bias to query, key, value. Default: True
+        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set.
+        drop (float, optional): Dropout rate. Default: 0.0
+        attn_drop (float, optional): Attention dropout rate. Default: 0.0
+        drop_path (float, optional): Stochastic depth rate. Default: 0.0
+        act_layer (nn.Module, optional): Activation layer. Default: nn.GELU
+        norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
+        fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
+    """
+
+    def __init__(self, q_dim, kv_dim, q_resolution, kv_resolution, num_heads, window_size=7, shift_size=0,
+                 mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
+                 act_layer=nn.GELU, norm_layer=nn.LayerNorm,
+                 fused_window_process=False):
+        super().__init__()
+        self.q_dim = q_dim
+        self.kv_dim = kv_dim
+        self.q_resolution = q_resolution
+        self.kv_resolution = kv_resolution
+        self.num_heads = num_heads
+        self.window_size = window_size
+        self.shift_size = shift_size
+        self.mlp_ratio = mlp_ratio
+        if min(self.input_resolution) <= self.window_size:
+            # if window size is larger than input resolution, we don't partition windows
+            self.shift_size = 0
+            self.window_size = min(self.input_resolution)
+        assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
+
+        self.norm1_q = norm_layer(q_dim)
+        self.norm1_kv = norm_layer(kv_dim)
+        self.attn = WindowAttentionDecoder(
+            q_dim, kv_dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
+            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
+
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.norm2 = norm_layer(q_dim)
+        mlp_hidden_dim = int(q_dim * mlp_ratio)
+        self.mlp = Mlp(in_features=q_dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+
+        if self.shift_size > 0:
+            # calculate attention mask for SW-MSA
+            H, W = self.input_resolution
+            img_mask = torch.zeros((1, H, W, 1))  # 1 H W 1
+            h_slices = (slice(0, -self.window_size),
+                        slice(-self.window_size, -self.shift_size),
+                        slice(-self.shift_size, None))
+            w_slices = (slice(0, -self.window_size),
+                        slice(-self.window_size, -self.shift_size),
+                        slice(-self.shift_size, None))
+            cnt = 0
+            for h in h_slices:
+                for w in w_slices:
+                    img_mask[:, h, w, :] = cnt
+                    cnt += 1
+
+            mask_windows = window_partition(img_mask, self.window_size)  # nW, window_size, window_size, 1
+            mask_windows = mask_windows.view(-1, self.window_size * self.window_size)
+            attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
+            attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
+        else:
+            attn_mask = None
+
+        self.register_buffer("attn_mask", attn_mask)
+        self.fused_window_process = fused_window_process
+
+    def forward(self, q, kv, centroids):
+        H, W = self.q_resolution
+        H_kv, W_kv = self.kv_resolution
+        B, L, C = q.shape
+        _, _, C_kv= kv.shape
+        assert L == H * W, "input feature has wrong size"
+
+        shortcut = q
+        q = self.norm1_q(q)
+        kv = self.norm1_kv(kv)
+
+        q = q.view(B, H, W, C)
+        kv = kv.view(B, H_kv, W_kv, C_kv)
+        
+        centroids = centroids.view(B, 2, H_kv, W_kv).permute(0, 2, 3, 1)
+
+        # cyclic shift
+        if self.shift_size > 0:
+            if not self.fused_window_process:
+                shifted_q = torch.roll(q, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+                
+                # partition windows
+                q_windows = window_partition(shifted_q, self.window_size)  # nW*B, window_size, window_size, C
+                if H_kv != H:
+                    shifted_kv = torch.roll(kv, shifts=(-self.shift_size//2, -self.shift_size//2), dims=(1, 2))
+                    kv_windows = kv_partition(shifted_kv, self.window_size)
+                    shifted_centroids = torch.roll(centroids, shifts=(-self.shift_size//2, -self.shift_size//2), dims=(1, 2))
+                    centroid_windows = kv_partition(shifted_centroids, self.window_size) 
+                else:
+                    shifted_kv = torch.roll(kv, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+                    kv_windows = window_partition(shifted_kv, self.window_size)
+                    shifted_centroids = torch.roll(centroids, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+                    centroid_windows = window_partition(shifted_centroids, self.window_size) 
+
+                
+                # partition windows
+            else:
+                x_windows = WindowProcess.apply(x, B, H, W, C, -self.shift_size, self.window_size)
+        else:
+            shifted_q = q
+            shifted_kv = kv
+            shifted_centroids = centroids
+            # partition windows
+            q_windows = window_partition(shifted_q, self.window_size)  # nW*B, window_size, window_size, C
+
+            if H_kv != H:
+                kv_windows = kv_partition(shifted_kv, self.window_size)
+                shifted_centroids = torch.roll(centroids, shifts=(-self.shift_size//2, -self.shift_size//2), dims=(1, 2))
+                centroid_windows = kv_partition(shifted_centroids, self.window_size) 
+            else:
+                kv_windows = window_partition(shifted_kv, self.window_size)
+                shifted_centroids = torch.roll(centroids, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+                centroid_windows = window_partition(shifted_centroids, self.window_size) 
+
+        q_windows = q_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
+        centroid_windows = centroid_windows.view(-1, self.window_size*self.window_size, 2)
+
+        # W-MSA/SW-MSA
+        attn_windows = self.attn(q_windows, kv_windows, centroid_windows, mask=self.attn_mask)  # nW*B, window_size*window_size, C
+
+        # merge windows
+        attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
+
+        # reverse cyclic shift
+        if self.shift_size > 0:
+            if not self.fused_window_process:
+                shifted_q = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
+                q = torch.roll(shifted_q, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
+            else:
+                q = WindowProcessReverse.apply(attn_windows, B, H, W, C, self.shift_size, self.window_size)
+        else:
+            shifted_q = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
+            q = shifted_q
+        q = q.view(B, H * W, C)
+        q = shortcut + self.drop_path(q)
+
+        # FFN
+        q = q + self.drop_path(self.mlp(self.norm2(q)))
+
+        return q
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, num_heads={self.num_heads}, " \
@@ -532,20 +821,18 @@ class BasicLayerUpsample(nn.Module):
         fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
     """
 
-    def __init__(self, dim, input_resolution, depth, num_heads, window_size,
+    def __init__(self, q_dim, kv_dim, q_resolution, kv_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, upsample=None, use_checkpoint=False,
                  fused_window_process=False):
 
         super().__init__()
-        self.dim = dim
-        self.input_resolution = input_resolution
         self.depth = depth
         self.use_checkpoint = use_checkpoint
 
         # build blocks
         self.blocks = nn.ModuleList([
-            SwinTransformerBlock(dim=dim//2, input_resolution=(input_resolution[0]*2, input_resolution[1]*2),
+            SwinTransformerDecoderBlock(q_dim = q_dim, kv_dim=kv_dim, q_resolution=q_resolution, kv_resolution=kv_resolution,
                                  num_heads=num_heads, window_size=window_size,
                                  shift_size=0 if (i % 2 == 0) else window_size // 2,
                                  mlp_ratio=mlp_ratio,
@@ -556,23 +843,13 @@ class BasicLayerUpsample(nn.Module):
                                  fused_window_process=fused_window_process)
             for i in range(depth)])
 
-        # patch merging layer
-        if upsample is not None:
-            self.upsample = upsample(input_resolution, dim=dim, norm_layer=norm_layer)
-        else:
-            self.upsample = None
 
-    def forward(self, x, centroids):
-        if self.upsample is not None:
-            x = self.upsample(x)
-        
+
+    def forward(self, q, kv, centroids):       
         for blk in self.blocks:
-            if self.use_checkpoint:
-                x = checkpoint.checkpoint(blk, x)
-            else:
-                x = blk(x, centroids)
+            q = blk(q, kv, centroids)
         
-        return x
+        return q
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, depth={self.depth}"
