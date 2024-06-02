@@ -1095,6 +1095,7 @@ class SwinUTransformer(nn.Module):
         all_layers.reverse()
         for idx, layer in enumerate(self.upsample_layers):
             x = layer(all_layers[idx], x, all_centroids[idx])
+            
 
        
         return x

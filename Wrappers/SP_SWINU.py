@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 from Blocks.swinunet_rpe import SwinUTransformer
-
+from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
 import numpy as np
 from dataset.constants import *
@@ -33,13 +33,13 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         input_dim = get_input_dim(kwargs)
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
-        self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
-                                       embed_dim=self.tfm_hp[2], depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
-                                         num_heads=[self.tfm_hp[0],
-                                                    self.tfm_hp[0]*2,
-                                                    self.tfm_hp[0]*4,
-                                                        self.tfm_hp[0]*8], mlp_ratio=1)
-        # self.supert = SP_SWINU(input_dim, self.tfm_hp[1], self.tfm_hp[0],self.tfm_hp[2], self.dropout, self.dropout_edge)
+        # self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
+        #                                embed_dim=self.tfm_hp[2], depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
+        #                                  num_heads=[self.tfm_hp[0],
+        #                                             self.tfm_hp[0]*2,
+        #                                             self.tfm_hp[0]*4,
+        #                                                 self.tfm_hp[0]*8], mlp_ratio=1)
+        self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
         kwargs['parameters'] = parameter_count(self.supert)['model']
         inp = torch.randn([1, input_dim+2, res, res])
@@ -306,7 +306,7 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         features = batch['features']
         seq_mask = batch['seq_mask']
         segments = batch['segments']
-        mask = batch['mask']
+        mask = batch['mask'].cpu()
 
 
         # forward pass
@@ -327,10 +327,10 @@ class SP_SWINU_Wrapper(pl.LightningModule):
                 plt_image = masked[labels-1].reshape([img_size, img_size])
                 samples.append(plt_image)
 
-            samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
+            samples = torch.tensor(np.expand_dims(np.array(samples), 1))
         else:
             samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
-            samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
+            samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear').detach().cpu()
         # tensorboard.add_images('Test Pred', samples, self.test_iteration)
 
         # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
