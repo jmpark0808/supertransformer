@@ -4,7 +4,10 @@
 # Licensed under The MIT License [see LICENSE for details]
 # Written by Ze Liu
 # --------------------------------------------------------
-
+'''
+UNet Mixformer
+https://arxiv.org/abs/2312.06272
+'''
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
