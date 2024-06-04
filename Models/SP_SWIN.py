@@ -4,6 +4,7 @@ from Wrappers.PositionalEncoding import PositionalEncodingSuperPixel
 from Blocks.swintransformer import *
 import matplotlib.pyplot as plt
 from dataset.constants import *
+from Blocks.swintransformer_original_rpe import SwinUTransformer
 
 class SP_SWINU(nn.Module):
     '''
@@ -32,17 +33,12 @@ class SP_SWINU(nn.Module):
         }, 
         'in_channels': nfeat,
         'patch_size': resolution}
+        self.res = resolution
         self.model = SwinUTransformer(options = options)
-        self.out = nn.Linear(128+64+32+16, 1)
+        self.out = nn.Linear(nhid*15, 1)
     def forward(self, x):
-        x = x.reshape(x.size(0), x.size(1), -1).permute(0, 2, 1)
-        pos = x[:, :, :2]
-        x = x[:, :, 2:]
-       
-        pos = self.pos_linear(pos)
-
-        x = x.reshape(x.size(0), 32, 32, -1).permute(0, 3, 1, 2)
-        x = self.model(x, pos)
+        x = x.reshape(x.size(0), self.res, self.res, -1).permute(0, 3, 1, 2)
+        x = self.model(x)
 
         x = self.out(x)
         return x

@@ -1293,7 +1293,7 @@ class BasicLayerUpsample(nn.Module):
         use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False.
     """
 
-    def __init__(self, dim, input_resolution, num_heads, 
+    def __init__(self, dim, total_dim, input_resolution, num_heads, 
                  mlp_ratio=4., qkv_bias=True, drop=0.,  use_checkpoint=False):
 
         super().__init__()
@@ -1306,7 +1306,7 @@ class BasicLayerUpsample(nn.Module):
         self.avg_pool_x8 = nn.AvgPool2d(8, 8)
         self.avg_pool_x4 = nn.AvgPool2d(4, 4)
         self.avg_pool_x2 = nn.AvgPool2d(2, 2)
-        self.linear = nn.Linear(16+32+64+128, dim)
+        self.linear = nn.Linear(total_dim, dim)
         
 
        
@@ -1322,7 +1322,7 @@ class BasicLayerUpsample(nn.Module):
         features = self.linear(features)
         
         out = self.blocks(x_q, features)
-        print(out.size())
+        
 
         return out
 
@@ -1434,6 +1434,7 @@ class SwinUTransformer(nn.Module):
         patch_norm = options['swin_hp']['patch_norm']
         use_checkpoint = options['swin_hp']['use_checkpoint']
 
+        self.img_size = img_size
         self.net_name = 'SwinTransformer'
         self.num_layers = len(depths)
         self.embed_dim = embed_dim
@@ -1487,6 +1488,7 @@ class SwinUTransformer(nn.Module):
         self.upsample_layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
             layer = BasicLayerUpsample(dim=int(embed_dim * 2 ** (self.num_layers-i_layer-1)),
+                                       total_dim=embed_dim*15,
                                input_resolution=(patches_resolution[0] // (2 ** (self.num_layers-i_layer-1)),
                                                  patches_resolution[1] // (2 ** (self.num_layers-i_layer-1))),
                                num_heads=num_heads[self.num_layers-i_layer-1],
@@ -1496,7 +1498,7 @@ class SwinUTransformer(nn.Module):
                                use_checkpoint=use_checkpoint)
             self.upsample_layers.append(layer)
 
-        self.upsample = nn.Upsample(size=32)
+        self.upsample = nn.Upsample(size=self.img_size)
         
         self.apply(self._init_weights)
 
@@ -1532,11 +1534,11 @@ class SwinUTransformer(nn.Module):
         for idx, layer in enumerate(self.upsample_layers):
             x = layer(ft[len(ft)-idx-1], ft)
             ft[len(ft)-idx-1] = x
-            print([f.size() for f in ft])
+            
             res = int(math.sqrt(x.size(1)))
             x = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
             x = self.upsample(x).permute(0, 2, 3, 1)
-            x = x.reshape(x.size(0), 1024, -1)
+            x = x.reshape(x.size(0), self.img_size**2, -1)
             up_ft.append(x)
 
         up_ft = torch.cat(up_ft, dim=2)

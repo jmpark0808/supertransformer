@@ -37,7 +37,7 @@ for i, j in zip(segment_numbers, all_ious):
     else:
         plt.text(i**2, j+0.002, '{}'.format(i**2))
 
-plt.title(f'Maximum F1-score accuracy For a Given \n  Number of Pixels/Superpixels', fontsize=fs)
+plt.title(f'Maximum F1-score accuracy for a Given \n  Number of Pixels/Superpixels', fontsize=fs)
 plt.xlabel('Number of Pixels/Superpixels (log scale)', fontsize=fs)
 plt.ylabel('F1-score', fontsize=fs)
 plt.xscale('log')
