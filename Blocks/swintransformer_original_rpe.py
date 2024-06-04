@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
-
+import math
 
 WindowProcess = None
 WindowProcessReverse = None
@@ -457,6 +457,71 @@ class BasicLayer(nn.Module):
         return flops
 
 
+
+class BasicLayerUpsample(nn.Module):
+    """ A basic Swin Transformer layer for one stage.
+
+    Args:
+        dim (int): Number of input channels.
+        input_resolution (tuple[int]): Input resolution.
+        depth (int): Number of blocks.
+        num_heads (int): Number of attention heads.
+        window_size (int): Local window size.
+        mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
+        qkv_bias (bool, optional): If True, add a learnable bias to query, key, value. Default: True
+        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set.
+        drop (float, optional): Dropout rate. Default: 0.0
+        attn_drop (float, optional): Attention dropout rate. Default: 0.0
+        drop_path (float | tuple[float], optional): Stochastic depth rate. Default: 0.0
+        norm_layer (nn.Module, optional): Normalization layer. Default: nn.LayerNorm
+        downsample (nn.Module | None, optional): Downsample layer at the end of the layer. Default: None
+        use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False.
+    """
+
+    def __init__(self, dim, total_dim, input_resolution, num_heads, 
+                 mlp_ratio=4., qkv_bias=True, drop=0.,  use_checkpoint=False):
+
+        super().__init__()
+        self.dim = dim
+        self.input_resolution = input_resolution
+        self.use_checkpoint = use_checkpoint
+        # build blocks
+        self.blocks = nn.TransformerDecoderLayer(dim,nhead=num_heads, dim_feedforward=int(mlp_ratio*dim), 
+                                                 dropout=drop, batch_first=True, norm_first=True) 
+        self.avg_pool_x8 = nn.AvgPool2d(8, 8)
+        self.avg_pool_x4 = nn.AvgPool2d(4, 4)
+        self.avg_pool_x2 = nn.AvgPool2d(2, 2)
+        self.linear = nn.Linear(total_dim, dim)
+        
+
+       
+    def forward(self, x_q, x_kv):
+        
+        feat1 = self.avg_pool_x8(x_kv[0].reshape(x_kv[0].size(0), 32, 32, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+        feat2 = self.avg_pool_x4(x_kv[1].reshape(x_kv[1].size(0), 16, 16, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+        feat3 = self.avg_pool_x2(x_kv[2].reshape(x_kv[2].size(0), 8, 8, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+        feat4 = x_kv[3].reshape(x_kv[3].size(0), 4, 4, -1)
+
+        features = torch.cat((feat1, feat2, feat3, feat4), dim=3)
+        features = features.reshape(features.size(0), -1, features.size(3))
+        features = self.linear(features)
+        
+        out = self.blocks(x_q, features)
+        
+
+        return out
+
+    def extra_repr(self) -> str:
+        return f"dim={self.dim}, input_resolution={self.input_resolution}, depth={self.depth}"
+
+    def flops(self):
+        flops = 0
+        for blk in self.blocks:
+            flops += blk.flops()
+        if self.downsample is not None:
+            flops += self.downsample.flops()
+        return flops
+
 class PatchEmbed(nn.Module):
     r""" Image to Patch Embedding
 
@@ -631,6 +696,182 @@ class SwinTransformer(nn.Module):
         x = self.forward_features(x)
         x = self.head(x)
         return x
+
+    def flops(self):
+        flops = 0
+        flops += self.patch_embed.flops()
+        for i, layer in enumerate(self.layers):
+            flops += layer.flops()
+        flops += self.num_features * self.patches_resolution[0] * self.patches_resolution[1] // (2 ** self.num_layers)
+        flops += self.num_features * self.num_classes
+        return flops
+    
+class SwinUTransformer(nn.Module):
+    r""" Swin Transformer
+        A PyTorch impl of : `Swin Transformer: Hierarchical Vision Transformer using Shifted Windows`  -
+          https://arxiv.org/pdf/2103.14030
+
+    Args:
+        img_size (int | tuple(int)): Input image size. Default 224
+        patch_size (int | tuple(int)): Patch size. Default: 4
+        in_chans (int): Number of input image channels. Default: 3
+        num_classes (int): Number of classes for classification head. Default: 1000
+        embed_dim (int): Patch embedding dimension. Default: 96
+        depths (tuple(int)): Depth of each Swin Transformer layer.
+        num_heads (tuple(int)): Number of attention heads in different layers.
+        window_size (int): Window size. Default: 7
+        mlp_ratio (float): Ratio of mlp hidden dim to embedding dim. Default: 4
+        qkv_bias (bool): If True, add a learnable bias to query, key, value. Default: True
+        qk_scale (float): Override default qk scale of head_dim ** -0.5 if set. Default: None
+        drop_rate (float): Dropout rate. Default: 0
+        attn_drop_rate (float): Attention dropout rate. Default: 0
+        drop_path_rate (float): Stochastic depth rate. Default: 0.1
+        norm_layer (nn.Module): Normalization layer. Default: nn.LayerNorm.
+        ape (bool): If True, add absolute position embedding to the patch embedding. Default: False
+        patch_norm (bool): If True, add normalization after patch embedding. Default: True
+        use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False
+    """
+
+    def __init__(self, options, **kwargs):
+        super().__init__()
+        img_size = options['patch_size']
+        patch_size = options['swin_hp']['patch_size']
+        in_chans = options['in_channels']
+        embed_dim = options['swin_hp']['embed_dim']
+        depths = options['swin_hp']['depths']
+        num_heads = options['swin_hp']['num_heads']
+        window_size = options['swin_hp']['window_size']
+        mlp_ratio = options['swin_hp']['mlp_ratio']
+        qkv_bias = options['swin_hp']['qkv_bias']
+        qk_scale = options['swin_hp']['qk_scale']
+        drop_rate = options['swin_hp']['drop_rate']
+        attn_drop_rate = options['swin_hp']['attn_drop_rate']
+        drop_path_rate = options['swin_hp']['drop_path_rate']
+        norm_layer = options['swin_hp']['norm_layer']
+        ape = options['swin_hp']['ape']
+        patch_norm = options['swin_hp']['patch_norm']
+        use_checkpoint = options['swin_hp']['use_checkpoint']
+
+        self.img_size = img_size
+        self.net_name = 'SwinTransformer'
+        self.num_layers = len(depths)
+        self.embed_dim = embed_dim
+        self.ape = ape
+        self.patch_norm = patch_norm
+        self.num_features = int(embed_dim * 2 ** (self.num_layers - 1))
+        self.mlp_ratio = mlp_ratio
+
+        # split image into non-overlapping patches
+        self.patch_embed = PatchEmbed(
+            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim,
+            norm_layer=norm_layer if self.patch_norm else None)
+        img_size = to_2tuple(img_size)
+        patch_size = to_2tuple(patch_size)
+        patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
+        self.patch_size = patch_size
+        self.patches_resolution = patches_resolution
+        self.num_patches = patches_resolution[0] * patches_resolution[1]
+
+        # absolute position embedding
+        if self.ape:
+            self.absolute_pos_embed = nn.Parameter(torch.zeros(1, num_patches, embed_dim))
+            trunc_normal_(self.absolute_pos_embed, std=.02)
+
+        self.pos_drop = nn.Dropout(p=drop_rate)
+
+        # stochastic depth
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
+
+        # build layers
+        self.layers = nn.ModuleList()
+        for i_layer in range(self.num_layers):
+            layer = BasicLayer(dim=int(embed_dim * 2 ** (i_layer-1)) if i_layer!=0 else embed_dim, 
+                               input_resolution=(patches_resolution[0] // (2 ** (i_layer-1)),
+                                                 patches_resolution[1] // (2 ** (i_layer-1))) if i_layer!=0 else (patches_resolution[0],
+                                                 patches_resolution[1]),
+                               depth=depths[i_layer],
+                               num_heads=num_heads[i_layer],
+                               window_size=window_size,
+                               mlp_ratio=self.mlp_ratio,
+                               qkv_bias=qkv_bias, qk_scale=qk_scale,
+                               drop=drop_rate, attn_drop=attn_drop_rate,
+                               drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
+                               norm_layer=norm_layer,
+                               downsample=PatchMerging if (i_layer < self.num_layers) and i_layer!=0 else None,
+                               use_checkpoint=use_checkpoint)
+            self.layers.append(layer)
+            
+
+        self.upsample_layers = nn.ModuleList()
+        for i_layer in range(self.num_layers):
+            layer = BasicLayerUpsample(dim=int(embed_dim * 2 ** (self.num_layers-i_layer-1)),
+                                       total_dim=embed_dim*15,
+                               input_resolution=(patches_resolution[0] // (2 ** (self.num_layers-i_layer-1)),
+                                                 patches_resolution[1] // (2 ** (self.num_layers-i_layer-1))),
+                               num_heads=num_heads[self.num_layers-i_layer-1],
+                               mlp_ratio=self.mlp_ratio,
+                               qkv_bias=qkv_bias, 
+                               drop=drop_rate, 
+                               use_checkpoint=use_checkpoint)
+            self.upsample_layers.append(layer)
+
+        self.upsample = nn.Upsample(size=self.img_size)
+        
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+
+    @torch.jit.ignore
+    def no_weight_decay(self):
+        return {'absolute_pos_embed'}
+
+    @torch.jit.ignore
+    def no_weight_decay_keywords(self):
+        return {'relative_position_bias_table'}
+
+    def forward_features(self, x):
+        centroids = x[:, :2, :, : ]
+        x = x[:, 2:, :, :]
+        x = self.patch_embed(x)
+        # x = x + pos
+        x = self.pos_drop(x)
+
+        ft = []
+        for layer in self.layers:
+            x, centroids = layer(x, centroids)
+            ft.append(x)
+           
+        
+        up_ft = []
+        for idx, layer in enumerate(self.upsample_layers):
+            x = layer(ft[len(ft)-idx-1], ft)
+            ft[len(ft)-idx-1] = x
+            
+            res = int(math.sqrt(x.size(1)))
+            x = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
+            x = self.upsample(x).permute(0, 2, 3, 1)
+            x = x.reshape(x.size(0), self.img_size**2, -1)
+            up_ft.append(x)
+
+        up_ft = torch.cat(up_ft, dim=2)
+        return up_ft
+
+
+
+    def forward(self, x):
+        x = self.forward_features(x)
+
+
+        return x
+ 
+
 
     def flops(self):
         flops = 0
