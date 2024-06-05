@@ -89,7 +89,7 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         # dataset= self.trainer.train_dataloader
         # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
         #                                               1, 5e-8)
-        # return optimizer
+        return optimizer
       
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure):
         # update params
