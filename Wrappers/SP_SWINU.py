@@ -2,8 +2,8 @@ from typing import Optional
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
-from Blocks.swinunet_rpe import SwinUTransformer
-from Models.SP_SWIN import SP_SWINU
+from Blocks.swintransformer_original_rpe import SwinUTransformer
+# from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
 import numpy as np
 from dataset.constants import *
@@ -34,13 +34,13 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         input_dim = get_input_dim(kwargs)
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
-        # self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
-        #                                embed_dim=self.tfm_hp[2], depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
-        #                                  num_heads=[self.tfm_hp[0],
-        #                                             self.tfm_hp[0]*2,
-        #                                             self.tfm_hp[0]*4,
-        #                                                 self.tfm_hp[0]*8], mlp_ratio=1)
-        self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
+        self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
+                                       embed_dim=self.tfm_hp[2], depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
+                                         num_heads=[self.tfm_hp[0],
+                                                    self.tfm_hp[0]*2,
+                                                    self.tfm_hp[0]*4,
+                                                        self.tfm_hp[0]*8], mlp_ratio=1)
+        # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
         kwargs['parameters'] = parameter_count(self.supert)['model']
         inp = torch.randn([1, input_dim+2, res, res])
@@ -57,8 +57,7 @@ class SP_SWINU_Wrapper(pl.LightningModule):
             checkpoint = torch.load(self.pretrain)
             for key in list(checkpoint['state_dict'].keys()):
                 checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
-            checkpoint['state_dict'].pop('out.weight')
-            checkpoint['state_dict'].pop('out.bias')
+            
             self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
         
         self.save_hyperparameters()

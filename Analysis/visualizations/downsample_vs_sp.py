@@ -1,10 +1,14 @@
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
+
 
 df = pd.read_csv('/home/eddie/Downloads/ds_vs_sp.csv')
 xs = df['FLOPS']
 labels = df['Datatype']
 f1s = df['F1-score']
+min_f1 = np.min(f1s)
+max_f1 = np.max(f1s)
 resolution = df['Resolution']
 all_resolutions = [100, 225, 400, 900, 2500]
 fig, axs = plt.subplots(1, 5)
@@ -25,9 +29,12 @@ for idx, r in enumerate(all_resolutions):
     sp_f1 = temp_f1s[sp_index]
     sp_f1 = [x for _, x in sorted(zip(sp_xs, sp_f1))]
     sp_xs = sorted(sp_xs)
-    axs[idx].plot(ds_xs, ds_f1, label='Downsample')
-    axs[idx].plot(sp_xs, sp_f1, label='Superpixels')
+    axs[idx].plot(ds_xs, ds_f1, label='Downsample', c='red')
+    axs[idx].scatter(ds_xs, ds_f1, c='red')
+    axs[idx].plot(sp_xs, sp_f1, label='Superpixels', c='g')
+    axs[idx].scatter(sp_xs, sp_f1, c='g')
     axs[idx].legend()
+    axs[idx].set_ylim(min_f1-0.05, max_f1+0.05)
     axs[idx].set_title(f'Number of pixels/superpixels: {r}')
 fig.supxlabel('FLOPS')
 fig.supylabel('F1-score')

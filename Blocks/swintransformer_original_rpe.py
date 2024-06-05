@@ -11,6 +11,7 @@ import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
 
+
 WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
@@ -488,21 +489,23 @@ class BasicLayerUpsample(nn.Module):
         # build blocks
         self.blocks = nn.TransformerDecoderLayer(dim,nhead=num_heads, dim_feedforward=int(mlp_ratio*dim), 
                                                  dropout=drop, batch_first=True, norm_first=True) 
-        self.avg_pool_x8 = nn.AvgPool2d(8, 8)
-        self.avg_pool_x4 = nn.AvgPool2d(4, 4)
-        self.avg_pool_x2 = nn.AvgPool2d(2, 2)
+        min_res = min(input_resolution)
+        self.avg_pools = [nn.AvgPool2d(res//min_res, res//min_res) for res in input_resolution]
+        
         self.linear = nn.Linear(total_dim, dim)
         
 
        
     def forward(self, x_q, x_kv):
-        
-        feat1 = self.avg_pool_x8(x_kv[0].reshape(x_kv[0].size(0), 32, 32, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
-        feat2 = self.avg_pool_x4(x_kv[1].reshape(x_kv[1].size(0), 16, 16, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
-        feat3 = self.avg_pool_x2(x_kv[2].reshape(x_kv[2].size(0), 8, 8, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
-        feat4 = x_kv[3].reshape(x_kv[3].size(0), 4, 4, -1)
+        feats = []
+        for idx, res in enumerate(self.input_resolution):
+            feats.append(self.avg_pools[idx](x_kv[idx].reshape(x_kv[idx].size(0), res, res, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1))
+        # feat1 = self.avg_pool_x8(x_kv[0].reshape(x_kv[0].size(0), 32, 32, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+        # feat2 = self.avg_pool_x4(x_kv[1].reshape(x_kv[1].size(0), 16, 16, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+        # feat3 = self.avg_pool_x2(x_kv[2].reshape(x_kv[2].size(0), 8, 8, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+        # feat4 = x_kv[3].reshape(x_kv[3].size(0), 4, 4, -1)
 
-        features = torch.cat((feat1, feat2, feat3, feat4), dim=3)
+        features = torch.cat(feats, dim=3)
         features = features.reshape(features.size(0), -1, features.size(3))
         features = self.linear(features)
         
@@ -732,28 +735,15 @@ class SwinUTransformer(nn.Module):
         use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False
     """
 
-    def __init__(self, options, **kwargs):
+    def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000,
+                 embed_dim=96, depths=[2, 2, 6, 2], num_heads=[3, 6, 12, 24],
+                 window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
+                 drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
+                 norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
+                 use_checkpoint=False, fused_window_process=False, **kwargs):
         super().__init__()
-        img_size = options['patch_size']
-        patch_size = options['swin_hp']['patch_size']
-        in_chans = options['in_channels']
-        embed_dim = options['swin_hp']['embed_dim']
-        depths = options['swin_hp']['depths']
-        num_heads = options['swin_hp']['num_heads']
-        window_size = options['swin_hp']['window_size']
-        mlp_ratio = options['swin_hp']['mlp_ratio']
-        qkv_bias = options['swin_hp']['qkv_bias']
-        qk_scale = options['swin_hp']['qk_scale']
-        drop_rate = options['swin_hp']['drop_rate']
-        attn_drop_rate = options['swin_hp']['attn_drop_rate']
-        drop_path_rate = options['swin_hp']['drop_path_rate']
-        norm_layer = options['swin_hp']['norm_layer']
-        ape = options['swin_hp']['ape']
-        patch_norm = options['swin_hp']['patch_norm']
-        use_checkpoint = options['swin_hp']['use_checkpoint']
-
         self.img_size = img_size
-        self.net_name = 'SwinTransformer'
+        self.num_classes = num_classes
         self.num_layers = len(depths)
         self.embed_dim = embed_dim
         self.ape = ape
@@ -784,11 +774,12 @@ class SwinUTransformer(nn.Module):
 
         # build layers
         self.layers = nn.ModuleList()
+        resolutions = []
+        embed_dims = []
         for i_layer in range(self.num_layers):
-            layer = BasicLayer(dim=int(embed_dim * 2 ** (i_layer-1)) if i_layer!=0 else embed_dim, 
-                               input_resolution=(patches_resolution[0] // (2 ** (i_layer-1)),
-                                                 patches_resolution[1] // (2 ** (i_layer-1))) if i_layer!=0 else (patches_resolution[0],
-                                                 patches_resolution[1]),
+            layer = BasicLayer(dim=int(embed_dim * 2 ** i_layer), 
+                               input_resolution=(patches_resolution[0] // (2 ** i_layer),
+                                                 patches_resolution[1] // (2 ** i_layer)),
                                depth=depths[i_layer],
                                num_heads=num_heads[i_layer],
                                window_size=window_size,
@@ -797,17 +788,21 @@ class SwinUTransformer(nn.Module):
                                drop=drop_rate, attn_drop=attn_drop_rate,
                                drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
                                norm_layer=norm_layer,
-                               downsample=PatchMerging if (i_layer < self.num_layers) and i_layer!=0 else None,
+                               downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
                                use_checkpoint=use_checkpoint)
             self.layers.append(layer)
+            resolutions.append(patches_resolution[0] // (2 ** i_layer))
+            embed_dims.append(int(embed_dim * 2 ** i_layer))
+        resolutions.append(patches_resolution[0] // (2 ** i_layer))
+        embed_dims.reverse()
+            
             
 
         self.upsample_layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
-            layer = BasicLayerUpsample(dim=int(embed_dim * 2 ** (self.num_layers-i_layer-1)),
-                                       total_dim=embed_dim*15,
-                               input_resolution=(patches_resolution[0] // (2 ** (self.num_layers-i_layer-1)),
-                                                 patches_resolution[1] // (2 ** (self.num_layers-i_layer-1))),
+            layer = BasicLayerUpsample(dim=embed_dims[i_layer],
+                                       total_dim=embed_dim*23,
+                               input_resolution=resolutions,
                                num_heads=num_heads[self.num_layers-i_layer-1],
                                mlp_ratio=self.mlp_ratio,
                                qkv_bias=qkv_bias, 
@@ -815,7 +810,8 @@ class SwinUTransformer(nn.Module):
                                use_checkpoint=use_checkpoint)
             self.upsample_layers.append(layer)
 
-        self.upsample = nn.Upsample(size=self.img_size)
+        self.upsample = nn.Upsample(size=img_size[0])
+        self.sod_head = nn.Linear(embed_dim*23, 1)
         
         self.apply(self._init_weights)
 
@@ -842,17 +838,22 @@ class SwinUTransformer(nn.Module):
         x = self.patch_embed(x)
         # x = x + pos
         x = self.pos_drop(x)
-
-        ft = []
+        
+        ft = [x]
+        
         for layer in self.layers:
             x, centroids = layer(x, centroids)
+            
             ft.append(x)
-           
-        
-        up_ft = []
+
+        res = int(math.sqrt(x.size(1)))
+        x_ = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
+        x_ = self.upsample(x_).permute(0, 2, 3, 1)
+        x_ = x_.reshape(x_.size(0), self.img_size**2, -1)
+        up_ft = [x_]
         for idx, layer in enumerate(self.upsample_layers):
-            x = layer(ft[len(ft)-idx-1], ft)
-            ft[len(ft)-idx-1] = x
+            x = layer(ft[len(ft)-idx-2], ft)
+            ft[len(ft)-idx-2] = x
             
             res = int(math.sqrt(x.size(1)))
             x = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
@@ -867,7 +868,7 @@ class SwinUTransformer(nn.Module):
 
     def forward(self, x):
         x = self.forward_features(x)
-
+        x = self.sod_head(x)
 
         return x
  
