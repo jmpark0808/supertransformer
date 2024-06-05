@@ -37,7 +37,7 @@ class SP_SWINU(nn.Module):
         self.model = SwinUTransformer(options = options)
         self.out = nn.Linear(nhid*15, 1)
     def forward(self, x):
-        x = x.reshape(x.size(0), self.res, self.res, -1).permute(0, 3, 1, 2)
+        # x = x.reshape(x.size(0), self.res, self.res, -1).permute(0, 3, 1, 2)
         x = self.model(x)
 
         x = self.out(x)
