@@ -77,18 +77,18 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         """
         
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            mode='min',
-            factor=0.1,
-            patience=self.es_patience//2,
-            min_lr=1e-8,
-            verbose=True)
+        # self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        #     optimizer,
+        #     mode='min',
+        #     factor=0.1,
+        #     patience=self.es_patience//2,
+        #     min_lr=1e-8,
+        #     verbose=True)
         
-        # self.trainer.fit_loop.setup_data()
-        # dataset= self.trainer.train_dataloader
-        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
-        #                                               1, 5e-8)
+        self.trainer.fit_loop.setup_data()
+        dataset= self.trainer.train_dataloader
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
+                                                      1, 5e-8)
         return optimizer
       
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure):
@@ -188,8 +188,8 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         self.num_samples += features.size(0)
         self.log('loss', loss.item())
         self.iteration += 1
-        # if self.current_epoch >= self.warmup_epochs:
-        #     self.scheduler.step()
+        if self.current_epoch >= self.warmup_epochs:
+            self.scheduler.step()
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx):
@@ -280,8 +280,8 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         pred = torch.cat(self.preds_test, 0)
         mask = torch.cat(self.masks_test, 0).round().float()
         self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
-        if self.current_epoch >= self.warmup_epochs:
-            self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
+        # if self.current_epoch >= self.warmup_epochs:
+        #     self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
         self.validation_step_outputs.clear()
 
     def on_validation_start(self):
