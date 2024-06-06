@@ -2,7 +2,8 @@ from typing import Optional
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
-from Blocks.swintransformer_original_rpe import SwinUTransformer
+# from Blocks.swintransformer_original_rpe import SwinUTransformer
+from Blocks.swinunet_rpe import SwinUTransformer
 # from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
 import numpy as np

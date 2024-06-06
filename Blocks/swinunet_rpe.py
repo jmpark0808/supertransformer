@@ -664,8 +664,8 @@ class PatchUnmerging(nn.Module):
         super().__init__()
         self.input_resolution = input_resolution
         self.dim = dim
-        self.expansion = nn.Linear(dim//4, dim//2, bias=False)
-        self.norm = norm_layer(dim//4)
+        self.expansion = nn.Linear(dim, dim*2, bias=False)
+        self.norm = norm_layer(dim)
 
     def forward(self, x):
         """
@@ -677,20 +677,21 @@ class PatchUnmerging(nn.Module):
         assert H % 2 == 0 and W % 2 == 0, f"x size ({H}*{W}) are not even."
 
         x = x.view(B, H, W, C)
+        x = self.norm(x)
+        x = self.expansion(x)
         
 
-        x0 = x[:, :, :, :C//4]  # B H W C/4
-        x1 = x[:, :, :, C//4:C//2]  # B H W C/4
-        x2 = x[:, :, :, C//2:(C//2+C//4)]  # B H W C/4
-        x3 = x[:, :, :, (C//2+C//4):]  # B H W C/4
+        x0 = x[:, :, :, :C//2]  # B H W C/2
+        x1 = x[:, :, :, C//2:C]  # B H W C/2
+        x2 = x[:, :, :, C:(C+C//2)]  # B H W C/2
+        x3 = x[:, :, :, (C+C//2):]  # B H W C/2
         
         x = torch.stack([x0, x1, x2, x3], 1)
-        x = x.reshape(B, 2, 2, H, W, -1).permute(0, 3,1, 4, 2, 5).reshape(B, H*2, W*2, -1) # B H*2 W*2 C/4
+        x = x.reshape(B, 2, 2, H, W, -1).permute(0, 3,1, 4, 2, 5).reshape(B, H*2, W*2, -1) # B H*2 W*2 C/2
 
-        x = x.view(B, -1, C//4)  # B H*2 * W*2 C/4
+        x = x.view(B, -1, C//2)  # B H*2 * W*2 C/4
 
-        x = self.norm(x)
-        x = self.expansion(x) # B, H*2, W*2, C//2
+
         return x
 
     def extra_repr(self) -> str:
@@ -854,18 +855,25 @@ class BasicLayerUpsample(nn.Module):
         fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
     """
 
-    def __init__(self, q_dim, kv_dim, q_resolution, kv_resolution, depth, num_heads, window_size,
+    def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., norm_layer=nn.LayerNorm, use_checkpoint=False,
+                 drop_path=0., norm_layer=nn.LayerNorm, upsample=None,use_checkpoint=False,
                  fused_window_process=False):
 
         super().__init__()
+        self.dim = dim
+        self.input_resolution = input_resolution
         self.depth = depth
         self.use_checkpoint = use_checkpoint
 
+        if upsample is not None:
+            self.upsample = upsample((input_resolution[0]//2, input_resolution[1]//2), dim=dim*2, norm_layer=norm_layer)
+
+        else:
+            self.upsample = None
         # build blocks
         self.blocks = nn.ModuleList([
-            SwinTransformerDecoderBlock(q_dim = q_dim, kv_dim=kv_dim, q_resolution=q_resolution, kv_resolution=kv_resolution,
+            SwinTransformerBlock(dim=dim, input_resolution=input_resolution,
                                  num_heads=num_heads, window_size=window_size,
                                  shift_size=0 if (i % 2 == 0) else window_size // 2,
                                  mlp_ratio=mlp_ratio,
@@ -876,13 +884,17 @@ class BasicLayerUpsample(nn.Module):
                                  fused_window_process=fused_window_process)
             for i in range(depth)])
 
-
-
-    def forward(self, q, kv, centroids):       
-        for blk in self.blocks:
-            q = blk(q, kv, centroids)
         
-        return q
+
+
+    def forward(self, x, skip, centroids):  
+        if self.upsample is not None:
+            x = self.upsample(x)     
+        x = x + skip
+        for blk in self.blocks:
+            x = blk(x, centroids)
+        
+        return x
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, depth={self.depth}"
@@ -1030,17 +1042,15 @@ class SwinUTransformer(nn.Module):
             dim_list.append(int(embed_dim * 2 ** i_layer))
             resolution_list.append((patches_resolution[0] // (2 ** i_layer),
                                                  patches_resolution[1] // (2 ** i_layer)))
-        dim_list.append(int(embed_dim * 2 ** i_layer))
-        resolution_list.append((patches_resolution[0] // (2 ** i_layer),
-                                                 patches_resolution[1] // (2 ** i_layer)))
+        
         dim_list.reverse()
         resolution_list.reverse()
 
 
         self.upsample_layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
-            layer = BasicLayerUpsample(q_dim=dim_list[i_layer+1], kv_dim=dim_list[i_layer],
-                                        q_resolution=resolution_list[i_layer+1], kv_resolution=resolution_list[i_layer],
+            layer = BasicLayerUpsample(dim=dim_list[i_layer],
+                               input_resolution=resolution_list[i_layer],
                                        depth=depths[-(i_layer+1)],
                                num_heads=num_heads[-(i_layer+1)],
                                window_size=window_size,
@@ -1049,6 +1059,7 @@ class SwinUTransformer(nn.Module):
                                drop=drop_rate, attn_drop=attn_drop_rate,
                                drop_path=0,
                                norm_layer=norm_layer,
+                               upsample=PatchUnmerging if i_layer != 0 else None,
                                use_checkpoint=use_checkpoint,
                                fused_window_process=fused_window_process)
             self.upsample_layers.append(layer)
@@ -1087,14 +1098,14 @@ class SwinUTransformer(nn.Module):
         all_layers = []
         for idx, layer in enumerate(self.layers):
             all_layers.append(x)
-            x, centroids = layer(x, centroids)
             all_centroids.append(centroids)
-
+            x, centroids = layer(x, centroids)
+            
 
         all_centroids.reverse()
         all_layers.reverse()
         for idx, layer in enumerate(self.upsample_layers):
-            x = layer(all_layers[idx], x, all_centroids[idx])
+            x = layer(x, all_layers[idx], all_centroids[idx])
             
 
        
