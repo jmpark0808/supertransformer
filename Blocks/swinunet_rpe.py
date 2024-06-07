@@ -1020,6 +1020,23 @@ class SwinUTransformer(nn.Module):
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
 
         # build layers
+        self.initial_layer = BasicLayer(dim=int(embed_dim * 2 ** 0),
+                               input_resolution=(patches_resolution[0] // (2 ** 0),
+                                                 patches_resolution[1] // (2 ** 0)),
+                               depth=depths[0],
+                               num_heads=num_heads[0],
+                               window_size=window_size,
+                               mlp_ratio=self.mlp_ratio,
+                               qkv_bias=qkv_bias, qk_scale=qk_scale,
+                               drop=drop_rate, attn_drop=attn_drop_rate,
+                               drop_path=0,
+                               norm_layer=norm_layer,
+                               downsample= None,
+                               use_checkpoint=use_checkpoint,
+                               fused_window_process=fused_window_process)
+
+
+
         self.layers = nn.ModuleList()
         dim_list = []
         resolution_list = []
@@ -1093,6 +1110,7 @@ class SwinUTransformer(nn.Module):
         if self.ape:
             x = x + self.absolute_pos_embed
         x = self.pos_drop(x)
+        x, _ = self.initial_layer(x, centroids)
 
         all_centroids = []
         all_layers = []
