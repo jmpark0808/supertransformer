@@ -42,6 +42,7 @@ from Wrappers.SP_SWIN import SP_SWIN_Wrapper
 from Wrappers.SP_SWINU import SP_SWINU_Wrapper
 from Wrappers.SP_SWIN_Kernel import SP_SWIN_Kernel_Wrapper
 from Wrappers.SP_SWIN_PyG import SP_SWIN_PyG_Wrapper
+from Wrappers.Image_SOD_SWINU import Image_SWINU_Wrapper
 # from Wrappers.SP_MAMBA import SP_MAMBA_Wrapper
 
 
@@ -104,7 +105,8 @@ MODEL_DIRECTORY = {
     'SP_SWINU': SP_SWINU_Wrapper,
     # 'SP_MAMBA': SP_MAMBA_Wrapper,
     'SP_SWIN_Kernel': SP_SWIN_Kernel_Wrapper,
-    'SP_SWIN_PyG': SP_SWIN_PyG_Wrapper
+    'SP_SWIN_PyG': SP_SWIN_PyG_Wrapper,
+    'IM_SWINU': Image_SWINU_Wrapper,
 }
 DATALOADER_DIRECTORY = {
     'SP': SPDataModule,
