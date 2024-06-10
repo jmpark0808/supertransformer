@@ -901,7 +901,7 @@ class SwinUTransformer(nn.Module):
         dim_list.reverse()
         resolution_list.reverse()
         
-        print(dim_list)
+        
         self.upsample_layers = SwinDecoder(input_dim=embed_dim,# 输入的通道数为96
             input_high_dim = dim_list[0], # 384
             input_size=resolution_list[0][0], # 14 × 14
@@ -1196,28 +1196,28 @@ class SwinDecoder(nn.Module):
                                     upsample=PatchExpand,
                                     use_checkpoint=use_checkpoint)
 
-        self.last_layers_up = nn.ModuleList()
-        for _ in range(low_level_idx+1): # 1
-            i+=1
-            last_layer_up = BasicLayer_up(dim=int(input_dim)*3, # 96 * 3
-                                            input_resolution=(input_size*2**i, input_size*2**i),
-                                            depth=last_layer_depth,
-                                            num_heads=num_heads,
-                                            window_size=window_size,
-                                            mlp_ratio=mlp_ratio,
-                                            qkv_bias=qkv_bias, qk_scale=qk_scale,
-                                            drop=drop_rate, attn_drop=attn_drop_rate,
-                                            drop_path=0.0,
-                                            norm_layer=norm_layer,
-                                            upsample=PatchExpand,
-                                            use_checkpoint=use_checkpoint)
-            self.last_layers_up.append(last_layer_up)
+        # self.last_layers_up = nn.ModuleList()
+        # for _ in range(low_level_idx+1): # 1
+        #     i+=1
+        #     last_layer_up = BasicLayer_up(dim=int(input_dim)*3, # 96 * 3
+        #                                     input_resolution=(input_size*2**i, input_size*2**i),
+        #                                     depth=last_layer_depth,
+        #                                     num_heads=num_heads,
+        #                                     window_size=window_size,
+        #                                     mlp_ratio=mlp_ratio,
+        #                                     qkv_bias=qkv_bias, qk_scale=qk_scale,
+        #                                     drop=drop_rate, attn_drop=attn_drop_rate,
+        #                                     drop_path=0.0,
+        #                                     norm_layer=norm_layer,
+        #                                     upsample=PatchExpand,
+        #                                     use_checkpoint=use_checkpoint)
+        #     self.last_layers_up.append(last_layer_up)
         
         i += 1
-        self.final_up = PatchExpand(input_resolution=(input_size*2**i, input_size*2**i),
-                                    dim=int(input_dim)*3,
-                                    dim_scale=2,
-                                    norm_layer=norm_layer)
+        # self.final_up = PatchExpand(input_resolution=(input_size*2**i, input_size*2**i),
+        #                             dim=int(input_dim)*3,
+        #                             dim_scale=2,
+        #                             norm_layer=norm_layer)
         
         if decoder_norm: # True
             self.norm_up = norm_layer(int(input_dim)*3)
@@ -1260,13 +1260,13 @@ class SwinDecoder(nn.Module):
 
         x = torch.cat([up_1,up_2,up_3], dim=-1) # 在通道维数上进行拼接 56×56×192
 
-        for layer in self.last_layers_up:
-            x = layer(x) # 上采样到 112 × 112 × 192
+        # for layer in self.last_layers_up:
+        #     x = layer(x) # 上采样到 112 × 112 × 192
 
         if self.norm_up is not None: #True
             x = self.norm_up(x)
             
-        x = self.final_up(x) # 放大到 225 × 225 × 192  
+        # x = self.final_up(x) # 放大到 225 × 225 × 192  
     
         B, L, C = x.shape
         H = W = int(math.sqrt(L))
