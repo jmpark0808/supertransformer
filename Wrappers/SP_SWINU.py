@@ -60,7 +60,9 @@ class SP_SWINU_Wrapper(pl.LightningModule):
             checkpoint = torch.load(self.pretrain)
             for key in list(checkpoint['state_dict'].keys()):
                 checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
-            
+                if 'patch_embed' in key:
+                    checkpoint['state_dict'].pop(key.replace('supert.', ''))
+
             self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
         
         self.save_hyperparameters()
