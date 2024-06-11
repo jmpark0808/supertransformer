@@ -1,6 +1,6 @@
 import pytorch_lightning as pl
 import torch
-from Blocks.swintransformer_original_rpe import SwinTransformer
+from Blocks.swinunet_rpe import SwinTransformer
 
 import torch.nn.functional as F
 import numpy as np
@@ -38,7 +38,7 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         self.res = int(self.num_seg**0.5)
         
         # Generator that produces the HeatMap
-        self.supert = SwinTransformer(img_size=self.res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
+        self.supert = SwinTransformer(img_size=self.res, in_chans=16, patch_size=1, window_size=self.window_size,
                                        embed_dim=self.tfm_hp[2], depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
                                          num_heads=[self.tfm_hp[0],
                                                     self.tfm_hp[0]*2,
