@@ -594,6 +594,7 @@ class SwinTransformer(nn.Module):
 
         for layer in self.layers:
             x = layer(x)
+            
 
         x = self.norm(x)  # B L C
         x = self.avgpool(x.transpose(1, 2))  # B C 1
@@ -901,7 +902,7 @@ class SwinUTransformer(nn.Module):
                                drop=drop_rate, attn_drop=attn_drop_rate,
                                drop_path=0,
                                norm_layer=norm_layer,
-                               downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
+                               downsample=PatchMerging, #if (i_layer < self.num_layers - 1) else None,
                                use_checkpoint=use_checkpoint,
                                fused_window_process=fused_window_process)
             self.layers.append(layer)
@@ -986,6 +987,7 @@ class SwinUTransformer(nn.Module):
         all_layers = []
         for idx, layer in enumerate(self.layers):
             pre_ds, x = layer(x)
+            print(x.size())
             size = int(math.sqrt(pre_ds.size(1)))
             all_layers.append(pre_ds.view(-1, size, size, pre_ds.shape[-1]))
 
