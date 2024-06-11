@@ -233,7 +233,7 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         features, label = batch
 
         # forward pass
-        
+        features = features.reshape(features.size(0), 32, 32, -1).permute(0, 3, 1, 2)
         pred = self.forward(features)
 
         loss = self.loss(pred, F.one_hot(label, num_classes=1000))
