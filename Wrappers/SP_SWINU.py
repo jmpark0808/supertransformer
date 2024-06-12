@@ -33,15 +33,16 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         self.image_size = kwargs.get('size')
         self.warmup_epochs = kwargs.get('warmup_epochs')
         self.total_train_epochs = kwargs.get('epoch')
+        self.factor = kwargs.get('swin_factor')
         input_dim = get_input_dim(kwargs)
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
         self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=1, window_size=self.window_size,
                                        depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3]
                                        , num_heads=[self.tfm_hp[0],
-                                                     self.tfm_hp[0]*2,
-                                                     self.tfm_hp[0]*4],
-                                       embed_dim=self.tfm_hp[2])
+                                                     int(self.tfm_hp[0]*self.factor),
+                                                     int(self.tfm_hp[0]*self.factor*self.factor)],
+                                       embed_dim=self.tfm_hp[2], factor=self.factor)
         # self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
         #                                , depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
         #                                  num_heads=[self.tfm_hp[0],

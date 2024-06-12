@@ -89,7 +89,7 @@ class WindowAttention(nn.Module):
         self.dim = dim
         self.window_size = window_size  # Wh, Ww
         self.num_heads = num_heads
-        head_dim = dim // num_heads
+        head_dim = dim #// num_heads
         self.scale = qk_scale or head_dim ** -0.5
 
         # define a parameter table of relative position bias
@@ -109,7 +109,7 @@ class WindowAttention(nn.Module):
         relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
         # self.register_buffer("relative_position_index", relative_position_index)
 
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.qkv = nn.Linear(dim, head_dim*num_heads * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
@@ -125,7 +125,7 @@ class WindowAttention(nn.Module):
         """
         B_, N, C = x.shape
         
-        qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
 
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
 
@@ -147,7 +147,8 @@ class WindowAttention(nn.Module):
 
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
+        x = (attn @ v).transpose(1, 2) #.reshape(B_, N, C)
+        x = torch.mean(x, dim=2)
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
@@ -205,7 +206,7 @@ class SwinTransformerBlock(nn.Module):
             self.shift_size = 0
             self.window_size = min(self.input_resolution)
         assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
-
+        
         self.norm1 = norm_layer(dim)
         self.attn = WindowAttention(
             dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
@@ -318,11 +319,12 @@ class PatchMerging(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
 
-    def __init__(self, input_resolution, dim, norm_layer=nn.LayerNorm):
+    def __init__(self, input_resolution, dim, factor, norm_layer=nn.LayerNorm):
         super().__init__()
         self.input_resolution = input_resolution
         self.dim = dim
-        self.reduction = nn.Linear(4 * dim, 2 * dim, bias=False)
+        
+        self.reduction = nn.Linear(4 * dim, int(factor * dim), bias=False)
         self.norm = norm_layer(4 * dim)
 
     def forward(self, x):
@@ -335,7 +337,7 @@ class PatchMerging(nn.Module):
         assert H % 2 == 0 and W % 2 == 0, f"x size ({H}*{W}) are not even."
 
         x = x.view(B, H, W, C)
-
+        
         x0 = x[:, 0::2, 0::2, :]  # B H/2 W/2 C
         x1 = x[:, 1::2, 0::2, :]  # B H/2 W/2 C
         x2 = x[:, 0::2, 1::2, :]  # B H/2 W/2 C
@@ -649,14 +651,14 @@ class BasicLayerDownsample(nn.Module):
     def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,
-                 fused_window_process=False):
+                 fused_window_process=False, factor=1.0):
 
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
         self.depth = depth
         self.use_checkpoint = use_checkpoint
-
+        
         # build blocks
         self.blocks = nn.ModuleList([
             SwinTransformerBlock(dim=dim, input_resolution=input_resolution,
@@ -672,7 +674,7 @@ class BasicLayerDownsample(nn.Module):
 
         # patch merging layer
         if downsample is not None:
-            self.downsample = downsample(input_resolution, dim=dim, norm_layer=norm_layer)
+            self.downsample = downsample(input_resolution, dim=dim, factor=factor, norm_layer=norm_layer)
         else:
             self.downsample = None
 
@@ -824,6 +826,11 @@ class BasicLayerUpsample(nn.Module):
             flops += self.downsample.flops()
         return flops
 
+def factor_solver(dim, factor, power):
+    for _ in range(power):
+        dim = int(dim*factor)
+    return dim
+ 
 class SwinUTransformer(nn.Module):
     r""" Swin Transformer
         A PyTorch impl of : `Swin Transformer: Hierarchical Vision Transformer using Shifted Windows`  -
@@ -856,7 +863,7 @@ class SwinUTransformer(nn.Module):
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
-                 use_checkpoint=False, fused_window_process=False, **kwargs):
+                 use_checkpoint=False, fused_window_process=False, factor=1.0, **kwargs):
         super().__init__()
 
         self.num_classes = num_classes
@@ -866,6 +873,7 @@ class SwinUTransformer(nn.Module):
         self.patch_norm = patch_norm
         self.num_features = int(embed_dim * 2 ** (self.num_layers - 1))
         self.mlp_ratio = mlp_ratio
+        
 
         # split image into non-overlapping patches
 
@@ -891,7 +899,7 @@ class SwinUTransformer(nn.Module):
         dim_list = []
         resolution_list = []
         for i_layer in range(self.num_layers):
-            layer = BasicLayerDownsample(dim=int(embed_dim * 2 ** i_layer),
+            layer = BasicLayerDownsample(dim=factor_solver(embed_dim, factor, i_layer), #,int(embed_dim * factor ** i_layer),
                                input_resolution=(patches_resolution[0] // (2 ** i_layer),
                                                  patches_resolution[1] // (2 ** i_layer)),
                                depth=depths[i_layer],
@@ -904,9 +912,10 @@ class SwinUTransformer(nn.Module):
                                norm_layer=norm_layer,
                                downsample=PatchMerging, #if (i_layer < self.num_layers - 1) else None,
                                use_checkpoint=use_checkpoint,
-                               fused_window_process=fused_window_process)
+                               fused_window_process=fused_window_process, 
+                               factor=factor)
             self.layers.append(layer)
-            dim_list.append(int(embed_dim * 2 ** i_layer))
+            dim_list.append(factor_solver(embed_dim, factor, i_layer))
             resolution_list.append((patches_resolution[0] // (2 ** i_layer),
                                                  patches_resolution[1] // (2 ** i_layer)))
         
@@ -916,6 +925,7 @@ class SwinUTransformer(nn.Module):
         
         self.upsample_layers = SwinDecoder(input_dim=embed_dim,# 输入的通道数为96
             input_high_dim = dim_list[0], # 384
+            input_middle_dim = dim_list[1],
             input_size=resolution_list[0][0], # 14 × 14
             low_level_idx=0, # 0
             high_level_idx=2, # 2
@@ -987,7 +997,6 @@ class SwinUTransformer(nn.Module):
         all_layers = []
         for idx, layer in enumerate(self.layers):
             pre_ds, x = layer(x)
-            print(x.size())
             size = int(math.sqrt(pre_ds.size(1)))
             all_layers.append(pre_ds.view(-1, size, size, pre_ds.shape[-1]))
 
@@ -1180,7 +1189,7 @@ class SwinASPP(nn.Module):
     
 class SwinDecoder(nn.Module):
     def __init__(self, low_level_idx, high_level_idx, 
-                 input_size, input_dim,input_high_dim, num_classes,
+                 input_size, input_dim,input_high_dim, input_middle_dim, num_classes,
                  depth, last_layer_depth, num_heads, window_size, mlp_ratio, qkv_bias, qk_scale,
                  drop_rate, attn_drop_rate, drop_path_rate, norm_layer, decoder_norm, use_checkpoint):
         super().__init__()
@@ -1188,7 +1197,7 @@ class SwinDecoder(nn.Module):
         self.high_level_idx = high_level_idx # 2
 
         self.proj_high = nn.Linear(input_high_dim, input_dim,bias=False) # 通道从384转换成96
-        self.proj_middle = nn.Linear(input_high_dim//2,input_dim,bias=False) # 通道数从192转换成96
+        self.proj_middle = nn.Linear(input_middle_dim,input_dim,bias=False) # 通道数从192转换成96
 
         self.layers_up = nn.ModuleList()
         for i in range(high_level_idx - low_level_idx):# 0 , 1
