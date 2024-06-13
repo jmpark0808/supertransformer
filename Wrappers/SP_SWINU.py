@@ -50,7 +50,7 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         #                                                 self.tfm_hp[0]*8], mlp_ratio=1)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
-        kwargs['parameters'] = parameter_count(self.supert)['model']
+        kwargs['parameters'] = parameter_count(self.supert)['']
         inp = torch.randn([1, input_dim+2, res, res])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
