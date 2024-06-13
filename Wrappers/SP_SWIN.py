@@ -38,7 +38,7 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         self.test_iteration = 0
         self.num_thresholds = 10
         
-        kwargs['parameters'] = parameter_count(self.supert)['model']
+        kwargs['parameters'] = parameter_count(self.supert)['']
         inp = torch.randn([1, self.num_seg, input_dim+2])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()

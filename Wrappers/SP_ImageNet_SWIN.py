@@ -36,10 +36,10 @@ class SP_ImageNet_SWIN_Wrapper(pl.LightningModule):
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
         self.supert = SP_SWIN_ImageNet(input_dim, self.tfm_hp[2], self.tfm_hp[0], self.tfm_hp[1],
-                                       self.dropout, self.dropout_edge, self.kernels, self.window_size)
+                                       self.dropout, self.dropout_edge, self.kernels, self.window_size, int(self.num_seg**0.5))
         
         
-        kwargs['parameters'] = parameter_count(self.supert)['model']
+        kwargs['parameters'] = parameter_count(self.supert)['']
         inp = torch.randn([1, self.num_seg, input_dim+2])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()

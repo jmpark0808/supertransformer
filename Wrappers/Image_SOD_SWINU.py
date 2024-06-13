@@ -39,7 +39,7 @@ class Image_SWINU_Wrapper(pl.LightningModule):
         self.supert = SwinUTransformer( depths=[2, 2, 6], num_heads=[3, 6, 12])
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
-        kwargs['parameters'] = parameter_count(self.supert)['model']
+        kwargs['parameters'] = parameter_count(self.supert)['']
         inp = torch.randn([1, 3, 224, 224])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()

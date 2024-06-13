@@ -218,9 +218,6 @@ if __name__ == "__main__":
     weight_save_dir = os.path.join(dict_args["logdir"], os.path.join('models', 'state_dict', now+'_'+dict_args["tag"]))
  
 
-    os.makedirs(weight_save_dir, exist_ok=True)
-
-
     # Callback: early stopping parameters
     early_stopping_callback = EarlyStopping(
         monitor="Validation MAE",
