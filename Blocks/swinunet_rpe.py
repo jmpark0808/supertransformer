@@ -514,7 +514,7 @@ class SwinTransformer(nn.Module):
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
-                 use_checkpoint=False, fused_window_process=False, **kwargs):
+                 use_checkpoint=False, fused_window_process=False, factor=1.0, **kwargs):
         super().__init__()
 
         self.num_classes = num_classes
@@ -548,7 +548,7 @@ class SwinTransformer(nn.Module):
         # build layers
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
-            layer = BasicLayer(dim=int(embed_dim * 2 ** i_layer),
+            layer = BasicLayerDownsample(dim=factor_solver(embed_dim, factor, i_layer),
                                input_resolution=(patches_resolution[0] // (2 ** i_layer),
                                                  patches_resolution[1] // (2 ** i_layer)),
                                depth=depths[i_layer],
@@ -561,12 +561,13 @@ class SwinTransformer(nn.Module):
                                norm_layer=norm_layer,
                                downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
                                use_checkpoint=use_checkpoint,
-                               fused_window_process=fused_window_process)
+                               fused_window_process=fused_window_process,
+                               factor=factor)
             self.layers.append(layer)
 
-        self.norm = norm_layer(self.num_features)
+        self.norm = norm_layer(factor_solver(embed_dim, factor, i_layer))
         self.avgpool = nn.AdaptiveAvgPool1d(1)
-        self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
+        self.head = nn.Linear(factor_solver(embed_dim, factor, i_layer), num_classes) if num_classes > 0 else nn.Identity()
 
         self.apply(self._init_weights)
 
@@ -595,7 +596,7 @@ class SwinTransformer(nn.Module):
         x = x + locations
 
         for layer in self.layers:
-            x = layer(x)
+            h, x = layer(x)
             
 
         x = self.norm(x)  # B L C

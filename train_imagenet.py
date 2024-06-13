@@ -99,6 +99,9 @@ if __name__ == "__main__":
     parser.add_argument('--warmup_epochs', help='Number of epochs for warmup', type=int, default=4)
     parser.add_argument('--debug', help='Whether or not to switch to debug mode, only runs on 100 samples'
                         , default=False, action="store_true")
+    parser.add_argument('--swin_factor', help='Factor for increasing hidden layer in swin layer downsampling', default=1., type=float)
+
+    
 
 
 

@@ -32,7 +32,8 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         self.window_size = kwargs.get('window_size')
         self.warmup_epochs = kwargs.get('warmup_epochs')
         self.total_train_epochs = kwargs.get('epoch')
-        
+        self.factor = kwargs.get('swin_factor')
+        print(self.factor)
         
         input_dim = get_input_dim(kwargs)
         self.res = int(self.num_seg**0.5)
@@ -43,7 +44,7 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
                                          num_heads=[self.tfm_hp[0],
                                                     self.tfm_hp[0]*2,
                                                     self.tfm_hp[0]*4,
-                                                        self.tfm_hp[0]*8], mlp_ratio=4)
+                                                        self.tfm_hp[0]*8], mlp_ratio=4, factor=self.factor)
         kwargs['parameters'] = parameter_count(self.supert)['model']
         inp = torch.randn([1, input_dim+2, self.res, self.res])
         flops = FlopCountAnalysis(self.supert, inp)

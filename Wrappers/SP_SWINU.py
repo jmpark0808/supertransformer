@@ -40,8 +40,8 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=1, window_size=self.window_size,
                                        depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3]
                                        , num_heads=[self.tfm_hp[0],
-                                                     int(self.tfm_hp[0]*self.factor),
-                                                     int(self.tfm_hp[0]*self.factor*self.factor)],
+                                                     self.tfm_hp[0],
+                                                     self.tfm_hp[0]],
                                        embed_dim=self.tfm_hp[2], factor=self.factor)
         # self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
         #                                , depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
