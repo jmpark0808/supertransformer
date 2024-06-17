@@ -92,7 +92,7 @@ class MobileNetV2(nn.Module):
                     self.features.append(block(input_channel, output_channel, 1, expand_ratio=t))
                 input_channel = output_channel
         # building last several layers
-        self.features.append(conv_1x1_bn(input_channel, self.last_channel))
+        # self.features.append(conv_1x1_bn(input_channel, self.last_channel))
         # make it nn.Sequential
         self.features = nn.Sequential(*self.features)
 
@@ -131,7 +131,7 @@ class MobileNetV2_unet(nn.Module):
 
         self.backbone = MobileNetV2(input_size=input_size)
 
-        self.dconv1 = nn.ConvTranspose2d(1280, 96, 4, padding=1, stride=2)
+        self.dconv1 = nn.ConvTranspose2d(320, 96, 4, padding=1, stride=2)
         self.invres1 = InvertedResidual(192, 96, 1, 6)
 
         self.dconv2 = nn.ConvTranspose2d(96, 32, 4, padding=1, stride=2)
@@ -173,7 +173,7 @@ class MobileNetV2_unet(nn.Module):
         x4 = x
 
 
-        for n in range(14, 19):
+        for n in range(14, 18):
             x = self.backbone.features[n](x)
         x5 = x
         
