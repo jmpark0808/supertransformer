@@ -123,7 +123,7 @@ class SP_SWIN(nn.Module):
         'window_size': window_size, #(int): Window size. Default: 8
         'mlp_ratio': 2.,#(float): Ratio of mlp hidden dim to embedding dim. Default: 4
         'qkv_bias': True,#(bool): If True, add a learnable bias to query, key, value. Default: True
-        'qk_scale': None,#(float): Override default qk scale of head_dim ** -0.5 if set. Default: None
+        'qk_scale': 1.0,#(float): Override default qk scale of head_dim ** -0.5 if set. Default: None
         'drop_rate': dropout,#(float): Dropout rate. Default: 0
         'attn_drop_rate': dropout_edge,#(float): Attention dropout rate. Default: 0
         'drop_path_rate': 0.,#(float): Stochastic depth rate. Default: 0.1
