@@ -1656,13 +1656,25 @@ class SwinTransformer(nn.Module):
                                                 input_resolution=(patches_resolution[0],
                                                                 patches_resolution[1]),
                                                 num_heads=num_heads, window_size=window_size,
-                                                shift_size=0,
+                                                shift_size=self.window_size//2,
                                                 mlp_ratio=mlp_ratio,
                                                 qkv_bias=qkv_bias, qk_scale=qk_scale,
                                                 drop=drop_rate, attn_drop=attn_drop_rate,
                                                 drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
-                                                norm_layer=norm_layer, dilated=True)
+                                                norm_layer=norm_layer, dilated=False)
             self.layers.append(layer)
+
+            # layer = SwinTransformerBlock(dim=embed_dim,
+            #                                     input_resolution=(patches_resolution[0],
+            #                                                     patches_resolution[1]),
+            #                                     num_heads=num_heads, window_size=window_size,
+            #                                     shift_size=0,
+            #                                     mlp_ratio=mlp_ratio,
+            #                                     qkv_bias=qkv_bias, qk_scale=qk_scale,
+            #                                     drop=drop_rate, attn_drop=attn_drop_rate,
+            #                                     drop_path=dpr[i_layer], #sum(depths[:i_layer]):sum(depths[:i_layer + 1])
+            #                                     norm_layer=norm_layer, dilated=True)
+            # self.layers.append(layer)
             # if kernels[i_layer] == 32:
             #     layer = ScatteredTransformerBlock(dim=embed_dim,
             #                                     head_dim=head_dim,
