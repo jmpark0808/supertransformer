@@ -47,7 +47,7 @@ class SP_MBUNET_Wrapper(pl.LightningModule):
 
         kwargs['parameters'] = parameter_count(self.supert)['']
      
-        inp = torch.randn([1, 3, res, res])
+        inp = torch.randn([1, input_dim+2, res, res])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
         self.mixup = MixupSaliency(
@@ -117,7 +117,7 @@ class SP_MBUNET_Wrapper(pl.LightningModule):
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """    
-        input = input[:, 2:5, :, :]    
+        # input = input[:, 2:5, :, :]    
         pred = self.supert(input)
         pred = pred.reshape(pred.size(0), -1)
         return pred
