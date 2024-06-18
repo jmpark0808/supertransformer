@@ -81,7 +81,7 @@ class MobileNetV2(nn.Module):
         assert input_size % 32 == 0
         input_channel = int(input_channel * width_mult)
         self.last_channel = int(last_channel * width_mult) if width_mult > 1.0 else last_channel
-        self.features = [conv_bn(3, input_channel, 1)]
+        self.features = [conv_bn(16, input_channel, 1)]
         # building inverted residual blocks
         for t, c, n, s in interverted_residual_setting:
             output_channel = int(c * width_mult)
@@ -147,7 +147,7 @@ class MobileNetV2Tube(nn.Module):
         assert input_size % 32 == 0
         input_channel = int(input_channel * width_mult)
         self.last_channel = int(last_channel * width_mult) if width_mult > 1.0 else last_channel
-        self.features = [conv_bn(3, input_channel, 1)]
+        self.features = [conv_bn(16, input_channel, 1)]
         # building inverted residual blocks
         for t, c, n, s in interverted_residual_setting:
             output_channel = int(c * width_mult)
@@ -198,7 +198,7 @@ class MobileNetV2_unet(nn.Module):
 
         self.backbone = MobileNetV2(input_size=input_size)
 
-        self.dconv1 = nn.ConvTranspose2d(320, 96, 4, padding=1, stride=2)
+        self.dconv1 = nn.ConvTranspose2d(1280, 96, 4, padding=1, stride=2)
         self.invres1 = InvertedResidual(192, 96, 1, 6)
 
         self.dconv2 = nn.ConvTranspose2d(96, 32, 4, padding=1, stride=2)
@@ -214,14 +214,28 @@ class MobileNetV2_unet(nn.Module):
 
         self.conv_score = nn.Conv2d(3, 1, 1)
 
+        self.pe = nn.Sequential(*[nn.Conv2d(22,32, 1, 1), nn.BatchNorm2d(32), nn.ReLU6(), nn.Conv2d(32, 32, 1, 1)])
+
         self._init_weights()
 
         if pre_trained is not None:
             self.backbone.load_state_dict(torch.load(pre_trained, map_location=torch.device('cpu')))
 
     def forward(self, x):
-        for n in range(0, 2):
-            x = self.backbone.features[n](x)
+        centroids = x[:, :2, :, :]
+        fft = x[:, 8:-10, :, :]
+        lbp = x[:, -10:, :, :]
+        color = x[:, 2:8, :, :]
+        x = torch.cat((color, lbp), dim=1)
+        locations = torch.cat((centroids, fft), dim=1)
+        locations = self.pe(locations)
+
+        x = self.backbone.features[0](x)
+        x = x + locations
+
+
+        # for n in range(0, 2):
+        x = self.backbone.features[1](x)
         x1 = x
       
 
@@ -240,7 +254,7 @@ class MobileNetV2_unet(nn.Module):
         x4 = x
 
 
-        for n in range(14, 18):
+        for n in range(14, 19):
             x = self.backbone.features[n](x)
         x5 = x
         
