@@ -20,6 +20,7 @@ from Wrappers.SP_ImageNet_SWIN import SP_ImageNet_SWIN_Wrapper
 from Wrappers.image_CLS_swintransformer import ImageNet_SWIN_Wrapper
 from Wrappers.SP_ImageNet_OGSWIN import SP_ImageNet_OGSWIN_Wrapper
 from Wrappers.SP_ImageNet_MBUNET import SP_ImageNet_MBNET_Wrapper
+from Wrappers.SP_ImageNet_MBVIT import SP_ImageNet_MBVIT_Wrapper
 
 
 # Import dataset modules
@@ -44,7 +45,8 @@ MODEL_DIRECTORY = {
     'SP_ImageNet_SWIN': SP_ImageNet_SWIN_Wrapper,
     'SP_ImageNet_OGSWIN': SP_ImageNet_OGSWIN_Wrapper,
     'SWIN': ImageNet_SWIN_Wrapper,
-    'SP_ImageNet_MBNET': SP_ImageNet_MBNET_Wrapper
+    'SP_ImageNet_MBNET': SP_ImageNet_MBNET_Wrapper,
+    'SP_ImageNet_MBVIT': SP_ImageNet_MBVIT_Wrapper,
 
 }
 DATALOADER_DIRECTORY = {
