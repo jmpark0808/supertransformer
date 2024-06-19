@@ -361,7 +361,6 @@ class MobileViTv3_v1_SP(nn.Module):
         x = self.layer_4(x)
         x = self.layer_5(x)
         x = self.conv_1x1_exp(x)
-        assert(0)
         # FF head
         x = torch.mean(x, dim=[-2, -1])
         x = self.out(x)
