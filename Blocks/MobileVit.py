@@ -291,3 +291,79 @@ class MobileViTv3_v1(nn.Module):
         x = self.out(x)
 
         return x
+    
+
+
+class MobileViTv3_v1_SP(nn.Module):
+    def __init__(self, image_size, mode, num_classes, patch_size=(2, 2)):  
+        """
+        Implementation of MobileViTv3 based on v1
+        """
+        super().__init__()
+        # check image size
+        ih, iw = image_size
+        self.ph, self.pw = patch_size
+        assert ih % self.ph == 0 and iw % self.pw == 0 
+        assert mode in ['xx_small', 'x_small', 'small']
+
+        # model size
+        if mode == 'xx_small':
+            mv2_exp_mult = 2
+            ffn_multiplier = 2
+            last_layer_exp_factor = 4
+            channels = [16, 16, 24, 64, 80, 128]
+            attn_dim = [64, 80, 96]
+        elif mode == 'x_small':
+            mv2_exp_mult = 4
+            ffn_multiplier = 2
+            last_layer_exp_factor = 4
+            channels = [16, 32, 48, 96, 160, 160]
+            attn_dim = [96, 120, 144]
+        elif mode == 'small':
+            mv2_exp_mult = 4
+            ffn_multiplier = 2
+            last_layer_exp_factor = 3
+            channels = [16, 32, 64, 128, 256, 320]
+            attn_dim = [144, 192, 240]
+        else:
+            raise NotImplementedError
+
+        self.conv_0 = conv_2d(3, channels[0], kernel_size=3, stride=1, padding=1)
+
+        self.layer_1 = nn.Sequential(
+            InvertedResidual(channels[0], channels[1], stride=1, expand_ratio=mv2_exp_mult)
+        )
+        self.layer_2 = nn.Sequential(
+            InvertedResidual(channels[1], channels[2], stride=1, expand_ratio=mv2_exp_mult),
+            InvertedResidual(channels[2], channels[2], stride=1, expand_ratio=mv2_exp_mult),
+            InvertedResidual(channels[2], channels[2], stride=1, expand_ratio=mv2_exp_mult)
+        )
+        self.layer_3 = nn.Sequential(
+            InvertedResidual(channels[2], channels[3], stride=2, expand_ratio=mv2_exp_mult),
+            MobileViTBlockV3_v1(channels[3], attn_dim[0], ffn_multiplier, heads=4, dim_head=8, attn_blocks=2, patch_size=patch_size)
+        )
+        self.layer_4 = nn.Sequential(
+            InvertedResidual(channels[3], channels[4], stride=1, expand_ratio=mv2_exp_mult),
+            MobileViTBlockV3_v1(channels[4], attn_dim[1], ffn_multiplier, heads=4, dim_head=8, attn_blocks=4, patch_size=patch_size)
+        )
+        self.layer_5 = nn.Sequential(
+            InvertedResidual(channels[4], channels[5], stride=1, expand_ratio=mv2_exp_mult),
+            MobileViTBlockV3_v1(channels[5], attn_dim[2], ffn_multiplier, heads=4, dim_head=8, attn_blocks=3, patch_size=patch_size)
+        )
+        self.conv_1x1_exp = conv_2d(channels[-1], channels[-1]*last_layer_exp_factor, kernel_size=1, stride=1)
+        self.out = nn.Linear(channels[-1]*last_layer_exp_factor, num_classes, bias=True)
+
+    def forward(self, x):
+        x = self.conv_0(x)
+        x = self.layer_1(x)
+        x = self.layer_2(x) 
+        x = self.layer_3(x)
+        x = self.layer_4(x)
+        x = self.layer_5(x)
+        x = self.conv_1x1_exp(x)
+        assert(0)
+        # FF head
+        x = torch.mean(x, dim=[-2, -1])
+        x = self.out(x)
+
+        return x

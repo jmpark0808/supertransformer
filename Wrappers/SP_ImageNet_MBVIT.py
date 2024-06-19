@@ -1,6 +1,6 @@
 import pytorch_lightning as pl
 import torch
-from Blocks.MobileVit import MobileViTv3_v1
+from Blocks.MobileVit import MobileViTv3_v1_SP
 
 import torch.nn.functional as F
 import numpy as np
@@ -38,7 +38,7 @@ class SP_ImageNet_MBVIT_Wrapper(pl.LightningModule):
         self.res = int(self.num_seg**0.5)
         
         # Generator that produces the HeatMap
-        self.supert = MobileViTv3_v1(image_size=(self.res, self.res), mode='x_small', num_classes=1000)
+        self.supert = MobileViTv3_v1_SP(image_size=(self.res, self.res), mode='x_small', num_classes=1000)
         kwargs['parameters'] = parameter_count(self.supert)['']
         
         inp = torch.randn([1, 3, self.res, self.res])
