@@ -444,7 +444,6 @@ class PatchEmbed(nn.Module):
 
     def __init__(self, img_size=224, patch_size=4, in_chans=3, embed_dim=96, norm_layer=None):
         super().__init__()
-        img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
         patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
         self.img_size = img_size
@@ -987,7 +986,6 @@ class SwinUTransformer(nn.Module):
         all_layers = []
         for idx, layer in enumerate(self.layers):
             pre_ds, x = layer(x)
-            print(x.size())
             size = int(math.sqrt(pre_ds.size(1)))
             all_layers.append(pre_ds.view(-1, size, size, pre_ds.shape[-1]))
 

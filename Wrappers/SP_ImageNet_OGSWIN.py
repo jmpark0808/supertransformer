@@ -35,18 +35,23 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         
         
         input_dim = get_input_dim(kwargs)
-        self.res = int(self.num_seg**0.5)
+        self.res = (int(self.num_seg**0.5), int(self.num_seg**0.5))
         
         # Generator that produces the HeatMap
+        if self.dataloader == 'SpeedLimits':
+            self.res = (192, 256)
+            self.classes = 4
+        else:
+            self.classes= 1000
         self.supert = SwinTransformer(img_size=self.res, in_chans=16, patch_size=1, window_size=self.window_size,
                                        embed_dim=self.tfm_hp[2], depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
                                          num_heads=[self.tfm_hp[0],
                                                     self.tfm_hp[0]*2,
                                                     self.tfm_hp[0]*4,
-                                                        self.tfm_hp[0]*8], mlp_ratio=4)
+                                                        self.tfm_hp[0]*8], mlp_ratio=4, num_classes=self.classes)
         kwargs['parameters'] = parameter_count(self.supert)['']
         
-        inp = torch.randn([1, input_dim+2, self.res, self.res])
+        inp = torch.randn([1, input_dim+2, self.res[0], self.res[1]])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
         # from fvcore.nn import FlopCountAnalysis, flop_count_table
@@ -159,13 +164,15 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         """
         features, target = batch
 
-        features = features.reshape(features.size(0), 32, 32, -1).permute(0, 3, 1, 2)
-        features, target = self.mixup(features, target)
+        features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
+        if self.dataloader == 'SpeedLimits':
+            target = F.one_hot(target, num_classes=self.classes)
+        else:
+            features, target = self.mixup(features, target)
         # features = features.permute(0, 2, 3, 1).reshape(features.size(0), 1024, -1)
         # forward pass
         
         pred = self.forward(features)
-
         loss = self.loss(pred, target)
         
         max_scores, max_idx_class = pred.max(dim=1)
@@ -200,11 +207,11 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
 
 
         # forward pass
-        features = features.reshape(features.size(0), 32, 32, -1).permute(0, 3, 1, 2)
+        features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
         
         pred = self.forward(features)
 
-        loss = self.loss(pred, F.one_hot(label, num_classes=1000))
+        loss = self.loss(pred, F.one_hot(label, num_classes=self.classes))
         
         max_scores, max_idx_class = pred.max(dim=1)
         n = pred.size(0)
@@ -234,10 +241,10 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         features, label = batch
 
         # forward pass
-        features = features.reshape(features.size(0), 32, 32, -1).permute(0, 3, 1, 2)
+        features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
         pred = self.forward(features)
 
-        loss = self.loss(pred, F.one_hot(label, num_classes=1000))
+        loss = self.loss(pred, F.one_hot(label, num_classes=self.classes))
         
         max_scores, max_idx_class = pred.max(dim=1)
 

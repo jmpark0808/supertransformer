@@ -31,6 +31,7 @@ from dataset.imagenet_aug import SPImageNetAugDataModule
 from dataset.imagenet_pyg_exp import SPGEImageNetDataModule
 from dataset.imagenet_images import ImageNetDataModule
 from dataset.imagenet_pyg_swin import SPGSImageNetDataModule
+from dataset.stopsigns import SPSpeedLimitsDataModule
 
 import git
 
@@ -48,7 +49,7 @@ MODEL_DIRECTORY = {
     'SWIN': ImageNet_SWIN_Wrapper,
     'SP_ImageNet_MBNET': SP_ImageNet_MBNET_Wrapper,
     'SP_ImageNet_MBVIT': SP_ImageNet_MBVIT_Wrapper,
-    'MBVIT': ImageNet_MBVIT_Wrapper
+    'MBVIT': ImageNet_MBVIT_Wrapper,
 
 }
 DATALOADER_DIRECTORY = {
@@ -57,7 +58,8 @@ DATALOADER_DIRECTORY = {
     'ImageNet_Aug': SPImageNetAugDataModule,
     'INPE': SPGEImageNetDataModule,
     'ImageNet_Images': ImageNetDataModule,
-    'ImageNet_SWIN': SPGSImageNetDataModule
+    'ImageNet_SWIN': SPGSImageNetDataModule,
+    'SpeedLimits': SPSpeedLimitsDataModule
 } 
 
 if __name__ == "__main__":

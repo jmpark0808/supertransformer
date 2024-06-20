@@ -2,7 +2,7 @@ import pytorch_lightning as pl
 import torch
 # import sys
 # sys.path.insert(0, '/home/eddie/waterloo/supertransformer')
-from Blocks.MobileVit import MobileViTv3_v1
+from Blocks.MobileVitV2 import MobileViTv3_v2
 import torch.nn.functional as F
 import numpy as np
 from dataset.mixup import Mixup
@@ -32,7 +32,7 @@ class ImageNet_MBVIT_Wrapper(pl.LightningModule):
         
         # Generator that produces the HeatMap
 
-        self.supert = MobileViTv3_v1(image_size=(224, 224), mode='x_small', num_classes=1000)
+        self.supert = MobileViTv3_v2(image_size=(256, 256), width_multiplier=0.5, num_classes=1000)
         self.mixup = Mixup(
             mixup_alpha=0.8, cutmix_alpha=1.0, cutmix_minmax=None,
             prob=1.0, switch_prob=0.5, mode='batch',
@@ -62,30 +62,8 @@ class ImageNet_MBVIT_Wrapper(pl.LightningModule):
         """
         Choose what optimizers and learning-rate schedulers to use in your optimization.
         """
-        skip_list = {'absolute_pos_embed'}
-        skip_keywords = {'relative_position_bias_table'}
-        has_decay = []
-        no_decay = []
-
-        def check_keywords_in_name(name, keywords=()):
-            isin = False
-            for keyword in keywords:
-                if keyword in name:
-                    isin = True
-            return isin
-
-        for name, param in self.supert.named_parameters():
-            if not param.requires_grad:
-                continue  # frozen weights
-            if len(param.shape) == 1 or name.endswith(".bias") or (name in skip_list) or \
-                    check_keywords_in_name(name, skip_keywords):
-                no_decay.append(param)
-                # print(f"{name} has no weight decay")
-            else:
-                has_decay.append(param)
-        parameters = [{'params': has_decay},
-                {'params': no_decay, 'weight_decay': 0.}]
-        optimizer = torch.optim.AdamW(parameters, lr=self.lr, weight_decay=0.01)
+       
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=0.05)
 
         self.trainer.fit_loop.setup_data()
         dataset= self.trainer.train_dataloader
