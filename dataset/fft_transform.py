@@ -14,11 +14,11 @@ def horizontal_flip(array, coeff, chance, size, resolution, seq_mask=None):
         mid_x = size/2.
         diff_x = xs-mid_x
         array[:, 1] = mid_x-diff_x
-        array = array.reshape(resolution, resolution, -1)
+        array = array.reshape(resolution[0], resolution[1], -1)
         array = np.fliplr(array)
-        array = array.reshape(resolution*resolution, -1)
+        array = array.reshape(resolution[0]*resolution[1], -1)
         if seq_mask is not None:
-            seq_mask = seq_mask.reshape(resolution, resolution)
+            seq_mask = seq_mask.reshape(resolution[0], resolution[1])
             seq_mask= np.fliplr(seq_mask)
             seq_mask= seq_mask.reshape(-1)
     if seq_mask is not None:
@@ -52,7 +52,7 @@ def rotate(array, coeff, degrees, chance, size):
 
         ys = array[:, 0]
         xs = array[:, 1]
-        new_xs, new_ys = rotate_points([size//2, size//2], [xs, ys], radians)
+        new_xs, new_ys = rotate_points([size[0]//2, size[1]//2], [xs, ys], radians)
         array[:, 0] = new_ys
         array[:, 1] = new_xs
 

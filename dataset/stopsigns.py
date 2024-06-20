@@ -14,6 +14,7 @@ NOTE: Swedish Traffic Signs dataset is provided from
 import argparse
 from collections import namedtuple
 from functools import partial
+from PIL import Image
 import hashlib
 import urllib.request
 import os
@@ -23,11 +24,19 @@ import sys
 import zipfile
 import torch.utils.data as data
 from cv2 import imread, imwrite
+import cv2
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
-
-
+import matplotlib.pyplot as plt
+from skimage.segmentation import slic
+from dataset.attributes import *
+from skimage.measure import regionprops_table
+from skimage.feature import local_binary_pattern
+from skimage import segmentation, color
+from dataset.fft_transform import *
+from dataset.randaugment import RandAugment
+import pytorch_lightning as pl
 
 def check_file(filepath, md5sum):
     """Check a file against an md5 hash value.
@@ -296,6 +305,7 @@ class SpeedLimits(data.Dataset):
 
     def __getitem__(self, i):
         image, category = self._data[i]
+
         data = imread(image)
         data = data.astype(np.float32) / np.float32(255.)
         label = np.eye(len(self.CLASSES), dtype=np.float32)[category]
@@ -329,6 +339,274 @@ class SpeedLimits(data.Dataset):
                 if len(idxs) >= N:
                     break
         return idxs
+    
+class SpeedLimitsDataset(data.Dataset):
+    def __init__(self, root_dir, augmentation, coeff):
+        self.root_dir = root_dir
+        self.image_list = []
+        self.target_list = []
+        self.coeff = coeff
+        self.augmentation = augmentation
+        for file in os.listdir(root_dir):
+            if '_target' in file:
+                self.image_list.append(os.path.join(root_dir, file.split('_target')[0]+'.npy'))
+                self.target_list.append(os.path.join(root_dir, file)) 
+            else:
+               continue
+             
+            
+                
+
+    def __len__(self):
+        return len(self.image_list)
+
+    def __getitem__(self, item):
+        
+        features_np = np.load(self.image_list[item])
+
+        if self.augmentation:
+            features_np = horizontal_flip(features_np, self.coeff, 0.5, 1280,(192, 256))
+            features_np = rotate(features_np, self.coeff, 15, 0.5, (960//2, 1280//2))
+
+            
+
+
+        features = torch.tensor(features_np).float()
+        if self.augmentation:
+
+            randaug = RandAugment(5)
+            color_space = features[:, 3:6].reshape(192, 256, 3).permute(2, 0, 1)
+            color_space = (color_space*255).to(torch.uint8)
+            color_space = randaug(color_space).float()
+            color_space /= 255.
+            # plt.imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
+            # plt.show()
+            color_space = color_space.reshape(3, 192*256).permute(1, 0)
+            
+            features[:, 3:6] = color_space
+
+        target = torch.squeeze(torch.tensor(np.load(self.target_list[item])))
+
+        return features, target
+
+
+class SpeedLimitsExport(data.Dataset):
+    """Provide a Keras Sequence for the SpeedLimits dataset which is basically
+    a filtered version of the STS dataset.
+
+    Arguments
+    ---------
+        directory: str, The directory that the dataset already is or is going
+                   to be downloaded in
+        train: bool, Select the training or testing sets
+        seed: int, The prng seed for the dataset
+    """
+    LIMITS = ["50_SIGN", "70_SIGN", "80_SIGN"]
+    CLASSES = ["EMPTY", *LIMITS]
+
+    def __init__(self, directory, compactness, num_seg, coeff, train=True, seed=0, export_dir=None):
+        self._data = self._filter(STS(directory, train, seed))
+        self.export_dir = export_dir
+        assert export_dir is not None, 'Export Dir must not be none'
+        os.makedirs(self.export_dir, exist_ok=True)
+        self.compactness = compactness
+        self.num_seg = num_seg
+        self.coeff = coeff
+        
+
+        def fourier_descriptors(region):
+            region = (region*255).astype(np.uint8)
+            contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            points = contour[0][:, 0, :]
+            xi, yi = resample_2d(points, RESAMPLE_POINTS)
+            contour_array = np.stack((xi, yi), axis=1)
+
+
+            contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
+            contour_complex.real = contour_array[:, 0]
+            contour_complex.imag = contour_array[:, 1]
+            fourier_result = np.fft.fft(contour_complex)
+
+            fourier_result_front = fourier_result[1:1+coeff//2]
+            fourier_result_back = fourier_result[-coeff//2:]
+            fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
+
+            amp = abs(fourier_result)
+            phase = np.arctan2(fourier_result.imag, fourier_result.real)
+
+            # return np.array(amp)
+            return np.concatenate((amp, phase))
+
+        self.fourier_descriptors = fourier_descriptors
+
+        def lbp(region, intensities):
+            (hist, _) = np.histogram(intensities[region].ravel(),
+                    bins=np.arange(0, 8+3),
+                    range=(0, 8+2))
+            hist = hist.astype("float")
+            # hist /= (hist.sum() + 1e-7)
+            return hist
+        self.lbp = lbp
+
+    def _filter(self, data):
+        filtered = []
+        for image, signs in data:
+            signs, acceptable = self._acceptable(signs)
+            if acceptable:
+                if not signs:
+                    filtered.append((image, 0))
+                else:
+                    filtered.append((image, self.CLASSES.index(signs[0].name)))
+        return filtered
+
+    def _acceptable(self, signs):
+        # Keep it as empty
+        if not signs:
+            return signs, True
+
+        # Filter just the speed limits and sort them wrt visibility
+        signs = sorted(s for s in signs if s.name in self.LIMITS)
+
+        # No speed limit but many other signs
+        if not signs:
+            return None, False
+
+        # Not visible sign so skip
+        if signs[0].visibility != "VISIBLE":
+            return None, False
+
+        return signs, True
+
+    def __len__(self):
+        return len(self._data)
+
+    def __getitem__(self, i):
+        image, target = self._data[i]
+
+        sp_file_name = image.split('/')[-1].split('.')[0]+'.npy'
+        sp_file_target = image.split('/')[-1].split('.')[0]+'_target.npy'
+      
+
+        sp_file_path = os.path.join(self.export_dir, sp_file_name)
+        sp_file_path_target = os.path.join(self.export_dir, sp_file_target)
+     
+
+        img = Image.open(image)
+        img_gray = img.convert('L')
+        img = img.convert('RGB')
+    
+        img_np = np.ascontiguousarray(img).astype(np.uint8)
+        img_gray_np = np.ascontiguousarray(img_gray).astype(np.uint8)
+        
+        segments = slic(img_np, n_segments=self.num_seg,
+            compactness=self.compactness,
+            max_num_iter=10,
+            convert2lab=True,
+            enforce_connectivity=False,
+            slic_zero=False)
+        
+        # out = color.label2rgb(segments, img_np, kind='avg', bg_label=0)
+        # out = segmentation.mark_boundaries(out, segments, (0, 0, 0))
+        # plt.imshow(out)
+        # plt.show()
+        lbp_np = local_binary_pattern(img_gray_np, 8, 1, method='uniform')
+        regions_lbp = regionprops_table(segments, intensity_image=lbp_np, extra_properties=[self.lbp])
+        regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
+                                                                                    'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
+
+        label = regions['label']
+        features = np.zeros([self.num_seg, 8+(self.coeff)*2+10])
+    
+        # if self.ignore_phase:
+        #     features = np.zeros([self.num_seg, 8+self.coeff])
+        #     for i in range(self.coeff):
+        #         features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
+        # else:
+        for i in range(self.coeff*2):
+            features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
+
+        
+        features[label-1, 0] = regions['centroid-0']
+        features[label-1, 1] = regions['centroid-1']
+        features[label-1, 2] = regions['intensity_mean-0']/255.
+        features[label-1, 3] = regions['intensity_mean-1']/255.
+        features[label-1, 4] = regions['intensity_mean-2']/255.
+        features[label-1, 5] = regions['image_stdev-0']/255.
+        features[label-1, 6] = regions['image_stdev-1']/255.
+        features[label-1, 7] = regions['image_stdev-2']/255.
+
+        for ind in range(8+2):
+            features[label-1, ind+8+(self.coeff)*2] = regions_lbp[f'lbp-{ind}']
+        
+        np.save(sp_file_path, features)
+        np.save(sp_file_path_target, np.array([target]))
+        
+        return torch.empty(0)
+
+    @property
+    def image_size(self):
+        return self[0][0].shape[:2]
+
+    @property
+    def class_frequencies(self):
+        """Compute and return the class specific frequencies."""
+        freqs = np.zeros(len(self.CLASSES), dtype=np.float32)
+        for image, category in self._data:
+            freqs[category] += 1
+        return freqs/len(self._data)
+
+    def strided(self, N):
+        """Extract N images almost in equal proportions from each category."""
+        order = np.arange(len(self._data))
+        np.random.shuffle(order)
+        idxs = []
+        cat = 0
+        while len(idxs) < N:
+            for i in order:
+                image, category = self._data[i]
+                if cat == category:
+                    idxs.append(i)
+                    cat = (cat + 1) % len(self.CLASSES)
+                if len(idxs) >= N:
+                    break
+        return idxs
+
+class SPSpeedLimitsDataModule(pl.LightningDataModule):
+
+    def __init__(self, **kwargs):
+        super().__init__()
+
+        
+        train_dir = kwargs.get('train_dir')
+        test_dir = kwargs.get('test_dir')
+        self.batch_size = kwargs.get('batch_size')
+        self.num_workers = kwargs.get('num_workers', 0)
+        self.num_seg = kwargs.get('num_seg', 600)
+        self.coeff = kwargs.get('coeff', 70)
+        self.compactness = kwargs.get('compactness', 10)
+        self.seed = kwargs.get('seed')
+        self.dilation = kwargs.get('dilation')
+        self.size = kwargs.get('size')
+    
+
+        train_dataset = SpeedLimitsDataset(train_dir, True, self.coeff)
+        test_dataset = SpeedLimitsDataset(test_dir, False, self.coeff)
+
+        self.train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,
+                                                               num_workers =self.num_workers, drop_last=True)
+        
+        self.test_source_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False,
+                                                              num_workers=self.num_workers, drop_last=False)
+
+        
+    def train_dataloader(self):
+        return self.train_source_loader
+
+    def val_dataloader(self):
+        return self.test_source_loader
+
+    def test_dataloader(self):
+        return self.test_source_loader
 
 
 
@@ -346,12 +624,20 @@ def main(argv):
     args = parser.parse_args(argv)
 
     # Load the data
-    training_set = SpeedLimits(args.dataset, train=True)
-    test_set = SpeedLimits(args.dataset, train=False)
-    training_batched = DataLoader(training_set, 5)
-    test_batched = DataLoader(training_set, 5)
-    for data, label in training_batched:
-        print(data.size(), label.size())
+    training_set = SpeedLimitsExport(args.dataset, 10, 49152, 10, train=True, export_dir='/mnt/dragon/Datasets/stopsigns/TR')
+    test_set = SpeedLimitsExport(args.dataset, 10, 49152, 10, train=False, export_dir='/mnt/dragon/Datasets/stopsigns/TE')
+    # training_set = SpeedLimits(args.dataset, train=True)
+    # test_set = SpeedLimits(args.dataset, train=False)
+    training_batched = DataLoader(training_set, 1, num_workers=10)
+    test_batched = DataLoader(test_set, 1, num_workers=10)
+    for data in training_batched:
+        # print(torch.min(data), torch.max(data))
+        # plt.imshow(data.detach().numpy()[0])
+        # plt.show()
+        pass
+
+    for data in test_batched:
+        pass
 
 
 

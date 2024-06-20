@@ -1,7 +1,7 @@
 import pytorch_lightning as pl
 import torch
-from Blocks.MobileVitV1 import MobileViTv3_v1_SP, MobileViTv3_v1
-from Blocks.observer import ObserverTransformer
+from Blocks.swinunet_rpe import SwinUTransformer
+
 import torch.nn.functional as F
 import numpy as np
 from dataset.constants import *
@@ -12,7 +12,7 @@ from util.optimizers import SoftTargetCrossEntropy
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingWarmRestarts
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 
-class SP_ImageNet_MBVIT_Wrapper(pl.LightningModule):
+class SP_Stopsigns_SWINU_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -34,21 +34,23 @@ class SP_ImageNet_MBVIT_Wrapper(pl.LightningModule):
         self.total_train_epochs = kwargs.get('epoch')
         
         
-        # input_dim = get_input_dim(kwargs)
-        self.res = (int(self.num_seg**0.5), int(self.num_seg**0.5))
+        input_dim = get_input_dim(kwargs)
+        
         
         # Generator that produces the HeatMap
-        if self.dataloader == 'SpeedLimits':
-            self.res = (192, 256)
-            # self.supert = MobileViTv3_v1(image_size=self.res, mode='x_small', num_classes=4)
-            self.supert = ObserverTransformer(16, 5, 22, 128, 3, 4, 4)
-            self.classes = 4
-        else:
-            self.supert = MobileViTv3_v1_SP(image_size=self.res, mode='x_small', num_classes=1000)
-            self.classes= 1000
+        
+        self.res = (192, 256)
+        self.classes = 4
+        
+        self.supert = SwinUTransformer(in_chans=16, img_size=self.res, patch_size=1, window_size=8,
+                                       depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3]
+                                       , num_heads=[self.tfm_hp[0],
+                                                     self.tfm_hp[0]*2,
+                                                     self.tfm_hp[0]*4],
+                                       embed_dim=self.tfm_hp[2])
         kwargs['parameters'] = parameter_count(self.supert)['']
         
-        inp = torch.randn([1, self.res[0]*self.res[1], 16+22])
+        inp = torch.randn([1, input_dim+2, self.res[0], self.res[1]])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
         # from fvcore.nn import FlopCountAnalysis, flop_count_table
@@ -59,7 +61,7 @@ class SP_ImageNet_MBVIT_Wrapper(pl.LightningModule):
         self.mixup = Mixup(
             mixup_alpha=0.8, cutmix_alpha=1.0, cutmix_minmax=None,
             prob=1.0, switch_prob=0.5, mode='batch',
-            label_smoothing=0.1, num_classes=self.classes)
+            label_smoothing=0.1, num_classes=1000)
         if self.load:
             ckpt = torch.load(self.load)
             for key in list(ckpt['state_dict'].keys()):
@@ -117,7 +119,7 @@ class SP_ImageNet_MBVIT_Wrapper(pl.LightningModule):
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-        # input = input[:, 2:5, :, :]    
+
         pred = self.supert(input)
 
         return pred
@@ -139,17 +141,15 @@ class SP_ImageNet_MBVIT_Wrapper(pl.LightningModule):
         """
         features, target = batch
 
+        features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
         if self.dataloader == 'SpeedLimits':
-            # features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
             target = F.one_hot(target, num_classes=self.classes)
         else:
-            features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
             features, target = self.mixup(features, target)
         # features = features.permute(0, 2, 3, 1).reshape(features.size(0), 1024, -1)
         # forward pass
         
         pred = self.forward(features)
-
         loss = self.loss(pred, target)
         
         max_scores, max_idx_class = pred.max(dim=1)
@@ -184,7 +184,7 @@ class SP_ImageNet_MBVIT_Wrapper(pl.LightningModule):
 
 
         # forward pass
-        # features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
+        features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
         
         pred = self.forward(features)
 
@@ -192,7 +192,6 @@ class SP_ImageNet_MBVIT_Wrapper(pl.LightningModule):
         
         max_scores, max_idx_class = pred.max(dim=1)
         n = pred.size(0)
-        
         acc = (max_idx_class == label).sum().item() 
 
        
@@ -219,7 +218,7 @@ class SP_ImageNet_MBVIT_Wrapper(pl.LightningModule):
         features, label = batch
 
         # forward pass
-        # features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
+        features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
         pred = self.forward(features)
 
         loss = self.loss(pred, F.one_hot(label, num_classes=self.classes))
