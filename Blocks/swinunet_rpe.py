@@ -988,8 +988,7 @@ class SwinUTransformer(nn.Module):
             pre_ds, x = layer(x)
             size = int(math.sqrt(pre_ds.size(1)))
             all_layers.append(pre_ds.view(-1, size, size, pre_ds.shape[-1]))
-
-        
+            
         x = self.aspp(all_layers[-1])
         x = self.upsample_layers(all_layers[0], all_layers[1], all_layers[2], x)
 
