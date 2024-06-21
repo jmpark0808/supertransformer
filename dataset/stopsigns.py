@@ -307,10 +307,15 @@ class SpeedLimits(data.Dataset):
         image, category = self._data[i]
 
         data = imread(image)
-        data = data.astype(np.float32) / np.float32(255.)
-        label = np.eye(len(self.CLASSES), dtype=np.float32)[category]
+        data_l = cv2.resize(data, (320, 240))
+        
+        data_l = data_l.astype(np.float32)/np.float32(255.)
+        data_h = data.astype(np.float32) / np.float32(255.)
+        # label = np.eye(len(self.CLASSES), dtype=np.float32)[category]
 
-        return torch.tensor(data), torch.tensor(label)
+
+
+        return torch.tensor(data_l).permute(2, 0, 1), torch.tensor(data_h).permute(2, 0, 1), torch.tensor(category)
 
     @property
     def image_size(self):
@@ -591,6 +596,44 @@ class SPSpeedLimitsDataModule(pl.LightningDataModule):
 
         train_dataset = SpeedLimitsDataset(train_dir, True, self.coeff)
         test_dataset = SpeedLimitsDataset(test_dir, False, self.coeff)
+
+        self.train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,
+                                                               num_workers =self.num_workers, drop_last=True)
+        
+        self.test_source_loader = torch.utils.data.DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False,
+                                                              num_workers=self.num_workers, drop_last=False)
+
+        
+    def train_dataloader(self):
+        return self.train_source_loader
+
+    def val_dataloader(self):
+        return self.test_source_loader
+
+    def test_dataloader(self):
+        return self.test_source_loader
+
+
+class SpeedLimitsDataModule(pl.LightningDataModule):
+
+    def __init__(self, **kwargs):
+        super().__init__()
+
+        
+        train_dir = kwargs.get('train_dir')
+        test_dir = kwargs.get('test_dir')
+        self.batch_size = kwargs.get('batch_size')
+        self.num_workers = kwargs.get('num_workers', 0)
+        self.num_seg = kwargs.get('num_seg', 600)
+        self.coeff = kwargs.get('coeff', 70)
+        self.compactness = kwargs.get('compactness', 10)
+        self.seed = kwargs.get('seed')
+        self.dilation = kwargs.get('dilation')
+        self.size = kwargs.get('size')
+    
+
+        train_dataset = SpeedLimits(train_dir, True)
+        test_dataset = SpeedLimits(test_dir, False)
 
         self.train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,
                                                                num_workers =self.num_workers, drop_last=True)

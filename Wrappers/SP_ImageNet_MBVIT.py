@@ -1,7 +1,7 @@
 import pytorch_lightning as pl
 import torch
 from Blocks.MobileVitV1 import MobileViTv3_v1_SP, MobileViTv3_v1
-from Blocks.observer import ObserverTransformer
+
 import torch.nn.functional as F
 import numpy as np
 from dataset.constants import *

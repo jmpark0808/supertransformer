@@ -1,7 +1,7 @@
 import pytorch_lightning as pl
 import torch
-from Blocks.swinunet_rpe import SwinUTransformer
 
+from Blocks.dps import DPS
 import torch.nn.functional as F
 import numpy as np
 from dataset.constants import *
@@ -12,7 +12,7 @@ from util.optimizers import SoftTargetCrossEntropy
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingWarmRestarts
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 
-class SP_Stopsigns_SWINU_Wrapper(pl.LightningModule):
+class Image_Stopsigns_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -34,34 +34,25 @@ class SP_Stopsigns_SWINU_Wrapper(pl.LightningModule):
         self.total_train_epochs = kwargs.get('epoch')
         
         
-        input_dim = get_input_dim(kwargs)
-        
-        
+    
         # Generator that produces the HeatMap
         
-        self.res = (192, 256)
+        self.res = (240, 320)
+        self.supert = DPS(4, 3, (960, 1280), (14, 19), 10, 500, 0.05,  16, 
+                          6, [10]*6, 8, 128, 128, 512, 128, 0, 0, 'cuda')
         self.classes = 4
         
-        self.supert = SwinUTransformer(in_chans=16, img_size=self.res, patch_size=1, window_size=8,
-                                       depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3]
-                                       , num_heads=[self.tfm_hp[0],
-                                                     self.tfm_hp[0]*2,
-                                                     self.tfm_hp[0]*4],
-                                       embed_dim=self.tfm_hp[2])
         kwargs['parameters'] = parameter_count(self.supert)['']
         
-        inp = torch.randn([1, input_dim+2, self.res[0], self.res[1]])
-        flops = FlopCountAnalysis(self.supert, inp)
+        inp = [torch.randn([1, 3, 960, 1280]), torch.randn([1, 3, self.res[0], self.res[1]])]
+        flops = FlopCountAnalysis(self.supert, (inp[0], inp[1]))
         kwargs['flops'] = flops.total()
         # from fvcore.nn import FlopCountAnalysis, flop_count_table
         # inp = torch.randn([1, input_dim+2, 32, 32])
         # flops = FlopCountAnalysis(self.supert, inp)
         # print(flop_count_table(flops))
         # assert(0)
-        self.mixup = Mixup(
-            mixup_alpha=0.8, cutmix_alpha=1.0, cutmix_minmax=None,
-            prob=1.0, switch_prob=0.5, mode='batch',
-            label_smoothing=0.1, num_classes=1000)
+        
         if self.load:
             ckpt = torch.load(self.load)
             for key in list(ckpt['state_dict'].keys()):
@@ -112,15 +103,15 @@ class SP_Stopsigns_SWINU_Wrapper(pl.LightningModule):
                 pg["lr"] = lr_scale * self.lr
       
 
-    def forward(self, input):
+    def forward(self, x_low, x_high):
         """
         Forward pass through model
         :param x: Input features
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-
-        pred = self.supert(input)
+        # input = input[:, 2:5, :, :]    
+        pred = self.supert(x_high, x_low)
 
         return pred
 
@@ -139,17 +130,17 @@ class SP_Stopsigns_SWINU_Wrapper(pl.LightningModule):
         logging resources:
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
-        features, target = batch
+        features_l, features_h, target = batch
 
-        features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
-        if self.dataloader == 'SpeedLimits':
-            target = F.one_hot(target, num_classes=self.classes)
-        else:
-            features, target = self.mixup(features, target)
+        
+        target = F.one_hot(target, num_classes=self.classes)
+        
         # features = features.permute(0, 2, 3, 1).reshape(features.size(0), 1024, -1)
         # forward pass
         
-        pred = self.forward(features)
+        pred = self.forward(features_l, features_h)
+        
+
         loss = self.loss(pred, target)
         
         max_scores, max_idx_class = pred.max(dim=1)
@@ -180,18 +171,18 @@ class SP_Stopsigns_SWINU_Wrapper(pl.LightningModule):
         Compute the metrics for validation batch
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
-        features, label = batch
+        features_l, features_h, label = batch
 
 
         # forward pass
-        features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
+        # features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
         
-        pred = self.forward(features)
-
+        pred = self.forward(features_l, features_h)
         loss = self.loss(pred, F.one_hot(label, num_classes=self.classes))
         
         max_scores, max_idx_class = pred.max(dim=1)
         n = pred.size(0)
+        
         acc = (max_idx_class == label).sum().item() 
 
        
@@ -215,11 +206,11 @@ class SP_Stopsigns_SWINU_Wrapper(pl.LightningModule):
         Compute the metrics for validation batch
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
-        features, label = batch
+        features_l,features_h, label = batch
 
         # forward pass
-        features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
-        pred = self.forward(features)
+        # features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
+        pred = self.forward(features_l, features_h)
 
         loss = self.loss(pred, F.one_hot(label, num_classes=self.classes))
         

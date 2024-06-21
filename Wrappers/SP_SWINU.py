@@ -36,7 +36,7 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         input_dim = get_input_dim(kwargs)
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
-        self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=1, window_size=self.window_size,
+        self.supert = SwinUTransformer(in_chans=16, img_size=(res, res), patch_size=1, window_size=self.window_size,
                                        depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3]
                                        , num_heads=[self.tfm_hp[0],
                                                      self.tfm_hp[0]*2,
