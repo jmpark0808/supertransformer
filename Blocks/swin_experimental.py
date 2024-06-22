@@ -11,7 +11,7 @@ import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from torch.nn import init
 import math
-from einops import rearrange
+from einops import rearrange, repeat
 
 WindowProcess = None
 WindowProcessReverse = None
@@ -671,7 +671,7 @@ class BasicLayerDownsample(nn.Module):
 
         # patch merging layer
         if downsample is not None:
-            self.downsample = downsample(input_resolution, dim=dim, norm_layer=norm_layer)
+            self.downsample = downsample(input_resolution, dim=dim, num_heads=num_heads)#, norm_layer=norm_layer)
         else:
             self.downsample = None
 
@@ -890,10 +890,10 @@ class SwinUTransformer(nn.Module):
         dim_list = []
         resolution_list = []
         for i_layer in range(self.num_layers):
-            hd = int(embed_dim * 2 ** (i_layer-1)) if  i_layer != 0 else embed_dim
+            # hd = int(embed_dim * 2 ** (i_layer-1)) if  i_layer != 0 else embed_dim
             res = (patches_resolution[0] // (2 ** (i_layer-1)),
                                                  patches_resolution[1] // (2 ** (i_layer-1))) if i_layer != 0 else (patches_resolution[0], patches_resolution[1])
-            
+            hd = embed_dim
 
             layer = BasicLayerDownsample(dim=hd,
                                input_resolution=res,
@@ -905,7 +905,7 @@ class SwinUTransformer(nn.Module):
                                drop=drop_rate, attn_drop=attn_drop_rate,
                                drop_path=0,
                                norm_layer=norm_layer,
-                               downsample=PatchMerging if i_layer != 0 else None,
+                               downsample=PatchAttention if i_layer != 0 else None,
                                use_checkpoint=use_checkpoint,
                                fused_window_process=fused_window_process)
             self.layers.append(layer)
@@ -1188,7 +1188,7 @@ class SwinDecoder(nn.Module):
         self.high_level_idx = high_level_idx # 2
 
         self.proj_high = nn.Linear(input_high_dim, input_dim,bias=False) # 通道从384转换成96
-        self.proj_middle = nn.Linear(input_high_dim//2,input_dim,bias=False) # 通道数从192转换成96
+        self.proj_middle = nn.Linear(input_high_dim,input_dim,bias=False) # 通道数从192转换成96
 
         self.layers_up = nn.ModuleList()
         for i in range(high_level_idx - low_level_idx):# 0 , 1
