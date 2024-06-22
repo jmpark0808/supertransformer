@@ -890,9 +890,13 @@ class SwinUTransformer(nn.Module):
         dim_list = []
         resolution_list = []
         for i_layer in range(self.num_layers):
-            layer = BasicLayerDownsample(dim=int(embed_dim * 2 ** i_layer),
-                               input_resolution=(patches_resolution[0] // (2 ** i_layer),
-                                                 patches_resolution[1] // (2 ** i_layer)),
+            hd = int(embed_dim * 2 ** (i_layer-1)) if  i_layer != 0 else embed_dim
+            res = (patches_resolution[0] // (2 ** (i_layer-1)),
+                                                 patches_resolution[1] // (2 ** (i_layer-1))) if i_layer != 0 else (patches_resolution[0], patches_resolution[1])
+            
+
+            layer = BasicLayerDownsample(dim=hd,
+                               input_resolution=res,
                                depth=depths[i_layer],
                                num_heads=num_heads[i_layer],
                                window_size=window_size,
@@ -901,13 +905,12 @@ class SwinUTransformer(nn.Module):
                                drop=drop_rate, attn_drop=attn_drop_rate,
                                drop_path=0,
                                norm_layer=norm_layer,
-                               downsample=PatchMerging, #if (i_layer < self.num_layers - 1) else None,
+                               downsample=PatchMerging if i_layer != 0 else None,
                                use_checkpoint=use_checkpoint,
                                fused_window_process=fused_window_process)
             self.layers.append(layer)
-            dim_list.append(int(embed_dim * 2 ** i_layer))
-            resolution_list.append((patches_resolution[0] // (2 ** i_layer),
-                                                 patches_resolution[1] // (2 ** i_layer)))
+            dim_list.append(hd)
+            resolution_list.append(res)
         
         dim_list.reverse()
         resolution_list.reverse()
@@ -917,7 +920,7 @@ class SwinUTransformer(nn.Module):
             input_high_dim = dim_list[0], # 384
             input_size=resolution_list[0][0], # 14 × 14
             low_level_idx=0, # 0
-            high_level_idx=2, # 2
+            high_level_idx=1, # 2
             num_classes=1,
             depth=2, # 2
             last_layer_depth=6, # 6
@@ -1203,18 +1206,18 @@ class SwinDecoder(nn.Module):
                                     use_checkpoint=use_checkpoint)
             
             self.layers_up.append(layer_up)
-        self.upsample = BasicLayer_up(dim=int(input_dim),# 输入的通道是96
-                                    input_resolution=(input_size*2, input_size*2),
-                                    depth=depth,
-                                    num_heads=num_heads,
-                                    window_size=window_size,
-                                    mlp_ratio=mlp_ratio,
-                                    qkv_bias=qkv_bias, qk_scale=qk_scale,
-                                    drop=drop_rate, attn_drop=attn_drop_rate,
-                                    drop_path=drop_path_rate,
-                                    norm_layer=norm_layer,
-                                    upsample=PatchExpand,
-                                    use_checkpoint=use_checkpoint)
+        # self.upsample = BasicLayer_up(dim=int(input_dim),# 输入的通道是96
+        #                             input_resolution=(input_size*2, input_size*2),
+        #                             depth=depth,
+        #                             num_heads=num_heads,
+        #                             window_size=window_size,
+        #                             mlp_ratio=mlp_ratio,
+        #                             qkv_bias=qkv_bias, qk_scale=qk_scale,
+        #                             drop=drop_rate, attn_drop=attn_drop_rate,
+        #                             drop_path=drop_path_rate,
+        #                             norm_layer=norm_layer,
+        #                             upsample=PatchExpand,
+        #                             use_checkpoint=use_checkpoint)
 
         # self.last_layers_up = nn.ModuleList()
         # for _ in range(low_level_idx+1): # 1
@@ -1274,7 +1277,9 @@ class SwinDecoder(nn.Module):
                 up = target # 28x28x96
                 target = target + middle # 28x28x96
                 index = 1
-        up_1 = self.upsample(up) # 56x56x96
+                
+        # up_1 = self.upsample(up) # 56x56x96
+        up_1 = up
         up_2 = target # 56x56x96
         up_3 = target + low_level 
 
