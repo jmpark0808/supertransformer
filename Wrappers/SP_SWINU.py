@@ -4,8 +4,8 @@ from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 # from Blocks.swintransformer_original_rpe import SwinUTransformer
 # from Blocks.swintransformer_original import SwinUTransformer
-# from Blocks.swinunet_rpe import SwinUTransformer
-from Blocks.swin_experimental import SwinUTransformer
+from Blocks.swinunet_rpe import SwinUTransformer
+# from Blocks.swin_experimental import SwinUTransformer
 # from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
 import numpy as np
@@ -37,11 +37,11 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         input_dim = get_input_dim(kwargs)
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
-        self.supert = SwinUTransformer(in_chans=16, img_size=(res, res), patch_size=1, window_size=self.window_size,
+        self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=1, window_size=self.window_size,
                                        depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3]
                                        , num_heads=[self.tfm_hp[0],
-                                                     self.tfm_hp[0],
-                                                     self.tfm_hp[0]],
+                                                     self.tfm_hp[0]*2,
+                                                     self.tfm_hp[0]*4],
                                        embed_dim=self.tfm_hp[2])
         # self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
         #                                , depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
@@ -52,6 +52,8 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
         kwargs['parameters'] = parameter_count(self.supert)['']
+        print(parameter_count(self.supert))
+        assert(0)
         inp = torch.randn([1, input_dim+2, res, res])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()

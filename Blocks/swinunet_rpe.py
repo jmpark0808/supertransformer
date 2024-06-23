@@ -96,17 +96,17 @@ class WindowAttention(nn.Module):
         # self.relative_position_bias_table = nn.Parameter(
         #     torch.zeros((2 * window_size[0] - 1) * (2 * window_size[1] - 1), num_heads))  # 2*Wh-1 * 2*Ww-1, nH
 
-        # get pair-wise relative position index for each token inside the window
-        coords_h = torch.arange(self.window_size[0])
-        coords_w = torch.arange(self.window_size[1])
-        coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
-        coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
-        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
-        relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
-        relative_coords[:, :, 0] += self.window_size[0] - 1  # shift to start from 0
-        relative_coords[:, :, 1] += self.window_size[1] - 1
-        relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
-        relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
+        # # get pair-wise relative position index for each token inside the window
+        # coords_h = torch.arange(self.window_size[0])
+        # coords_w = torch.arange(self.window_size[1])
+        # coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
+        # coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
+        # relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
+        # relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
+        # relative_coords[:, :, 0] += self.window_size[0] - 1  # shift to start from 0
+        # relative_coords[:, :, 1] += self.window_size[1] - 1
+        # relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
+        # relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
         # self.register_buffer("relative_position_index", relative_position_index)
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
@@ -444,6 +444,7 @@ class PatchEmbed(nn.Module):
 
     def __init__(self, img_size=224, patch_size=4, in_chans=3, embed_dim=96, norm_layer=None):
         super().__init__()
+        img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
         patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
         self.img_size = img_size
@@ -537,7 +538,6 @@ class SwinTransformer(nn.Module):
             trunc_normal_(self.absolute_pos_embed, std=.02)
 
         self.pos_drop = nn.Dropout(p=drop_rate)
-        self.locations = nn.ModuleList([nn.Linear(22, embed_dim), nn.ReLU(), nn.Linear(embed_dim, embed_dim)])
 
         # stochastic depth
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
@@ -584,16 +584,14 @@ class SwinTransformer(nn.Module):
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
 
-    def forward_features(self, x, locations):
+    def forward_features(self, x):
         x = self.patch_embed(x)
         if self.ape:
             x = x + self.absolute_pos_embed
         x = self.pos_drop(x)
-        x = x + locations
 
         for layer in self.layers:
             x = layer(x)
-            
 
         x = self.norm(x)  # B L C
         x = self.avgpool(x.transpose(1, 2))  # B C 1
@@ -601,16 +599,7 @@ class SwinTransformer(nn.Module):
         return x
 
     def forward(self, x):
-        centroids = x[:, :2, :, :]
-        fft = x[:, 8:-10, :, :]
-        lbp = x[:, -10:, :, :]
-        color = x[:, 2:8, :, :]
-        x = torch.cat((color, lbp), dim=1)
-        locations = torch.cat((centroids, fft), dim=1).permute(0, 2, 3, 1)
-        for loc in self.locations:
-            locations = loc(locations)
-        locations = locations.reshape(locations.size(0), -1, locations.size(3))
-        x = self.forward_features(x, locations)
+        x = self.forward_features(x)
         x = self.head(x)
         return x
 
@@ -901,7 +890,7 @@ class SwinUTransformer(nn.Module):
                                drop=drop_rate, attn_drop=attn_drop_rate,
                                drop_path=0,
                                norm_layer=norm_layer,
-                               downsample=PatchMerging, #if (i_layer < self.num_layers - 1) else None,
+                               downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
                                use_checkpoint=use_checkpoint,
                                fused_window_process=fused_window_process)
             self.layers.append(layer)
@@ -988,7 +977,8 @@ class SwinUTransformer(nn.Module):
             pre_ds, x = layer(x)
             size = int(math.sqrt(pre_ds.size(1)))
             all_layers.append(pre_ds.view(-1, size, size, pre_ds.shape[-1]))
-            
+
+        
         x = self.aspp(all_layers[-1])
         x = self.upsample_layers(all_layers[0], all_layers[1], all_layers[2], x)
 
