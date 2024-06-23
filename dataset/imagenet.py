@@ -54,8 +54,8 @@ class ImageNetDataset(data.Dataset):
         features_np = np.load(self.image_list[item])
 
         if self.augmentation:
-            features_np = horizontal_flip(features_np, self.coeff, 0.5, self.size, int(features_np.shape[0]**0.5))
-            features_np = rotate(features_np, self.coeff, 15, 0.5, self.size)
+            features_np = horizontal_flip(features_np, self.coeff, 0.5, self.size, (int(features_np.shape[0]**0.5),int(features_np.shape[0]**0.5)))
+            features_np = rotate(features_np, self.coeff, 15, 0.5, (self.size, self.size))
 
 
         features = torch.tensor(features_np).float()
