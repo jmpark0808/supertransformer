@@ -14,6 +14,12 @@ if __name__ == "__main__":
     parser.add_argument('--num_workers', help="# of dataloader cpu process", default=0, type=int)
     parser.add_argument('--debug', help='Whether or not to switch to debug mode, only runs on 100 samples'
                         , default=False, action="store_true")
+    parser.add_argument('--num_seg', help="Number of segmentation for SLIC", default=1024, type=int)
+    parser.add_argument('--size', help="Resolution for raw image before SLIC", default=320, type=int)
+    parser.add_argument('--coeff', help="Number of coefficients used in FFT", default=10, type=int)
+    parser.add_argument('--compactness', help="Compactness parameter in SLIC", default=10, type=int)
+
+    
 
   
 
@@ -26,37 +32,29 @@ if __name__ == "__main__":
     generator = torch.Generator().manual_seed(seed)
     train_dir = dict_args['train_dir']
     test_dir = dict_args['test_dir']
-    num_seg = 1024
-    coeff = 10
-    compactness = 10
+    num_seg = dict_args['num_seg']
+    coeff = dict_args['coeff']
+    compactness = dict_args['compactness']
     batch_size = dict_args['batch_size']
     num_workers = dict_args['num_workers']
     train_export_dir = dict_args['train_export_dir']
     test_export_dir = dict_args['test_export_dir']
+    size = dict_args['size']
 
     val_test_transform = transforms.Compose(
-                            [transforms.Resize([320, 320]),
+                            [transforms.Resize([size, size]),
                             transforms.ToTensor()
                             ])
 
     train_dataset = ImageNetDatasetExport(train_dir, num_seg, coeff, compactness, val_test_transform, train_export_dir, False)
-    train_size = int(0.8*len(train_dataset))
-    val_size = len(train_dataset) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(train_dataset, [train_size, val_size], generator=generator)
-    val_dataset.dataset.transform = val_test_transform
-    val_dataset.mode = 'val'
 
     test_dataset = ImageNetDatasetExport(test_dir, num_seg, coeff, compactness, val_test_transform, test_export_dir, False)
 
     if dict_args['debug']:
         tr_random_sampler = torch.utils.data.RandomSampler(train_dataset, num_samples=100)
-        val_random_sampler = torch.utils.data.RandomSampler(val_dataset, num_samples=100)
         test_random_sampler = torch.utils.data.RandomSampler(test_dataset, num_samples=100)
         train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, sampler=tr_random_sampler,
                                                                 num_workers =num_workers, drop_last=False)
-
-        val_source_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, sampler=val_random_sampler,
-                                                                num_workers=num_workers, drop_last=False)
 
         test_source_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, sampler=test_random_sampler,
                                                                 num_workers=num_workers, drop_last=False)
@@ -65,17 +63,12 @@ if __name__ == "__main__":
         train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                                                                 num_workers =num_workers, drop_last=False)
 
-        val_source_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
-                                                                num_workers=num_workers, drop_last=False)
-
         test_source_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
                                                                 num_workers=num_workers, drop_last=False)
         
     for _ in tqdm(train_source_loader):
         pass
 
-    for _ in tqdm(val_source_loader):
-        pass
 
     for _ in tqdm(test_source_loader):
         pass
