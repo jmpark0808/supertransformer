@@ -11,7 +11,7 @@ import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from torch.nn import init
 import math
-from einops import rearrange
+from einops import rearrange, repeat
 
 WindowProcess = None
 WindowProcessReverse = None
@@ -660,7 +660,7 @@ class BasicLayerDownsample(nn.Module):
 
         # patch merging layer
         if downsample is not None:
-            self.downsample = downsample(input_resolution, dim=dim, norm_layer=norm_layer)
+            self.downsample = downsample(input_resolution, dim=dim, num_heads=num_heads)#, norm_layer=norm_layer)
         else:
             self.downsample = None
 
@@ -879,7 +879,8 @@ class SwinUTransformer(nn.Module):
         dim_list = []
         resolution_list = []
         for i_layer in range(self.num_layers):
-            layer = BasicLayerDownsample(dim=int(embed_dim * 2 ** i_layer),
+            hd = embed_dim
+            layer = BasicLayerDownsample(dim=hd,
                                input_resolution=(patches_resolution[0] // (2 ** i_layer),
                                                  patches_resolution[1] // (2 ** i_layer)),
                                depth=depths[i_layer],
@@ -890,11 +891,11 @@ class SwinUTransformer(nn.Module):
                                drop=drop_rate, attn_drop=attn_drop_rate,
                                drop_path=0,
                                norm_layer=norm_layer,
-                               downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
+                               downsample=PatchAttention if (i_layer < self.num_layers - 1) else None,
                                use_checkpoint=use_checkpoint,
                                fused_window_process=fused_window_process)
             self.layers.append(layer)
-            dim_list.append(int(embed_dim * 2 ** i_layer))
+            dim_list.append(hd)
             resolution_list.append((patches_resolution[0] // (2 ** i_layer),
                                                  patches_resolution[1] // (2 ** i_layer)))
         
@@ -1175,7 +1176,7 @@ class SwinDecoder(nn.Module):
         self.high_level_idx = high_level_idx # 2
 
         self.proj_high = nn.Linear(input_high_dim, input_dim,bias=False) # 通道从384转换成96
-        self.proj_middle = nn.Linear(input_high_dim//2,input_dim,bias=False) # 通道数从192转换成96
+        self.proj_middle = nn.Linear(input_high_dim,input_dim,bias=False) # 通道数从192转换成96
 
         self.layers_up = nn.ModuleList()
         for i in range(high_level_idx - low_level_idx):# 0 , 1
@@ -1367,4 +1368,152 @@ class BasicLayer_up(nn.Module):
                 x = blk(x)
         if self.upsample is not None:
             x = self.upsample(x)
+        return x
+    
+
+
+
+class PatchAttention(nn.Module):
+    r""" Patch Merging Layer.
+
+    Args:
+        input_resolution (tuple[int]): Resolution of input feature.
+        dim (int): Number of input channels.
+        norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
+    """
+
+    def __init__(self, input_resolution, dim, num_heads):# , norm_layer=nn.LayerNorm):
+        super().__init__()
+        self.input_resolution = input_resolution
+        self.dim = dim
+        # self.reduction = nn.Linear(4 * dim, 2 * dim, bias=False)
+        # self.norm = norm_layer(4 * dim)
+        self.tokens = nn.Parameter(torch.randn(1, 1, 1, 1, dim))
+        self.cross_attention = CrossAttention(dim, num_heads)
+
+    def forward(self, x):
+        """
+        x: B, H*W, C
+        """
+        H, W = self.input_resolution
+        B, L, C = x.shape
+        assert L == H * W, "input feature has wrong size"
+        assert H % 2 == 0 and W % 2 == 0, f"x size ({H}*{W}) are not even."
+
+        x = x.view(B, H, W, C)
+        cls_tokens = repeat(self.tokens, '1 1 1 1 d -> b h w 1 d', b = B, h = H//2, w = W//2)
+        cls_tokens = cls_tokens.view(-1, 1, C)
+        x0 = x[:, 0::2, 0::2, :]  # B H/2 W/2 C
+        x1 = x[:, 1::2, 0::2, :]  # B H/2 W/2 C
+        x2 = x[:, 0::2, 1::2, :]  # B H/2 W/2 C
+        x3 = x[:, 1::2, 1::2, :]  # B H/2 W/2 C
+        x = torch.stack([x0, x1, x2, x3], 3)  # B H/2 W/2 4, C
+        x = x.view(-1, 4, C)  # B*H/2*W/2 4 C
+
+        x = self.cross_attention(cls_tokens, x) # B*H/2*W/2 1 C
+        x = x.view(B, H//2*W//2, C)
+        # x = self.norm(x)
+        # x = self.reduction(x)
+
+        return x
+
+    def extra_repr(self) -> str:
+        return f"input_resolution={self.input_resolution}, dim={self.dim}"
+
+    def flops(self):
+        H, W = self.input_resolution
+        flops = H * W * self.dim
+        flops += (H // 2) * (W // 2) * 4 * self.dim * 2 * self.dim
+        return flops
+    
+
+
+
+    
+class CrossAttention(nn.Module):
+    r""" Window based multi-head self attention (W-MSA) module with relative position bias.
+    It supports both of shifted and non-shifted window.
+
+    Args:
+        dim (int): Number of input channels.
+        window_size (tuple[int]): The height and width of the window.
+        num_heads (int): Number of attention heads.
+        qkv_bias (bool, optional):  If True, add a learnable bias to query, key, value. Default: True
+        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set
+        attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
+        proj_drop (float, optional): Dropout ratio of output. Default: 0.0
+    """
+
+    def __init__(self, dim, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+
+        super().__init__()
+        self.dim = dim
+        self.num_heads = num_heads
+        assert dim % num_heads == 0
+        self.head_dim = dim//num_heads
+        self.scale = qk_scale or self.head_dim ** -0.5
+        
+
+        # define a parameter table of relative position bias
+        # self.relative_position_bias_table = nn.Parameter(
+        #     torch.zeros((2 * window_size[0] - 1) * (2 * window_size[1] - 1), num_heads))  # 2*Wh-1 * 2*Ww-1, nH
+
+        # get pair-wise relative position index for each token inside the window
+ 
+        self.q = nn.Linear(dim, dim, bias=qkv_bias)
+        self.k = nn.Linear(dim, dim, bias=qkv_bias)
+        self.v = nn.Linear(dim, dim, bias=qkv_bias)
+
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+        # self.pe_linear = nn.Linear(2, num_heads)
+
+        # trunc_normal_(self.relative_position_bias_table, std=.02)
+        self.softmax = nn.Softmax(dim=-1)
+        # self.pos_linear_k = nn.Linear(2, head_dim)
+        # self.pos_linear_v = nn.Linear(2, head_dim)
+        # self.pos_linear_k = rel_pos[:, :, :2, :] # 1, 1, 2, D
+        # self.pos_linear_v = rel_pos[:, :, 2:, :] # 1, 1, 2, D
+
+    def forward(self, q, kv):
+        """
+        Args:
+            x: input features with shape of (num_windows*B, N, C)
+            pe: positional encoding centroids (num_windows*B, N, 2)
+            mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
+        """
+        B_, N, C = kv.shape
+        k = self.k(kv).reshape(B_, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+        v = self.v(kv).reshape(B_, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+
+        B_, N, C = q.shape
+        
+        q = self.q(q).reshape(B_, N, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
+
+        
+
+        # qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
+        # q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple) B, H, N, D
+        
+        
+        q = q * self.scale
+
+
+        
+        attn = (q @ k.transpose(-2, -1)) 
+ 
+ 
+        attn = attn #+ self.pe_linear(pe).permute(0, 3, 1, 2)
+   
+        attn = self.softmax(attn)
+        
+        attn = self.attn_drop(attn)
+
+        x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
+        # x = torch.mean(x, dim=2)
+        
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        
         return x
