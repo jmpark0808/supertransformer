@@ -152,10 +152,10 @@ class SP_SWINU_Wrapper(pl.LightningModule):
 
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        # seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
-        # features, seq_mask = self.mixup(features, seq_mask)
+        seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
+        features, seq_mask = self.mixup(features, seq_mask)
         
-        # seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
+        seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
 
         # forward pass
         
