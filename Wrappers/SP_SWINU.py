@@ -4,7 +4,7 @@ from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 # from Blocks.swintransformer_original_rpe import SwinUTransformer
 # from Blocks.swintransformer_original import SwinUTransformer
-from Blocks.swinunet_rpe import SwinUTransformer
+from Blocks.swinunet_upernet import SwinUTransformer
 # from Blocks.swin_experimental import SwinUTransformer
 # from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
