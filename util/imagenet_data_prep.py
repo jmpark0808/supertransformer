@@ -46,9 +46,9 @@ if __name__ == "__main__":
                             transforms.ToTensor()
                             ])
 
-    train_dataset = ImageNetDatasetExport(train_dir, num_seg, coeff, compactness, val_test_transform, train_export_dir, False)
+    train_dataset = ImageNetDatasetExport(train_dir, num_seg, coeff, size, compactness, val_test_transform, train_export_dir, False)
 
-    test_dataset = ImageNetDatasetExport(test_dir, num_seg, coeff, compactness, val_test_transform, test_export_dir, False)
+    test_dataset = ImageNetDatasetExport(test_dir, num_seg, coeff, size, compactness, val_test_transform, test_export_dir, False)
 
     if dict_args['debug']:
         tr_random_sampler = torch.utils.data.RandomSampler(train_dataset, num_samples=100)

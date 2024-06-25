@@ -82,19 +82,21 @@ class ImageNetDataset(data.Dataset):
 
 
 class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
-    def __init__(self, root, num_seg, coeff, compactness, transform, export_dir, ignore_phase) -> None:
+    def __init__(self, root, num_seg, coeff, size, compactness, transform, export_dir, ignore_phase) -> None:
         super().__init__(root, transform=transform)
         self.num_seg = num_seg
         self.compactness = compactness
         self.coeff = coeff
         self.export_dir = export_dir
         self.ignore_phase = ignore_phase
+
+        resample_points = int(((size**2)//num_seg)**0.5)*4
         
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
             contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
             points = contour[0][:, 0, :]
-            xi, yi = resample_2d(points, RESAMPLE_POINTS)
+            xi, yi = resample_2d(points, resample_points)
             contour_array = np.stack((xi, yi), axis=1)
 
 
