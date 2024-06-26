@@ -4,7 +4,7 @@ from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 # from Blocks.swintransformer_original_rpe import SwinUTransformer
 # from Blocks.swintransformer_original import SwinUTransformer
-from Blocks.swinunet_upernet import SwinUTransformer
+from Blocks.swinunet_upernet_exp import SwinUTransformer
 # from Blocks.swin_experimental import SwinUTransformer
 # from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
@@ -24,7 +24,11 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         self.num_seg = kwargs.get('num_seg')
         self.es_patience = kwargs.get('es_patience')
         self.dropout = kwargs.get('dropout')
-        self.tfm_hp = kwargs.get('tfmhp')
+        
+        self.heads = kwargs.get('heads')
+        self.dims = kwargs.get('dims')
+        self.depths = kwargs.get('depths')
+
         self.coeff = kwargs.get('coeff')
         self.dilation = kwargs.get('dilation')
         self.dataloader = kwargs.get('dataloader')
@@ -34,23 +38,22 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         self.image_size = kwargs.get('size')
         self.warmup_epochs = kwargs.get('warmup_epochs')
         self.total_train_epochs = kwargs.get('epoch')
+        self.factor = kwargs.get('factor')
         input_dim = get_input_dim(kwargs)
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
         # SWIN UPerNet Production
-        self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=1, window_size=self.window_size,
-                                       depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3]
-                                       , num_heads=[self.tfm_hp[0],
-                                                     self.tfm_hp[0]*2,
-                                                     self.tfm_hp[0]*4],
-                                       embed_dim=self.tfm_hp[2])
-        # SWIN UPerNet Experimental
         # self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=1, window_size=self.window_size,
         #                                depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3]
         #                                , num_heads=[self.tfm_hp[0],
-        #                                              self.tfm_hp[0],
-        #                                              self.tfm_hp[0]],
+        #                                              self.tfm_hp[0]*2,
+        #                                              self.tfm_hp[0]*4],
         #                                embed_dim=self.tfm_hp[2])
+        # SWIN UPerNet Experimental
+        self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=1, window_size=self.window_size,
+                                       depths=self.depths
+                                       , num_heads=self.heads,
+                                       embed_dim=self.dims)
         # self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
         #                                , depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
         #                                  num_heads=[self.tfm_hp[0],
