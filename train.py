@@ -185,11 +185,19 @@ if __name__ == "__main__":
     parser.add_argument('--gunet_mode', help='GUnet mode, graclus or predefined pooling', default='graclus', type=str)
     parser.add_argument('--fully_connected', help='Use fully connected neighbourhood'
                         , default=False, action="store_true")
-    parser.add_argument('--kernels', default=[32, 32, 32, 32], 
+    parser.add_argument('--heads', default=[3, 6, 12], 
+                    nargs="*", 
+                    type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
+    parser.add_argument('--dims', default=[96, 192, 384], 
+                    nargs="*", 
+                    type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
+    parser.add_argument('--depths', default=[2, 2, 6], 
                     nargs="*", 
                     type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
     parser.add_argument('--window_size', help='Window size for SWIN Transformer', type=int, default=4)
     parser.add_argument('--warmup_epochs', help='Number of epochs for warmup', type=int, default=4)
+    parser.add_argument('--factor', help='Factor for hidden dimension in SWIN Transformer', default=1.0, type=float)
+
 
     
     

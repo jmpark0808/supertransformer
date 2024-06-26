@@ -318,11 +318,12 @@ class PatchMerging(nn.Module):
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
     """
 
-    def __init__(self, input_resolution, dim, norm_layer=nn.LayerNorm):
+    def __init__(self, input_resolution, dim, out_dim, norm_layer=nn.LayerNorm):
         super().__init__()
         self.input_resolution = input_resolution
         self.dim = dim
-        self.reduction = nn.Linear(4 * dim, dim, bias=False)
+        self.out_dim = out_dim
+        self.reduction = nn.Linear(4 * dim, out_dim, bias=False)
         self.norm = norm_layer(4 * dim)
 
     def forward(self, x):
@@ -649,7 +650,7 @@ class BasicLayerDownsample(nn.Module):
     def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,
-                 fused_window_process=False):
+                 fused_window_process=False, out_dim = None):
 
         super().__init__()
         self.dim = dim
@@ -672,7 +673,7 @@ class BasicLayerDownsample(nn.Module):
 
         # patch merging layer
         if downsample is not None:
-            self.downsample = downsample(input_resolution, dim=dim, norm_layer=norm_layer)#,  num_heads=num_heads)
+            self.downsample = downsample(input_resolution, dim=dim, out_dim = out_dim, norm_layer=norm_layer)#,  num_heads=num_heads)
         else:
             self.downsample = None
 
@@ -852,25 +853,25 @@ class SwinUTransformer(nn.Module):
     """
 
     def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000,
-                 embed_dim=96, depths=[2, 2, 6, 2], num_heads=[3, 6, 12, 24],
+                 embed_dim=[96, 192, 384], depths=[2, 2, 6, 2], num_heads=[3, 6, 12, 24],
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
-                 use_checkpoint=False, fused_window_process=False, **kwargs):
+                 use_checkpoint=False, fused_window_process=False, factor=1.0, **kwargs):
         super().__init__()
-
+        assert len(depths) == len(num_heads) == len(embed_dim), 'Number of layers must be equal between heads, dims, and depths'
         self.num_classes = num_classes
         self.num_layers = len(depths)
         self.embed_dim = embed_dim
         self.ape = ape
         self.patch_norm = patch_norm
-        self.num_features = int(embed_dim * 2 ** (self.num_layers - 1))
+        # self.num_features = int(embed_dim * 2 ** (self.num_layers - 1))
         self.mlp_ratio = mlp_ratio
 
         # split image into non-overlapping patches
 
         self.patch_embed = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim,
+            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim[0],
             norm_layer=norm_layer if self.patch_norm else None)
         num_patches = self.patch_embed.num_patches
         patches_resolution = self.patch_embed.patches_resolution
@@ -882,7 +883,7 @@ class SwinUTransformer(nn.Module):
             trunc_normal_(self.absolute_pos_embed, std=.02)
 
         self.pos_drop = nn.Dropout(p=drop_rate)
-        self.locations = nn.Sequential(*[nn.Linear(22, embed_dim), nn.ReLU(), nn.Linear(embed_dim, embed_dim)])
+        self.locations = nn.Sequential(*[nn.Linear(22, embed_dim[0]), nn.ReLU(), nn.Linear(embed_dim[0], embed_dim[0])])
         # stochastic depth
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
 
@@ -891,8 +892,7 @@ class SwinUTransformer(nn.Module):
         dim_list = []
         resolution_list = []
         for i_layer in range(self.num_layers):
-            hd = embed_dim
-            layer = BasicLayerDownsample(dim=hd,
+            layer = BasicLayerDownsample(dim=embed_dim[i_layer],
                                input_resolution=(patches_resolution[0] // (2 ** i_layer),
                                                  patches_resolution[1] // (2 ** i_layer)),
                                depth=depths[i_layer],
@@ -905,9 +905,9 @@ class SwinUTransformer(nn.Module):
                                norm_layer=norm_layer,
                                downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
                                use_checkpoint=use_checkpoint,
-                               fused_window_process=fused_window_process)
+                               fused_window_process=fused_window_process, out_dim=embed_dim[i_layer+1] if (i_layer < self.num_layers - 1) else None)
             self.layers.append(layer)
-            dim_list.append(hd)
+            dim_list.append(embed_dim[i_layer])
             resolution_list.append((patches_resolution[0] // (2 ** i_layer),
                                                  patches_resolution[1] // (2 ** i_layer)))
         
@@ -915,8 +915,9 @@ class SwinUTransformer(nn.Module):
         resolution_list.reverse()
         
         
-        self.upsample_layers = SwinDecoder(input_dim=embed_dim,# 输入的通道数为96
+        self.upsample_layers = SwinDecoder(input_dim=embed_dim[0],# 输入的通道数为96
             input_high_dim = dim_list[0], # 384
+            input_middle_dim = dim_list[1],
             input_size=resolution_list[0][0], # 14 × 14
             low_level_idx=0, # 0
             high_level_idx=2, # 2
@@ -1179,7 +1180,7 @@ class SwinASPP(nn.Module):
     
 class SwinDecoder(nn.Module):
     def __init__(self, low_level_idx, high_level_idx, 
-                 input_size, input_dim,input_high_dim, num_classes,
+                 input_size, input_dim,input_high_dim, input_middle_dim, num_classes,
                  depth, last_layer_depth, num_heads, window_size, mlp_ratio, qkv_bias, qk_scale,
                  drop_rate, attn_drop_rate, drop_path_rate, norm_layer, decoder_norm, use_checkpoint):
         super().__init__()
@@ -1187,7 +1188,7 @@ class SwinDecoder(nn.Module):
         self.high_level_idx = high_level_idx # 2
 
         self.proj_high = nn.Linear(input_high_dim, input_dim,bias=False) # 通道从384转换成96
-        self.proj_middle = nn.Linear(input_high_dim,input_dim,bias=False) # 通道数从192转换成96
+        self.proj_middle = nn.Linear(input_middle_dim,input_dim,bias=False) # 通道数从192转换成96
 
         self.layers_up = nn.ModuleList()
         for i in range(high_level_idx - low_level_idx):# 0 , 1
