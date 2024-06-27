@@ -4,7 +4,7 @@ from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 # from Blocks.swintransformer_original_rpe import SwinUTransformer
 # from Blocks.swintransformer_original import SwinUTransformer
-from Blocks.swinunet_upernet_exp import SwinUTransformer
+from Blocks.swinunet_upernet_patch import SwinUTransformer
 # from Blocks.swin_experimental import SwinUTransformer
 # from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
@@ -50,7 +50,7 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         #                                              self.tfm_hp[0]*4],
         #                                embed_dim=self.tfm_hp[2])
         # SWIN UPerNet Experimental
-        self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=1, window_size=self.window_size,
+        self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=2, window_size=self.window_size,
                                        depths=self.depths
                                        , num_heads=self.heads,
                                        embed_dim=self.dims)
