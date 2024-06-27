@@ -1001,12 +1001,14 @@ class SwinUTransformer(nn.Module):
         return x
 
     def forward(self, x):
+        print(x.size())
         centroids = x[:, :2, :, :]
         fft = x[:, 8:-10, :, :]
         lbp = x[:, -10:, :, :]
         color = x[:, 2:8, :, :]
         x = torch.cat((color, lbp), dim=1)
         locations = torch.cat((centroids, fft), dim=1).permute(0, 2, 3, 1)
+
         locations = self.locations(locations)
         locations = locations.reshape(locations.size(0), -1, locations.size(3))
         x = self.forward_features(x, locations)

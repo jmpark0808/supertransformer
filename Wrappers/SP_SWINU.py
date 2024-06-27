@@ -50,7 +50,7 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         #                                              self.tfm_hp[0]*4],
         #                                embed_dim=self.tfm_hp[2])
         # SWIN UPerNet Experimental
-        self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=2, window_size=self.window_size,
+        self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=1, window_size=self.window_size,
                                        depths=self.depths
                                        , num_heads=self.heads,
                                        embed_dim=self.dims)
@@ -63,6 +63,8 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
         kwargs['parameters'] = parameter_count(self.supert)['']
+        # print(parameter_count(self.supert))
+        # assert(0)
         inp = torch.randn([1, input_dim+2, res, res])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
