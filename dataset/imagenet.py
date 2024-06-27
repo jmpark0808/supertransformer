@@ -145,6 +145,9 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
         sp_file_path = os.path.join(self.export_dir, sp_file_name)
         sp_file_path_edge_index = os.path.join(self.export_dir, sp_file_name_edge)
         sp_file_path_target = os.path.join(self.export_dir, sp_file_target)
+
+        if os.path.exists(sp_file_path) and os.path.exists(sp_file_path_target):
+            return torch.empty(0)
      
 
         
@@ -223,9 +226,7 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
         np.save(sp_file_path, features)
         np.save(sp_file_path_target, np.array([target]))
 
-        features, target = torch.tensor(features).float(), torch.tensor(target)
-
-        return features, target
+        return torch.empty(0)
 
 
 
