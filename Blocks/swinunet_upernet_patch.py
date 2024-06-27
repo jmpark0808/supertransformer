@@ -231,7 +231,7 @@ class SwinTransformerBlock(nn.Module):
                 for w in w_slices:
                     img_mask[:, h, w, :] = cnt
                     cnt += 1
-
+    
             mask_windows = window_partition(img_mask, self.window_size)  # nW, window_size, window_size, 1
             mask_windows = mask_windows.view(-1, self.window_size * self.window_size)
             attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
@@ -455,20 +455,22 @@ class PatchEmbed(nn.Module):
 
         self.in_chans = in_chans
         self.embed_dim = embed_dim
-        
+        self.locations = nn.Conv2d(22, embed_dim, kernel_size=patch_size, stride=patch_size)
         self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
         if norm_layer is not None:
             self.norm = norm_layer(embed_dim)
         else:
             self.norm = None
 
-    def forward(self, x):
+    def forward(self, x, locations):
         B, C, H, W = x.shape
         # FIXME look at relaxing size constraints
         assert H == self.img_size[0] and W == self.img_size[1], \
             f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
         
         x = self.proj(x).flatten(2).transpose(1, 2)  # B Ph*Pw C
+        locations = self.locations(locations).flatten(2).transpose(1,2) # B Ph*Pw C
+        x = x + locations
         if self.norm is not None:
             x = self.norm(x)
         return x
@@ -563,7 +565,7 @@ class SwinTransformer(nn.Module):
                                fused_window_process=fused_window_process)
             self.layers.append(layer)
 
-        self.locations = nn.Sequential(*[nn.Linear(22, embed_dim), nn.ReLU(), nn.Linear(embed_dim, embed_dim)])
+        
         
         self.norm = norm_layer(self.num_features)
         self.avgpool = nn.AdaptiveAvgPool1d(1)
@@ -589,11 +591,11 @@ class SwinTransformer(nn.Module):
         return {'relative_position_bias_table'}
 
     def forward_features(self, x, locations):
-        x = self.patch_embed(x)
+        x = self.patch_embed(x, locations)
         if self.ape:
             x = x + self.absolute_pos_embed
         x = self.pos_drop(x)
-        x = x + locations
+
 
         for layer in self.layers:
             x = layer(x)
@@ -609,9 +611,7 @@ class SwinTransformer(nn.Module):
         lbp = x[:, -10:, :, :]
         color = x[:, 2:8, :, :]
         x = torch.cat((color, lbp), dim=1)
-        locations = torch.cat((centroids, fft), dim=1).permute(0, 2, 3, 1)
-        locations = self.locations(locations)
-        locations = locations.reshape(locations.size(0), -1, locations.size(3))
+        locations = torch.cat((centroids, fft), dim=1)
         x = self.forward_features(x, locations)
         x = self.head(x)
         return x
@@ -883,7 +883,7 @@ class SwinUTransformer(nn.Module):
             trunc_normal_(self.absolute_pos_embed, std=.02)
 
         self.pos_drop = nn.Dropout(p=drop_rate)
-        self.locations = nn.Sequential(*[nn.Linear(22, embed_dim[0]), nn.ReLU(), nn.Linear(embed_dim[0], embed_dim[0])])
+       
         # stochastic depth
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
 
@@ -980,12 +980,12 @@ class SwinUTransformer(nn.Module):
         return {'relative_position_bias_table'}
 
     def forward_features(self, x, locations):
-        x = self.patch_embed(x)
+        x = self.patch_embed(x, locations)
         if self.ape:
             x = x + self.absolute_pos_embed
         x = self.pos_drop(x)
         
-  
+        
         all_layers = []
         for idx, layer in enumerate(self.layers):
             pre_ds, x = layer(x)
@@ -1005,9 +1005,7 @@ class SwinUTransformer(nn.Module):
         lbp = x[:, -10:, :, :]
         color = x[:, 2:8, :, :]
         x = torch.cat((color, lbp), dim=1)
-        locations = torch.cat((centroids, fft), dim=1).permute(0, 2, 3, 1)
-        locations = self.locations(locations)
-        locations = locations.reshape(locations.size(0), -1, locations.size(3))
+        locations = torch.cat((centroids, fft), dim=1)
         x = self.forward_features(x, locations)
         
         
@@ -1237,10 +1235,10 @@ class SwinDecoder(nn.Module):
             self.last_layers_up.append(last_layer_up)
         
         i += 1
-        self.final_up = PatchExpand(input_resolution=(input_size*2**i, input_size*2**i),
-                                    dim=int(input_dim)*3,
-                                    dim_scale=2,
-                                    norm_layer=norm_layer)
+        # self.final_up = PatchExpand(input_resolution=(input_size*2**i, input_size*2**i),
+        #                             dim=int(input_dim)*3,
+        #                             dim_scale=2,
+        #                             norm_layer=norm_layer)
         
         if decoder_norm: # True
             self.norm_up = norm_layer(int(input_dim)*3)
@@ -1253,9 +1251,11 @@ class SwinDecoder(nn.Module):
         low_level: B, Hl, Wl, C
         aspp: B, Ha, Wa, C
         """
+    
         high_trans = self.proj_high(high_level) # 14x14x96
         target = high_trans + aspp # 14x14x96
         middle = self.proj_middle(middle_level) # 28x28x96
+        
         B,HM,WM,MC = middle.shape
         middle = middle.view(B,HM*WM,MC)
 
@@ -1282,15 +1282,15 @@ class SwinDecoder(nn.Module):
         up_3 = target + low_level 
 
         x = torch.cat([up_1,up_2,up_3], dim=-1) # 在通道维数上进行拼接 56×56×192
-
+        
         for layer in self.last_layers_up:
             x = layer(x) # 上采样到 112 × 112 × 192
-
+            
         if self.norm_up is not None: #True
             x = self.norm_up(x)
             
-        x = self.final_up(x) # 放大到 225 × 225 × 192  
-    
+        # x = self.final_up(x) # 放大到 225 × 225 × 192  
+        
         B, L, C = x.shape
         H = W = int(math.sqrt(L))
         x = x.view(B, H, W, C)
