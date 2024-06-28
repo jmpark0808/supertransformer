@@ -520,7 +520,7 @@ class SwinTransformer(nn.Module):
         self.embed_dim = embed_dim
         self.ape = ape
         self.patch_norm = patch_norm
-        self.num_features = embed_dim #int(embed_dim * 2 ** (self.num_layers - 1))
+        self.num_features = int(embed_dim * 2 ** (self.num_layers - 1))
         self.mlp_ratio = mlp_ratio
 
         # split image into non-overlapping patches
@@ -545,7 +545,7 @@ class SwinTransformer(nn.Module):
         # build layers
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
-            hd = embed_dim #int(embed_dim * 2 ** i_layer)
+            hd = int(embed_dim * 2 ** i_layer)
             layer = BasicLayer(dim=hd,
                                input_resolution=(patches_resolution[0] // (2 ** i_layer),
                                                  patches_resolution[1] // (2 ** i_layer)),

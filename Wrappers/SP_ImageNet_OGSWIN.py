@@ -1,6 +1,6 @@
 import pytorch_lightning as pl
 import torch
-from Blocks.swinunet_upernet_exp import SwinTransformer
+from Blocks.swinunet_upernet import SwinTransformer
 
 import torch.nn.functional as F
 import numpy as np
