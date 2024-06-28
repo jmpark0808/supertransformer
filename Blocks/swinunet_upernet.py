@@ -882,7 +882,7 @@ class SwinUTransformer(nn.Module):
             trunc_normal_(self.absolute_pos_embed, std=.02)
 
         self.pos_drop = nn.Dropout(p=drop_rate)
-        self.locations = nn.Sequential(*[nn.Linear(22, embed_dim), nn.ReLU(), nn.Linear(embed_dim, embed_dim)])
+        self.locations = nn.Sequential(*[nn.Linear(2, embed_dim), nn.LayerNorm(embed_dim)])
         # stochastic depth
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
 
@@ -985,6 +985,7 @@ class SwinUTransformer(nn.Module):
         if self.ape:
             x = x + self.absolute_pos_embed
         x = self.pos_drop(x)
+        x = x + locations
         
   
         all_layers = []
@@ -1005,9 +1006,9 @@ class SwinUTransformer(nn.Module):
         fft = x[:, 8:-10, :, :]
         lbp = x[:, -10:, :, :]
         color = x[:, 2:8, :, :]
-        x = torch.cat((color, lbp), dim=1)
-        locations = torch.cat((centroids, fft), dim=1).permute(0, 2, 3, 1)
-        locations = self.locations(locations)
+        x = torch.cat((color, lbp, fft), dim=1)
+        #locations = torch.cat((centroids, fft), dim=1).permute(0, 2, 3, 1)
+        locations = self.locations(centroids.permute(0, 2, 3, 1))
         locations = locations.reshape(locations.size(0), -1, locations.size(3))
         x = self.forward_features(x, locations)
         
