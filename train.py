@@ -258,7 +258,8 @@ if __name__ == "__main__":
         max_epochs=dict_args["epoch"],
         log_every_n_steps=10,
         gradient_clip_val=dict_args['clip_grad_norm'],
-        devices=[dict_args['gpus']]
+        devices=[dict_args['gpus']],
+        precision=16
     ) 
 
     # Trainer: train model
