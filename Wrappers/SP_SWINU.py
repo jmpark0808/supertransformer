@@ -50,7 +50,7 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         #                                              self.tfm_hp[0]*4],
         #                                embed_dim=self.tfm_hp[2])
         # SWIN UPerNet Experimental
-        self.supert = SwinUTransformer(in_chans=input_dim+2, img_size=res, patch_size=1, window_size=self.window_size,
+        self.supert = SwinUTransformer(in_chans=input_dim, img_size=res, patch_size=1, window_size=self.window_size,
                                        depths=self.depths
                                        , num_heads=self.heads,
                                        embed_dim=self.dims)
