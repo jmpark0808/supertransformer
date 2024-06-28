@@ -37,6 +37,9 @@ from skimage import segmentation, color
 from dataset.fft_transform import *
 from dataset.randaugment import RandAugment
 import pytorch_lightning as pl
+import matplotlib.patches as patches
+
+
 
 def check_file(filepath, md5sum):
     """Check a file against an md5 hash value.
@@ -277,9 +280,9 @@ class SpeedLimits(data.Dataset):
             signs, acceptable = self._acceptable(signs)
             if acceptable:
                 if not signs:
-                    filtered.append((image, 0))
+                    filtered.append((image, 0, None))
                 else:
-                    filtered.append((image, self.CLASSES.index(signs[0].name)))
+                    filtered.append((image, self.CLASSES.index(signs[0].name), signs[0].bbox))
         return filtered
 
     def _acceptable(self, signs):
@@ -304,18 +307,61 @@ class SpeedLimits(data.Dataset):
         return len(self._data)
 
     def __getitem__(self, i):
-        image, category = self._data[i]
+        image, category, bbox = self._data[i]
 
-        data = imread(image)
-        data_l = cv2.resize(data, (320, 240))
+        data = imread(image) # 960 x 1280
         
-        data_l = data_l.astype(np.float32)/np.float32(255.)
-        data_h = data.astype(np.float32) / np.float32(255.)
-        # label = np.eye(len(self.CLASSES), dtype=np.float32)[category]
+        ### Included
+        data = np.array(data[...,::-1])
+        if bbox is not None:
+
+            data = data[int(bbox[3]):int(bbox[1]), int(bbox[2]):int(bbox[0])]
+        else:
+            random_size = np.random.randint(5, 10)
+            random_height_start = np.random.randint(0, 960-random_size)
+            random_width_start = np.random.randint(0, 1280-random_size)
+            data = data[random_height_start:random_height_start+random_size, random_width_start:random_width_start+random_size]
+
+        data = torch.tensor(data).permute(2, 0, 1)
+        
+        pad = [0, 0, 0, 0]
+        if data.size(1) %2 == 0:
+            half = (200-data.size(1))//2
+            pad[0] = half
+            pad[1] = half
+        else:
+            half_l = (200-data.size(1))//2
+            half_r = (200-data.size(1))//2+1
+            pad[0] = half_l
+            pad[1] = half_r
+
+        if data.size(2) %2 == 0:
+            half = (200-data.size(2))//2
+            pad[2] = half
+            pad[3] = half
+        else:
+            half_l = (200-data.size(2))//2
+            half_r = (200-data.size(2))//2+1
+            pad[2] = half_l
+            pad[3] = half_r
+
+        
+
+        data = torch.nn.functional.pad(data, tuple(pad), 'constant', 0)
+        return data, torch.tensor(category)
+            
+
+
+        ##### end include
+        # data_l = cv2.resize(data, (320, 240))
+        
+        # data_l = data_l.astype(np.float32)/np.float32(255.)
+        # data_h = data.astype(np.float32) / np.float32(255.)
+        # # label = np.eye(len(self.CLASSES), dtype=np.float32)[category]
 
 
 
-        return torch.tensor(data_l).permute(2, 0, 1), torch.tensor(data_h).permute(2, 0, 1), torch.tensor(category)
+        # return torch.tensor(data_l).permute(2, 0, 1), torch.tensor(data_h).permute(2, 0, 1), torch.tensor(category)
 
     @property
     def image_size(self):
@@ -667,20 +713,35 @@ def main(argv):
     args = parser.parse_args(argv)
 
     # Load the data
-    training_set = SpeedLimitsExport(args.dataset, 10, 49152, 10, train=True, export_dir='/mnt/dragon/Datasets/stopsigns/TR')
-    test_set = SpeedLimitsExport(args.dataset, 10, 49152, 10, train=False, export_dir='/mnt/dragon/Datasets/stopsigns/TE')
-    # training_set = SpeedLimits(args.dataset, train=True)
-    # test_set = SpeedLimits(args.dataset, train=False)
+    # training_set = SpeedLimitsExport(args.dataset, 10, 49152, 10, train=True, export_dir='/mnt/hdd/Datasets/stopsigns/TR')
+    # test_set = SpeedLimitsExport(args.dataset, 10, 49152, 10, train=False, export_dir='/mnt/hdd/Datasets/stopsigns/TE')
+    training_set = SpeedLimits(args.dataset, train=True)
+    test_set = SpeedLimits(args.dataset, train=False)
     training_batched = DataLoader(training_set, 1, num_workers=10)
     test_batched = DataLoader(test_set, 1, num_workers=10)
-    for data in training_batched:
+    all_dims = []
+    all_areas = []
+    print(len(training_set))
+    print(len(test_set))
+    for crop, category in training_batched:
+        # if crop.size(2) >= 200 or crop.size(3) >= 200:
+        #     assert(0)
+        all_dims.append(crop.size())
+        all_areas.append(crop.size(2)*crop.size(3))
+        
         # print(torch.min(data), torch.max(data))
         # plt.imshow(data.detach().numpy()[0])
         # plt.show()
-        pass
+        
 
-    for data in test_batched:
-        pass
+    for crop, category in test_batched:
+        # if crop.size(2) >= 200 or crop.size(3) >= 200:
+        #     assert(0)
+        all_dims.append(crop.size())
+        all_areas.append(crop.size(2)*crop.size(3))
+        # pass
+    # print(all_dims)
+    print(all_dims[torch.argmax(torch.tensor(all_areas))])
 
 
 
