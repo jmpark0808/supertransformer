@@ -60,7 +60,7 @@ if __name__ == "__main__":
                                                                 num_workers=num_workers, drop_last=False)
     else:
 
-        train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+        train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=False,
                                                                 num_workers =num_workers, drop_last=False)
 
         test_source_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False,

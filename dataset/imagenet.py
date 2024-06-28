@@ -223,7 +223,7 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
         
 
         
-        np.save(sp_file_path, features)
+        np.save(sp_file_path, features.astype(np.float16))
         np.save(sp_file_path_target, np.array([target]))
 
         return torch.empty(0)
