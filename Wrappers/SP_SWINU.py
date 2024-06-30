@@ -2,9 +2,8 @@ from typing import Optional
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
-# from Blocks.swintransformer_original_rpe import SwinUTransformer
-# from Blocks.swintransformer_original import SwinUTransformer
-from Blocks.swinunet_upernet_exp import SwinUTransformer
+from Blocks.swinunet_upernet import SwinUTransformer
+# from Blocks.swinunet_upernet_exp import SwinUTransformer
 # from Blocks.swin_experimental import SwinUTransformer
 # from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
@@ -43,17 +42,17 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
         # SWIN UPerNet Production
-        # self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=1, window_size=self.window_size,
-        #                                depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3]
-        #                                , num_heads=[self.tfm_hp[0],
-        #                                              self.tfm_hp[0]*2,
-        #                                              self.tfm_hp[0]*4],
-        #                                embed_dim=self.tfm_hp[2])
+        self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=1, window_size=self.window_size,
+                                       depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3]
+                                       , num_heads=[self.tfm_hp[0],
+                                                     self.tfm_hp[0]*2,
+                                                     self.tfm_hp[0]*4],
+                                       embed_dim=self.tfm_hp[2])
         # SWIN UPerNet Experimental
-        self.supert = SwinUTransformer(in_chans=input_dim, img_size=res, patch_size=1, window_size=self.window_size,
-                                       depths=self.depths
-                                       , num_heads=self.heads,
-                                       embed_dim=self.dims)
+        # self.supert = SwinUTransformer(in_chans=input_dim, img_size=res, patch_size=1, window_size=self.window_size,
+        #                                depths=self.depths
+        #                                , num_heads=self.heads,
+        #                                embed_dim=self.dims)
         # SWIN UPerNet Experimental Patch
         # self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=2, window_size=self.window_size,
         #                                depths=self.depths
