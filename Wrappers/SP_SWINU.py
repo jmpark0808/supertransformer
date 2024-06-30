@@ -27,7 +27,7 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         self.heads = kwargs.get('heads')
         self.dims = kwargs.get('dims')
         self.depths = kwargs.get('depths')
-        self.tfmhp = kwargs.get('tfmhp')
+        self.tfm_hp = kwargs.get('tfmhp')
         self.coeff = kwargs.get('coeff')
         self.dilation = kwargs.get('dilation')
         self.dataloader = kwargs.get('dataloader')
