@@ -199,10 +199,6 @@ if __name__ == "__main__":
     parser.add_argument('--factor', help='Factor for hidden dimension in SWIN Transformer', default=1.0, type=float)
 
 
-    
-    
-
-
     import torch 
     torch.set_float32_matmul_precision('medium')
 
