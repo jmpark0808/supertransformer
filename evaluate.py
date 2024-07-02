@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 import matplotlib
-from Models.EGNet import build_model
+# from Models.EGNet import build_model
 from ptflops import get_model_complexity_info
 matplotlib.use('Agg')
 import time
@@ -37,17 +37,16 @@ def main():
     parser.add_argument('--dataloader', help="Type of dataloader", required=True, default=None)
     parser.add_argument("--model_checkpoint_file",
                         help="Directory of pre-trained model")
-    parser.add_argument('--dataset_val', help='Directory of your validation Dataset', required=True, default=None)
+    parser.add_argument('--dataset_tr', help='Directory of your train Dataset', required=True, default=None)
+    parser.add_argument('--dataset_test', help='Directory of your validation Dataset', required=True, default=None)
     parser.add_argument('--cuda', help="'cuda' for cuda, 'cpu' for cpu, default = cuda",
                         default='cuda', choices=['cuda', 'cpu'])
     parser.add_argument('--gpus', help="Number of gpus to use for training", default=1, type=int)
     parser.add_argument('--batch_size', help="batchsize, default = 1", default=1, type=int)
     parser.add_argument('--num_workers', help="# of dataloader cpu process", default=0, type=int)
     parser.add_argument('--num_seg', help='Approximate number of segmentations', default=600, type=int)
-    parser.add_argument('--dropout', help='Dropout for Transformers', default=0., type=float)
     parser.add_argument('--seed', help='Seed for reproduceability', 
                         default=42, type=int)
-    parser.add_argument('--clip_grad_norm', help='Clipping gradient norm, 0 means no clipping', type=float, default=0.)
     parser.add_argument('--compactness', help='Compactness for SLIC', type=float, default=10)
     parser.add_argument('--size', help='Image size for DUTS', type=int, default=224)
     parser.add_argument('--coeff', help='Number of coefficients for fft', type=int, default=7)
@@ -57,6 +56,7 @@ def main():
     parser.add_argument('--tfmhp', default=[8, 16, 6], 
                     nargs=3, metavar=('Heads', 'Hidden Dim', 'Number of Layers'),
                     type=int, help='Hyperparameters for Transformer')
+    parser.add_argument('--window_size', help='Window size for SWIN Transformer', type=int, default=4)
 
 
     dict_args = vars(parser.parse_args())
@@ -65,15 +65,11 @@ def main():
     print("[p] getting val_dataloader")
     assert dict_args["dataloader"] in DATALOADER_DIRECTORY
     data_module = DATALOADER_DIRECTORY[dict_args["dataloader"]](**dict_args)
-    val_dataloader = data_module.val_dataloader()
+    test_dataloader = data_module.test_dataloader()
 
     # Initialize model to test
     assert dict_args["model"] in MODEL_DIRECTORY
-    model = MODEL_DIRECTORY[dict_args["model"]](**dict_args)
-    model = model.load_from_checkpoint(
-        checkpoint_path=dict_args["model_checkpoint_file"],
-        map_location=dict_args["cuda"],
-    ).cuda()
+    model = MODEL_DIRECTORY[dict_args["model"]].load_from_checkpoint(dict_args["model_checkpoint_file"], pretrain=None).cuda()
     model.eval()
     with torch.no_grad():
 
@@ -87,12 +83,12 @@ def main():
         masks = []
         precs = []
         recalls = []
-        for batch in tqdm(val_dataloader):
+        for batch in tqdm(test_dataloader):
             features = batch['features']
             seq_mask = batch['seq_mask']
             segments = batch['segments']
             mask = batch['mask']
-            img = batch['img']
+            # img = batch['img']
             file_names = batch['file_name']
             # pos_enc = batch['pos_enc']
             # edge_features = batch['edge_features']
@@ -133,13 +129,17 @@ def main():
                 b = torch.cuda.memory_allocated(device)
                 model_memory = b - a
                 pred = model(features, adj, lap)
+            elif dict_args['model'] == 'SP_SWINU':
+                res = int(dict_args['num_seg']**0.5)
+                features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
+                pred = model(features)
 
 
 
             pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
-            seq_mask_numpy = seq_mask.detach().cpu().numpy()
-            batch_size = img.shape[0]
-            img_size = img.shape[2]
+            # seq_mask_numpy = seq_mask.detach().cpu().numpy()
+            batch_size = mask.shape[0]
+            img_size = mask.shape[2]
             segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
             samples = []
@@ -149,17 +149,11 @@ def main():
 
             samples = torch.tensor(np.expand_dims(np.array(samples), 1))
             
-            samples_mask = []
-            for masked, labels in zip(seq_mask_numpy, segments.cpu().numpy()):
-                plt_image = masked[labels-1].reshape([img_size, img_size])
-                samples_mask.append(plt_image)
-
-            samples_mask = torch.tensor(np.expand_dims(np.array(samples_mask), 1))
             preds.append(samples)
-            masks.append(samples_mask)
-            prec, recall = torch.zeros(samples_mask.shape[0], 256), torch.zeros(samples_mask.shape[0], 256)
+            masks.append(mask)
+            prec, recall = torch.zeros(samples.shape[0], 256), torch.zeros(samples.shape[0], 256)
             pred = samples.reshape(samples.shape[0], -1)
-            mask = samples_mask.reshape(samples_mask.shape[0], -1)
+            mask = mask.reshape(mask.shape[0], -1)
             thlist = torch.linspace(0, 1 - 1e-10, 256)
             for j in range(256):
                 y_temp = (pred >= thlist[j]).float()
@@ -173,9 +167,13 @@ def main():
 
             for sample, file_name in zip(samples, file_names):
                 output = (sample.squeeze().detach().cpu().numpy() * 255.0).astype(np.uint8)
-                if not os.path.exists('./visualization/'+dict_args['model']+'/'+dict_args['dataset_val'].split('/')[-1]):
-                    os.makedirs('./visualization/'+dict_args['model']+'/'+dict_args['dataset_val'].split('/')[-1])
-                cv2.imwrite('./visualization/'+dict_args['model']+'/'+dict_args['dataset_val'].split('/')[-1]+'/'+file_name, output)
+                save_dir = os.path.join('./visualization', dict_args['model'], list(filter(None, dict_args['dataset_test'].split('/')))[-1])
+
+                if not os.path.exists(save_dir):
+                    os.makedirs(save_dir)
+                # print(os.path.join(save_dir, file_name.split('/')[-1]))
+                # assert(0)
+                cv2.imwrite(os.path.join(save_dir, file_name.split('/')[-1]), output)
 
 
     prec = torch.cat(precs, dim=0).mean(dim=0)
