@@ -64,7 +64,7 @@ class ImageNet_MBNET_Wrapper(pl.LightningModule):
         Choose what optimizers and learning-rate schedulers to use in your optimization.
         """
         
-        optimizer = torch.optim.SGD(self.parameters(), lr=self.lr, momentum=0.9, weight_decay=1e-4)
+        optimizer = torch.optim.SGD(self.parameters(), lr=self.lr, momentum=0.9, weight_decay=4e-5)
 
         # self.trainer.fit_loop.setup_data()
         # dataset= self.trainer.train_dataloader
