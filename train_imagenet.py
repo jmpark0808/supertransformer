@@ -23,6 +23,7 @@ from Wrappers.SP_ImageNet_MBUNET import SP_ImageNet_MBNET_Wrapper
 from Wrappers.SP_ImageNet_MBVIT import SP_ImageNet_MBVIT_Wrapper
 from Wrappers.image_CLS_mobilevit import ImageNet_MBVIT_Wrapper
 from Wrappers.Image_CLS_stopsigns import Image_Stopsigns_Wrapper
+from Wrappers.image_CLS_mobilenet import ImageNet_MBNET_Wrapper
 
 
 # Import dataset modules
@@ -31,6 +32,7 @@ from dataset.imagenet_pyg import SPGImageNetDataModule
 from dataset.imagenet_aug import SPImageNetAugDataModule
 from dataset.imagenet_pyg_exp import SPGEImageNetDataModule
 from dataset.imagenet_images import ImageNetDataModule
+from dataset.imagenet_images_mb import ImageNetMBDataModule
 from dataset.imagenet_pyg_swin import SPGSImageNetDataModule
 from dataset.stopsigns import SPSpeedLimitsDataModule
 from dataset.stopsigns import SpeedLimitsDataModule
@@ -52,7 +54,8 @@ MODEL_DIRECTORY = {
     'SP_ImageNet_MBNET': SP_ImageNet_MBNET_Wrapper,
     'SP_ImageNet_MBVIT': SP_ImageNet_MBVIT_Wrapper,
     'MBVIT': ImageNet_MBVIT_Wrapper,
-    'Topk': Image_Stopsigns_Wrapper
+    'Topk': Image_Stopsigns_Wrapper,
+    'MBNET': ImageNet_MBNET_Wrapper
 
 }
 DATALOADER_DIRECTORY = {
@@ -61,9 +64,10 @@ DATALOADER_DIRECTORY = {
     'ImageNet_Aug': SPImageNetAugDataModule,
     'INPE': SPGEImageNetDataModule,
     'ImageNet_Images': ImageNetDataModule,
+    'ImageNet_MB': ImageNetMBDataModule,
     'ImageNet_SWIN': SPGSImageNetDataModule,
     'SPSpeedLimits': SPSpeedLimitsDataModule,
-    'SpeedLimits': SpeedLimitsDataModule
+    'SpeedLimits': SpeedLimitsDataModule,
 } 
 
 if __name__ == "__main__":
