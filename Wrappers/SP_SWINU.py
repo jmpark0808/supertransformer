@@ -65,7 +65,7 @@ class SP_SWINU_Wrapper(pl.LightningModule):
                                          num_heads=[self.tfm_hp[0],
                                                     self.tfm_hp[0]*2,
                                                     self.tfm_hp[0]*4,
-                                                        self.tfm_hp[0]*8], mlp_ratio=4)
+                                                        self.tfm_hp[0]*8], mlp_ratio=4, attn_drop_rate=self.dropout_edge)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
         kwargs['parameters'] = parameter_count(self.supert)['']
