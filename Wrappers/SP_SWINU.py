@@ -2,7 +2,8 @@ from typing import Optional
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
-from Blocks.swinunet_upernet import SwinUTransformer
+from Blocks.swintransformer import SwinUTransformer
+# from Blocks.swinunet_upernet import SwinUTransformer
 # from Blocks.swinunet_upernet_exp import SwinUTransformer
 # from Blocks.swin_experimental import SwinUTransformer
 # from Models.SP_SWIN import SP_SWINU
@@ -42,12 +43,12 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
         # SWIN UPerNet Production
-        self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=1, window_size=self.window_size,
-                                       depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3]
-                                       , num_heads=[self.tfm_hp[0],
-                                                     self.tfm_hp[0]*2,
-                                                     self.tfm_hp[0]*4],
-                                       embed_dim=self.tfm_hp[2])
+        # self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=1, window_size=self.window_size,
+        #                                depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3]
+        #                                , num_heads=[self.tfm_hp[0],
+        #                                              self.tfm_hp[0]*2,
+        #                                              self.tfm_hp[0]*4],
+        #                                embed_dim=self.tfm_hp[2])
         # SWIN UPerNet Experimental
         # self.supert = SwinUTransformer(in_chans=input_dim, img_size=res, patch_size=1, window_size=self.window_size,
         #                                depths=self.depths
@@ -58,12 +59,13 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         #                                depths=self.depths
         #                                , num_heads=self.heads,
         #                                embed_dim=self.dims)
-        # self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
-        #                                , depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
-        #                                  num_heads=[self.tfm_hp[0],
-        #                                             self.tfm_hp[0]*2,
-        #                                             self.tfm_hp[0]*4,
-        #                                                 self.tfm_hp[0]*8], mlp_ratio=1)
+        # SWIN Mix-attention 
+        self.supert = SwinUTransformer(img_size=res, in_chans=16, patch_size=1, window_size=self.window_size,
+                                        depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
+                                         num_heads=[self.tfm_hp[0],
+                                                    self.tfm_hp[0]*2,
+                                                    self.tfm_hp[0]*4,
+                                                        self.tfm_hp[0]*8], mlp_ratio=4)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
         kwargs['parameters'] = parameter_count(self.supert)['']
