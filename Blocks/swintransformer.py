@@ -1129,7 +1129,7 @@ class BasicLayer(nn.Module):
         use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False.
     """
 
-    def __init__(self, dim, head_dim, input_resolution, depth, num_heads, window_size,
+    def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False):
 
@@ -1414,28 +1414,15 @@ class SwinUTransformer(nn.Module):
         use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False
     """
 
-    def __init__(self, options, **kwargs):
+    def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000,
+                 embed_dim=96, depths=[2, 2, 6, 2], num_heads=[3, 6, 12, 24],
+                 window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
+                 drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
+                 norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
+                 use_checkpoint=False, fused_window_process=False, **kwargs):
         super().__init__()
-        img_size = options['patch_size']
-        patch_size = options['swin_hp']['patch_size']
-        in_chans = options['in_channels']
-        embed_dim = options['swin_hp']['embed_dim']
-        depths = options['swin_hp']['depths']
-        num_heads = options['swin_hp']['num_heads']
-        window_size = options['swin_hp']['window_size']
-        mlp_ratio = options['swin_hp']['mlp_ratio']
-        qkv_bias = options['swin_hp']['qkv_bias']
-        qk_scale = options['swin_hp']['qk_scale']
-        drop_rate = options['swin_hp']['drop_rate']
-        attn_drop_rate = options['swin_hp']['attn_drop_rate']
-        drop_path_rate = options['swin_hp']['drop_path_rate']
-        norm_layer = options['swin_hp']['norm_layer']
-        ape = options['swin_hp']['ape']
-        patch_norm = options['swin_hp']['patch_norm']
-        use_checkpoint = options['swin_hp']['use_checkpoint']
-
         self.img_size = img_size
-        self.net_name = 'SwinTransformer'
+        self.num_classes = num_classes
         self.num_layers = len(depths)
         self.embed_dim = embed_dim
         self.ape = ape
@@ -1468,7 +1455,6 @@ class SwinUTransformer(nn.Module):
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
             layer = BasicLayer(dim=int(embed_dim * 2 ** (i_layer-1)) if i_layer!=0 else embed_dim, 
-                               head_dim=None,
                                input_resolution=(patches_resolution[0] // (2 ** (i_layer-1)),
                                                  patches_resolution[1] // (2 ** (i_layer-1))) if i_layer!=0 else (patches_resolution[0],
                                                  patches_resolution[1]),
@@ -1499,7 +1485,8 @@ class SwinUTransformer(nn.Module):
             self.upsample_layers.append(layer)
 
         self.upsample = nn.Upsample(size=self.img_size)
-        
+        self.final_linear = nn.Linear(embed_dim*15, 1)
+        self.locations = nn.Linear(22, embed_dim)
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -1521,12 +1508,13 @@ class SwinUTransformer(nn.Module):
 
     def forward_features(self, x, pos):
         x = self.patch_embed(x)
-        x = x + pos
         x = self.pos_drop(x)
+        x = x + pos
 
         ft = []
         for layer in self.layers:
             x = layer(x)
+            print(x.size())
             ft.append(x)
            
         
@@ -1542,12 +1530,21 @@ class SwinUTransformer(nn.Module):
             up_ft.append(x)
 
         up_ft = torch.cat(up_ft, dim=2)
+        up_ft = self.final_linear(up_ft)
         return up_ft
 
 
 
-    def forward(self, x, pos):
-        x = self.forward_features(x, pos)
+    def forward(self, x):
+        centroids = x[:, :2, :, :]
+        fft = x[:, 8:-10, :, :]
+        lbp = x[:, -10:, :, :]
+        color = x[:, 2:8, :, :]
+        x = torch.cat((color, lbp), dim=1)
+        locations = torch.cat((centroids, fft), dim=1).permute(0, 2, 3, 1)
+        locations = self.locations(locations)
+        locations = locations.reshape(locations.size(0), -1, locations.size(3))
+        x = self.forward_features(x, locations)
 
 
         return x
