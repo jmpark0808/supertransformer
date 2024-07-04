@@ -2,7 +2,7 @@ import pytorch_lightning as pl
 import torch
 # import sys
 # sys.path.insert(0, '/home/eddie/waterloo/supertransformer')
-from Blocks.MobileNetV2 import MobileNetV2
+from Blocks.MobileUNet import MobileNetV2
 import torch.nn.functional as F
 import numpy as np
 from dataset.mixup import Mixup
@@ -79,7 +79,7 @@ class ImageNet_MBNET_Wrapper(pl.LightningModule):
 
         
         dataset= self.trainer.train_dataloader
-        num_iter = len(dataset)//self.batch_size
+        num_iter = len(dataset)
         warmup_epoch = self.warmup_epochs
         warmup_iter = warmup_epoch * num_iter
         current_iter = batch_idx + epoch * num_iter
