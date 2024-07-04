@@ -11,6 +11,7 @@ from dataset.mixup import Mixup
 from util.optimizers import SoftTargetCrossEntropy
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingWarmRestarts
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
+from math import cos, pi
 
 class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
@@ -60,7 +61,8 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
             self.supert.load_state_dict(ckpt['state_dict'])
 
         self.validation_step_outputs = []
-        self.loss_fn = SoftTargetCrossEntropy()
+        # self.loss_fn = SoftTargetCrossEntropy()
+        self.loss_fn = torch.nn.CrossEntropyLoss()
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()
@@ -81,10 +83,10 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
        
         optimizer = torch.optim.SGD(self.parameters(), lr=self.lr, momentum=0.9, weight_decay=0.00004)
 
-        self.trainer.fit_loop.setup_data()
-        dataset= self.trainer.train_dataloader
-        self.scheduler = CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
-                                                      1, 5e-6)
+        # self.trainer.fit_loop.setup_data()
+        # dataset= self.trainer.train_dataloader
+        # self.scheduler = CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
+        #                                               1, 5e-6)
         # self.scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=5, min_lr = 5e-6)
         
         return optimizer
@@ -95,12 +97,21 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
 
         
         dataset= self.trainer.train_dataloader
-        # manually warm up lr without a scheduler
+        num_iter = len(dataset)
+        warmup_epoch = self.warmup_epochs
+        warmup_iter = warmup_epoch * num_iter
+        current_iter = batch_idx + epoch * num_iter
         
+
         if epoch < self.warmup_epochs:
-            lr_scale = min(1.0, float(self.trainer.global_step + 1) / (len(dataset)*self.warmup_epochs))
-            for pg in optimizer.param_groups:
-                pg["lr"] = lr_scale * self.lr
+            lr = self.lr * current_iter / warmup_iter
+        else:
+            max_iter = self.total_train_epochs * num_iter
+            lr = self.lr * (1 + cos(pi * (current_iter - warmup_iter) / (max_iter - warmup_iter))) / 2
+
+
+        for pg in optimizer.param_groups:
+            pg["lr"] = lr
       
 
     def forward(self, input):
@@ -133,7 +144,7 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
         features, target = batch
 
         features = features.reshape(features.size(0), 32, 32, -1).permute(0, 3, 1, 2)
-        features, target = self.mixup(features, target)
+        # features, target = self.mixup(features, target)
         # features = features.permute(0, 2, 3, 1).reshape(features.size(0), 1024, -1)
         # forward pass
         
@@ -142,17 +153,17 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
         loss = self.loss(pred, target)
         
         max_scores, max_idx_class = pred.max(dim=1)
-        max_scores, max_idx_label = target.max(dim=1)
+        # max_scores, max_idx_label = target.max(dim=1)
         n = pred.size(0)
-        acc = (max_idx_class == max_idx_label).sum().item() 
+        acc = (max_idx_class == target).sum().item() 
 
         self.train_acc += acc
         self.num_samples += n
 
         self.log('loss', loss.item(), sync_dist=True)
         self.iteration += 1
-        if self.current_epoch >= self.warmup_epochs:
-            self.scheduler.step()
+        # if self.current_epoch >= self.warmup_epochs:
+        #     self.scheduler.step()
         return loss
 
     def on_validation_epoch_end(self):
@@ -177,7 +188,7 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
         
         pred = self.forward(features)
 
-        loss = self.loss(pred, F.one_hot(label, num_classes=1000))
+        loss = self.loss(pred, label)
         
         max_scores, max_idx_class = pred.max(dim=1)
         n = pred.size(0)
@@ -210,7 +221,7 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
         features = features.reshape(features.size(0), 32, 32, -1).permute(0, 3, 1, 2)
         pred = self.forward(features)
 
-        loss = self.loss(pred, F.one_hot(label, num_classes=1000))
+        loss = self.loss(pred, label)
         
         max_scores, max_idx_class = pred.max(dim=1)
 
