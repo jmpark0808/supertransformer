@@ -5,7 +5,7 @@ MobileNetV2: Inverted Residuals and Linear Bottlenecks
 arXiv preprint arXiv:1801.04381.
 import from https://github.com/tonylins/pytorch-mobilenet-v2
 """
-
+import torch
 import torch.nn as nn
 import math
 
@@ -95,17 +95,17 @@ class MobileNetV2(nn.Module):
         self.cfgs = [
             # t, c, n, s
             [1,  16, 1, 1],
-            [6,  24, 2, 2],
-            [6,  32, 3, 2],
-            [6,  64, 4, 2],
+            [6,  24, 2, 2],# 56
+            [6,  32, 3, 2],# 28
+            [6,  64, 4, 2],# 14
             [6,  96, 3, 1],
-            [6, 160, 3, 2],
+            [6, 160, 3, 2],# 7 
             [6, 320, 1, 1],
         ]
 
         # building first layer
         input_channel = _make_divisible(32 * width_mult, 4 if width_mult == 0.1 else 8)
-        layers = [conv_3x3_bn(3, input_channel, 2)]
+        layers = [conv_3x3_bn(3, input_channel, 2)] # 112
         # building inverted residual blocks
         block = InvertedResidual
         for t, c, n, s in self.cfgs:
@@ -125,6 +125,76 @@ class MobileNetV2(nn.Module):
     def forward(self, x):
         x = self.features(x)
         x = self.conv(x)
+        print(x.size())
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        x = self.classifier(x)
+        return x
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                if m.bias is not None:
+                    m.bias.data.zero_()
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+            elif isinstance(m, nn.Linear):
+                m.weight.data.normal_(0, 0.01)
+                m.bias.data.zero_()
+
+
+class MobileNetV2SP(nn.Module):
+    def __init__(self, num_classes=1000, width_mult=1., in_channels=16):
+        super(MobileNetV2SP, self).__init__()
+        # setting of inverted residual blocks
+        self.cfgs = [
+            # t, c, n, s
+            [1,  16, 1, 1],
+            [6,  24, 2, 1],# 32
+            [6,  32, 3, 1],# 32
+            [6,  64, 4, 2],# 16
+            [6,  96, 3, 1],
+            [6, 160, 3, 2],# 8
+            [6, 320, 1, 1],
+        ]
+
+        # building first layer
+        input_channel = _make_divisible(32 * width_mult, 4 if width_mult == 0.1 else 8)
+        self.pe = nn.Conv2d(22, input_channel, 1)
+        layers = [conv_1x1_bn(in_channels, input_channel)] # 32
+        # building inverted residual blocks
+        block = InvertedResidual
+        for t, c, n, s in self.cfgs:
+            output_channel = _make_divisible(c * width_mult, 4 if width_mult == 0.1 else 8)
+            for i in range(n):
+                layers.append(block(input_channel, output_channel, s if i == 0 else 1, t))
+                input_channel = output_channel
+        self.features = nn.Sequential(*layers)
+        # building last several layers
+        output_channel = _make_divisible(1280 * width_mult, 4 if width_mult == 0.1 else 8) if width_mult > 1.0 else 1280
+        self.conv = conv_1x1_bn(input_channel, output_channel)
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.classifier = nn.Linear(output_channel, num_classes)
+        
+        self._initialize_weights()
+
+    def forward(self, x):
+        centroids = x[:, :2, :, :]
+        fft = x[:, 8:-10, :, :]
+        lbp = x[:, -10:, :, :]
+        color = x[:, 2:8, :, :]
+        x = torch.cat((color, lbp), dim=1)
+        locations = torch.cat((centroids, fft), dim=1)
+        locations = self.pe(locations)
+        x = self.features[0](x)
+        x = x + locations
+
+        x = self.features[1:](x)
+        x = self.conv(x)
+  
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
         x = self.classifier(x)
