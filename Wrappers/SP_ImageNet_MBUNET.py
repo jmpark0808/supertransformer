@@ -1,6 +1,6 @@
 import pytorch_lightning as pl
 import torch
-from Blocks.MobileUNet import MobileNetV2
+from Blocks.MobileNetV2 import MobileNetV2SP
 
 import torch.nn.functional as F
 import numpy as np
@@ -39,10 +39,10 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
         self.res = int(self.num_seg**0.5)
         
         # Generator that produces the HeatMap
-        self.supert = MobileNetV2(input_size=self.res)
+        self.supert = MobileNetV2SP(in_channels=16)
         kwargs['parameters'] = parameter_count(self.supert)['']
         
-        inp = torch.randn([1, 3, self.res, self.res])
+        inp = torch.randn([1, input_dim+2, self.res, self.res])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
         # from fvcore.nn import FlopCountAnalysis, flop_count_table
@@ -121,7 +121,7 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-        input = input[:, 2:5, :, :]    
+          
         pred = self.supert(input)
 
         return pred

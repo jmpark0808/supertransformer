@@ -1,7 +1,7 @@
 import pytorch_lightning as pl
 import torch
-from Blocks.swinunet_upernet import SwinTransformer
-
+# from Blocks.swinunet_upernet import SwinTransformer
+from Blocks.swintransformer import SwinUTransformerEncoder
 import torch.nn.functional as F
 import numpy as np
 from dataset.constants import *
@@ -43,7 +43,15 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
             self.classes = 4
         else:
             self.classes= 1000
-        self.supert = SwinTransformer(img_size=self.res, in_chans=16, patch_size=1, window_size=self.window_size,
+        # UPerNet encoder
+        # self.supert = SwinTransformer(img_size=self.res, in_chans=16, patch_size=1, window_size=self.window_size,
+        #                                embed_dim=self.tfm_hp[2], depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
+        #                                  num_heads=[self.tfm_hp[0],
+        #                                             self.tfm_hp[0]*2,
+        #                                             self.tfm_hp[0]*4,
+        #                                                 self.tfm_hp[0]*8], mlp_ratio=4, num_classes=self.classes)
+        # Mix attention encoder
+        self.supert = SwinUTransformerEncoder(img_size=self.res, in_chans=16, patch_size=1, window_size=self.window_size,
                                        embed_dim=self.tfm_hp[2], depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
                                          num_heads=[self.tfm_hp[0],
                                                     self.tfm_hp[0]*2,
