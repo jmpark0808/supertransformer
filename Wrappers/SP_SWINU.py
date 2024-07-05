@@ -60,7 +60,7 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         #                                , num_heads=self.heads,
         #                                embed_dim=self.dims)
         # SWIN Mix-attention 
-        self.supert = SwinUTransformer(img_size=res, in_chans=16, patch_size=1, window_size=self.window_size,
+        self.supert = SwinUTransformer(img_size=res, in_chans=16, patch_size=1, window_size=self.window_size, embed_dim=self.tfm_hp[2],
                                         depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
                                          num_heads=[self.tfm_hp[0],
                                                     self.tfm_hp[0]*2,
