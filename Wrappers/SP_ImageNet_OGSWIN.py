@@ -39,7 +39,7 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         
         # Generator that produces the HeatMap
         if self.dataloader == 'SpeedLimits':
-            self.res = (192, 256)
+            self.res = (56, 56)
             self.classes = 4
         else:
             self.classes= 1000

@@ -523,23 +523,24 @@ class SpeedLimitsCropExport(data.Dataset):
         data_gray = torch.tensor(data_gray)
         
         pad = [0, 0, 0, 0]
+        img_size = 224
         if data.size(1) %2 == 0:
-            half = (200-data.size(1))//2
+            half = (img_size-data.size(1))//2
             pad[2] = half
             pad[3] = half
         else:
-            half_l = (200-data.size(1))//2
-            half_r = (200-data.size(1))//2+1
+            half_l = (img_size-data.size(1))//2
+            half_r = (img_size-data.size(1))//2+1
             pad[2] = half_l
             pad[3] = half_r
 
         if data.size(2) %2 == 0:
-            half = (200-data.size(2))//2
+            half = (img_size-data.size(2))//2
             pad[0] = half
             pad[1] = half
         else:
-            half_l = (200-data.size(2))//2
-            half_r = (200-data.size(2))//2+1
+            half_l = (img_size-data.size(2))//2
+            half_r = (img_size-data.size(2))//2+1
             pad[0] = half_l
             pad[1] = half_r
 
@@ -667,8 +668,8 @@ class SpeedLimitsDataset(data.Dataset):
         features_np = np.load(self.image_list[item])
 
         if self.augmentation:
-            features_np = horizontal_flip(features_np, self.coeff, 0.5, 1280,(192, 256))
-            features_np = rotate(features_np, self.coeff, 15, 0.5, (960//2, 1280//2))
+            features_np = horizontal_flip(features_np, self.coeff, 0.5, 1280, (56, 56))
+            features_np = rotate(features_np, self.coeff, 15, 0.5, (112, 112))
 
             
 
@@ -677,13 +678,13 @@ class SpeedLimitsDataset(data.Dataset):
         if self.augmentation:
 
             randaug = RandAugment(5)
-            color_space = features[:, 3:6].reshape(192, 256, 3).permute(2, 0, 1)
+            color_space = features[:, 3:6].reshape(56, 56, 3).permute(2, 0, 1)
             color_space = (color_space*255).to(torch.uint8)
             color_space = randaug(color_space).float()
             color_space /= 255.
             # plt.imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
             # plt.show()
-            color_space = color_space.reshape(3, 192*256).permute(1, 0)
+            color_space = color_space.reshape(3, 56*56).permute(1, 0)
             
             features[:, 3:6] = color_space
 
@@ -964,8 +965,8 @@ def main(argv):
     args = parser.parse_args(argv)
 
     # Load the data
-    training_set = SpeedLimitsCropExport(args.dataset, 10, 2500, 10, train=True, export_dir='/mnt/hdd/Datasets/stopsigns/Toy_TR')
-    test_set = SpeedLimitsCropExport(args.dataset, 10, 2500, 10, train=False, export_dir='/mnt/hdd/Datasets/stopsigns/Toy_TE')
+    training_set = SpeedLimitsCropExport(args.dataset, 10, 3136, 10, train=True, export_dir='/mnt/dragon/Datasets/stopsigns/Toy_TR')
+    test_set = SpeedLimitsCropExport(args.dataset, 10, 3136, 10, train=False, export_dir='/mnt/dragon/Datasets/stopsigns/Toy_TE')
     # training_set = SpeedLimits(args.dataset, train=True)
     # test_set = SpeedLimits(args.dataset, train=False)
     training_batched = DataLoader(training_set, 1, num_workers=10)
