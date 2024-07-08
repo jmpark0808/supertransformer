@@ -163,7 +163,7 @@ class MobileNetV2SP(nn.Module):
 
         # building first layer
         input_channel = _make_divisible(32 * width_mult, 4 if width_mult == 0.1 else 8)
-        # self.pe = nn.Conv2d(22, input_channel, 1)
+        self.pe = nn.Sequential(*[nn.Conv2d(22, input_channel, 1), nn.BatchNorm2d(input_channel), nn.ReLU6()])
         layers = [conv_3x3_bn(in_channels, input_channel, 1)] # 32
         # building inverted residual blocks
         block = InvertedResidual
@@ -182,19 +182,18 @@ class MobileNetV2SP(nn.Module):
         self._initialize_weights()
 
     def forward(self, x):
-        # centroids = x[:, :2, :, :]
-        # fft = x[:, 8:-10, :, :]
-        # lbp = x[:, -10:, :, :]
-        # color = x[:, 2:8, :, :]
-        # x = torch.cat((color, lbp), dim=1)
-        # locations = torch.cat((centroids, fft), dim=1)
-        # locations = self.pe(locations)
-        # x = self.features[0](x)
-        # x = x + locations
+        centroids = x[:, :2, :, :]
+        fft = x[:, 8:-10, :, :]
+        lbp = x[:, -10:, :, :]
+        color = x[:, 2:8, :, :]
+        x = torch.cat((color, lbp), dim=1)
+        # x = color
+        locations = torch.cat((centroids, fft), dim=1)
+        locations = self.pe(locations)
+        x = self.features[0](x)
+        x = x + locations
 
-        # x = self.features[1:](x)
-        x = x[:, 2:5, :, :]
-        x = self.features(x)
+        x = self.features[1:](x)
         x = self.conv(x)
   
         x = self.avgpool(x)

@@ -39,7 +39,7 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
         self.res = int(self.num_seg**0.5)
         
         # Generator that produces the HeatMap
-        self.supert = MobileNetV2SP(in_channels=3)
+        self.supert = MobileNetV2SP(in_channels=16)
         kwargs['parameters'] = parameter_count(self.supert)['']
         
         inp = torch.randn([1, input_dim+2, self.res, self.res])
@@ -143,7 +143,7 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
         """
         features, target = batch
 
-        features = features.reshape(features.size(0), 32, 32, -1).permute(0, 3, 1, 2)
+        features = features.reshape(features.size(0), self.res, self.res, -1).permute(0, 3, 1, 2)
         # features, target = self.mixup(features, target)
         # features = features.permute(0, 2, 3, 1).reshape(features.size(0), 1024, -1)
         # forward pass
@@ -184,7 +184,7 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
 
 
         # forward pass
-        features = features.reshape(features.size(0), 32, 32, -1).permute(0, 3, 1, 2)
+        features = features.reshape(features.size(0), self.res, self.res, -1).permute(0, 3, 1, 2)
         
         pred = self.forward(features)
 
@@ -218,7 +218,7 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
         features, label = batch
 
         # forward pass
-        features = features.reshape(features.size(0), 32, 32, -1).permute(0, 3, 1, 2)
+        features = features.reshape(features.size(0), self.res, self.res, -1).permute(0, 3, 1, 2)
         pred = self.forward(features)
 
         loss = self.loss(pred, label)
