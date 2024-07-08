@@ -182,18 +182,19 @@ class MobileNetV2SP(nn.Module):
         self._initialize_weights()
 
     def forward(self, x):
-        centroids = x[:, :2, :, :]
-        fft = x[:, 8:-10, :, :]
-        lbp = x[:, -10:, :, :]
-        color = x[:, 2:8, :, :]
-        x = torch.cat((color, lbp), dim=1)
+        # centroids = x[:, :2, :, :]
+        # fft = x[:, 8:-10, :, :]
+        # lbp = x[:, -10:, :, :]
+        # color = x[:, 2:8, :, :]
+        # x = torch.cat((color, lbp), dim=1)
         # x = color
-        locations = torch.cat((centroids, fft), dim=1)
-        locations = self.pe(locations)
-        x = self.features[0](x)
-        x = x + locations
+        # locations = torch.cat((centroids, fft), dim=1)
+        # locations = self.pe(locations)
+        # x = self.features[0](x)
+        # x = x + locations
 
-        x = self.features[1:](x)
+        # x = self.features[1:](x)
+        x = self.features(x)
         x = self.conv(x)
   
         x = self.avgpool(x)
