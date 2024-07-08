@@ -35,6 +35,7 @@ class ImageNetDataset(data.Dataset):
         self.coeff = coeff
         self.size = size
         self.augmentation = augmentation
+      
         for file in os.listdir(root_dir):
             if '_target' in file:
                 self.image_list.append(os.path.join(root_dir, file.split('_target')[0]+'.npy'))
@@ -52,9 +53,9 @@ class ImageNetDataset(data.Dataset):
     def __getitem__(self, item):
         
         features_np = np.load(self.image_list[item])
-
+        res = int(features_np.shape[0]**0.5)
         if self.augmentation:
-            features_np = horizontal_flip(features_np, self.coeff, 0.5, self.size, (int(features_np.shape[0]**0.5),int(features_np.shape[0]**0.5)))
+            features_np = horizontal_flip(features_np, self.coeff, 0.5, self.size, (res, res))
             features_np = rotate(features_np, self.coeff, 15, 0.5, (self.size, self.size))
 
 
@@ -62,13 +63,13 @@ class ImageNetDataset(data.Dataset):
         if self.augmentation:
 
             randaug = RandAugment(5)
-            color_space = features[:, 3:6].reshape(32, 32, 3).permute(2, 0, 1)
+            color_space = features[:, 3:6].reshape(res, res, 3).permute(2, 0, 1)
             color_space = (color_space*255).to(torch.uint8)
             color_space = randaug(color_space).float()
             color_space /= 255.
             # plt.imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
             # plt.show()
-            color_space = color_space.reshape(3, 1024).permute(1, 0)
+            color_space = color_space.reshape(3, res*res).permute(1, 0)
             
             features[:, 3:6] = color_space
 
