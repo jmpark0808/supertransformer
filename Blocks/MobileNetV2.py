@@ -163,7 +163,7 @@ class MobileNetV2SP(nn.Module):
 
         # building first layer
         input_channel = _make_divisible(32 * width_mult, 4 if width_mult == 0.1 else 8)
-        self.pe = nn.Sequential(*[nn.Conv2d(22, input_channel, 1), nn.BatchNorm2d(input_channel), nn.ReLU6()])
+        # self.pe = nn.Sequential(*[nn.Conv2d(22, input_channel, 1), nn.BatchNorm2d(input_channel), nn.ReLU6()])
         layers = [conv_3x3_bn(in_channels, input_channel, 1)] # 32
         # building inverted residual blocks
         block = InvertedResidual
