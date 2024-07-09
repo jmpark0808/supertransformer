@@ -442,9 +442,10 @@ class BasicLayer(nn.Module):
                 x = checkpoint.checkpoint(blk, x)
             else:
                 x = blk(x, centroids)
+        ds = x
         if self.downsample is not None:
             x, centroids = self.downsample(x, centroids)
-        return x, centroids
+        return ds, x, centroids
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, depth={self.depth}"
@@ -507,6 +508,7 @@ class BasicLayerUpsample(nn.Module):
 
         features = torch.cat(feats, dim=3)
         features = features.reshape(features.size(0), -1, features.size(3))
+        
         features = self.linear(features)
         
         out = self.blocks(x_q, features)
@@ -793,7 +795,7 @@ class SwinUTransformer(nn.Module):
             self.layers.append(layer)
             resolutions.append(patches_resolution[0] // (2 ** i_layer))
             embed_dims.append(int(embed_dim * 2 ** i_layer))
-        resolutions.append(patches_resolution[0] // (2 ** i_layer))
+        # resolutions.append(patches_resolution[0] // (2 ** i_layer))
         embed_dims.reverse()
             
             
@@ -801,7 +803,7 @@ class SwinUTransformer(nn.Module):
         self.upsample_layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
             layer = BasicLayerUpsample(dim=embed_dims[i_layer],
-                                       total_dim=embed_dim*23,
+                                       total_dim=embed_dim*15,
                                input_resolution=resolutions,
                                num_heads=num_heads[self.num_layers-i_layer-1],
                                mlp_ratio=self.mlp_ratio,
@@ -811,7 +813,7 @@ class SwinUTransformer(nn.Module):
             self.upsample_layers.append(layer)
 
         self.upsample = nn.Upsample(size=img_size[0])
-        self.sod_head = nn.Linear(embed_dim*23, 1)
+        self.sod_head = nn.Linear(embed_dim*15, 1)
         
         self.apply(self._init_weights)
 
@@ -839,21 +841,22 @@ class SwinUTransformer(nn.Module):
         # x = x + pos
         x = self.pos_drop(x)
         
-        ft = [x]
+        ft = []
         
         for layer in self.layers:
-            x, centroids = layer(x, centroids)
+            ds, x, centroids = layer(x, centroids)
             
-            ft.append(x)
+            ft.append(ds)
 
-        res = int(math.sqrt(x.size(1)))
-        x_ = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
-        x_ = self.upsample(x_).permute(0, 2, 3, 1)
-        x_ = x_.reshape(x_.size(0), self.img_size**2, -1)
-        up_ft = [x_]
+        # res = int(math.sqrt(x.size(1)))
+        # x_ = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
+        # x_ = self.upsample(x_).permute(0, 2, 3, 1)
+        # x_ = x_.reshape(x_.size(0), self.img_size**2, -1)
+        # up_ft = [x_]
+        up_ft = []
         for idx, layer in enumerate(self.upsample_layers):
-            x = layer(ft[len(ft)-idx-2], ft)
-            ft[len(ft)-idx-2] = x
+            x = layer(ft[len(ft)-idx-1], ft)
+            ft[len(ft)-idx-1] = x
             
             res = int(math.sqrt(x.size(1)))
             x = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
