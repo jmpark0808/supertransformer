@@ -39,7 +39,7 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
         self.res = int(self.num_seg**0.5)
         
         # Generator that produces the HeatMap
-        self.supert = MobileNetV2SP(in_channels=38)
+        self.supert = MobileNetV2SP(in_channels=16)
         kwargs['parameters'] = parameter_count(self.supert)['']
         
         inp = torch.randn([1, input_dim+2, self.res, self.res])
