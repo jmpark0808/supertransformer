@@ -35,6 +35,29 @@ class Mlp(nn.Module):
         x = self.drop(x)
         return x
 
+def dilated_partition(x, window_size):
+    B, H, W, C = x.shape
+    x = x.view(B, window_size, H // window_size,window_size,  W // window_size, C)
+    
+    windows = x.permute(0, 2, 4, 1, 3, 5).contiguous().view(-1, window_size, window_size, C)
+    return windows
+
+def dilated_reverse(windows, window_size, H, W):
+    """
+    Args:
+        windows: (num_windows*B, window_size, window_size, C)
+        window_size (int): Window size
+        H (int): Height of image
+        W (int): Width of image
+
+    Returns:
+        x: (B, H, W, C)
+    """
+
+    B = int(windows.shape[0] / (H * W / window_size / window_size))
+    x = windows.view(B, H // window_size, W // window_size, window_size, window_size, -1)
+    x = x.permute(0, 3, 1, 4, 2, 5).contiguous().view(B, H, W, -1)
+    return x
 
 def window_partition(x, window_size):
     """
@@ -266,16 +289,10 @@ class SwinTransformerBlock(nn.Module):
 
         # cyclic shift
         if self.shift_size > 0:
-            if not self.fused_window_process:
-                shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
-                # partition windows
-                x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
-
-                shifted_centroids = torch.roll(centroids, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
-                centroid_windows = window_partition(shifted_centroids, self.window_size) 
-                # partition windows
-            else:
-                x_windows = WindowProcess.apply(x, B, H, W, C, -self.shift_size, self.window_size)
+            shifted_x = x
+            shifted_centroids = centroids
+            centroid_windows = dilated_partition(shifted_centroids, self.window_size)
+            x_windows = dilated_partition(shifted_x, self.window_size)
         else:
             shifted_x = x
             shifted_centroids = centroids
@@ -294,11 +311,8 @@ class SwinTransformerBlock(nn.Module):
 
         # reverse cyclic shift
         if self.shift_size > 0:
-            if not self.fused_window_process:
-                shifted_x = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
-                x = torch.roll(shifted_x, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
-            else:
-                x = WindowProcessReverse.apply(attn_windows, B, H, W, C, self.shift_size, self.window_size)
+            shifted_x = dilated_reverse(attn_windows, self.window_size, H, W)
+            x = shifted_x
         else:
             shifted_x = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
             x = shifted_x
