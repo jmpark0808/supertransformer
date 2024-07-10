@@ -498,6 +498,7 @@ class BasicLayerUpsample(nn.Module):
        
     def forward(self, x_q, x_kv):
         feats = []
+       
         for idx, res in enumerate(self.input_resolution):
             feats.append(self.avg_pools[idx](x_kv[idx].reshape(x_kv[idx].size(0), res, res, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1))
         # feat1 = self.avg_pool_x8(x_kv[0].reshape(x_kv[0].size(0), 32, 32, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
@@ -788,22 +789,23 @@ class SwinUTransformer(nn.Module):
                                drop=drop_rate, attn_drop=attn_drop_rate,
                                drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
                                norm_layer=norm_layer,
-                               downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
+                               downsample=PatchMerging,# if (i_layer < self.num_layers - 1) else None,
                                use_checkpoint=use_checkpoint)
             self.layers.append(layer)
             resolutions.append(patches_resolution[0] // (2 ** i_layer))
             embed_dims.append(int(embed_dim * 2 ** i_layer))
-        resolutions.append(patches_resolution[0] // (2 ** i_layer))
+        resolutions.append(patches_resolution[0] // (2 ** (i_layer+1)))
+        embed_dims.append(int(embed_dim * 2 ** (i_layer+1)))
         embed_dims.reverse()
+        # num_heads.append(num_heads[0]*8)
+        num_heads.reverse()
             
-            
-
         self.upsample_layers = nn.ModuleList()
-        for i_layer in range(self.num_layers):
+        for i_layer in range(self.num_layers): # TODO Need to add +1 
             layer = BasicLayerUpsample(dim=embed_dims[i_layer],
-                                       total_dim=embed_dim*23,
+                                       total_dim=embed_dim*15,
                                input_resolution=resolutions,
-                               num_heads=num_heads[self.num_layers-i_layer-1],
+                               num_heads=num_heads[i_layer],
                                mlp_ratio=self.mlp_ratio,
                                qkv_bias=qkv_bias, 
                                drop=drop_rate, 
@@ -811,7 +813,7 @@ class SwinUTransformer(nn.Module):
             self.upsample_layers.append(layer)
 
         self.upsample = nn.Upsample(size=img_size[0])
-        self.sod_head = nn.Linear(embed_dim*15, 1)
+        self.sod_head = nn.Linear(embed_dim*14, 1)
         
         self.apply(self._init_weights)
 
@@ -853,8 +855,8 @@ class SwinUTransformer(nn.Module):
         # up_ft = [x_]
         up_ft = []
         for idx, layer in enumerate(self.upsample_layers):
-            x = layer(ft[len(ft)-idx-2], ft)
-            ft[len(ft)-idx-2] = x
+            x = layer(ft[len(ft)-idx-1], ft)
+            ft[len(ft)-idx-1] = x
             
             res = int(math.sqrt(x.size(1)))
             x = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
