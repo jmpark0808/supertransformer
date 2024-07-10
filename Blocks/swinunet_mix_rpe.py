@@ -811,7 +811,7 @@ class SwinUTransformer(nn.Module):
             self.upsample_layers.append(layer)
 
         self.upsample = nn.Upsample(size=img_size[0])
-        self.sod_head = nn.Linear(embed_dim*23, 1)
+        self.sod_head = nn.Linear(embed_dim*15, 1)
         
         self.apply(self._init_weights)
 
@@ -846,11 +846,12 @@ class SwinUTransformer(nn.Module):
             
             ft.append(x)
 
-        res = int(math.sqrt(x.size(1)))
-        x_ = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
-        x_ = self.upsample(x_).permute(0, 2, 3, 1)
-        x_ = x_.reshape(x_.size(0), self.img_size**2, -1)
-        up_ft = [x_]
+        # res = int(math.sqrt(x.size(1)))
+        # x_ = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
+        # x_ = self.upsample(x_).permute(0, 2, 3, 1)
+        # x_ = x_.reshape(x_.size(0), self.img_size**2, -1)
+        # up_ft = [x_]
+        up_ft = []
         for idx, layer in enumerate(self.upsample_layers):
             x = layer(ft[len(ft)-idx-2], ft)
             ft[len(ft)-idx-2] = x
