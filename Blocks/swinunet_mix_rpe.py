@@ -35,29 +35,6 @@ class Mlp(nn.Module):
         x = self.drop(x)
         return x
 
-def dilated_partition(x, window_size):
-    B, H, W, C = x.shape
-    x = x.view(B, window_size, H // window_size,window_size,  W // window_size, C)
-    
-    windows = x.permute(0, 2, 4, 1, 3, 5).contiguous().view(-1, window_size, window_size, C)
-    return windows
-
-def dilated_reverse(windows, window_size, H, W):
-    """
-    Args:
-        windows: (num_windows*B, window_size, window_size, C)
-        window_size (int): Window size
-        H (int): Height of image
-        W (int): Width of image
-
-    Returns:
-        x: (B, H, W, C)
-    """
-
-    B = int(windows.shape[0] / (H * W / window_size / window_size))
-    x = windows.view(B, H // window_size, W // window_size, window_size, window_size, -1)
-    x = x.permute(0, 3, 1, 4, 2, 5).contiguous().view(B, H, W, -1)
-    return x
 
 def window_partition(x, window_size):
     """
@@ -289,10 +266,16 @@ class SwinTransformerBlock(nn.Module):
 
         # cyclic shift
         if self.shift_size > 0:
-            shifted_x = x
-            shifted_centroids = centroids
-            centroid_windows = dilated_partition(shifted_centroids, self.window_size)
-            x_windows = dilated_partition(shifted_x, self.window_size)
+            if not self.fused_window_process:
+                shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+                # partition windows
+                x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
+
+                shifted_centroids = torch.roll(centroids, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+                centroid_windows = window_partition(shifted_centroids, self.window_size) 
+                # partition windows
+            else:
+                x_windows = WindowProcess.apply(x, B, H, W, C, -self.shift_size, self.window_size)
         else:
             shifted_x = x
             shifted_centroids = centroids
@@ -311,8 +294,11 @@ class SwinTransformerBlock(nn.Module):
 
         # reverse cyclic shift
         if self.shift_size > 0:
-            shifted_x = dilated_reverse(attn_windows, self.window_size, H, W)
-            x = shifted_x
+            if not self.fused_window_process:
+                shifted_x = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
+                x = torch.roll(shifted_x, shifts=(self.shift_size, self.shift_size), dims=(1, 2))
+            else:
+                x = WindowProcessReverse.apply(attn_windows, B, H, W, C, self.shift_size, self.window_size)
         else:
             shifted_x = window_reverse(attn_windows, self.window_size, H, W)  # B H' W' C
             x = shifted_x
@@ -432,30 +418,17 @@ class BasicLayer(nn.Module):
         self.use_checkpoint = use_checkpoint
 
         # build blocks
-        if input_resolution[0] <= window_size:
-            self.blocks = nn.ModuleList([
-                SwinTransformerBlock(dim=dim, input_resolution=input_resolution,
-                                    num_heads=num_heads, window_size=window_size,
-                                    shift_size=0,
-                                    mlp_ratio=mlp_ratio,
-                                    qkv_bias=qkv_bias, qk_scale=qk_scale,
-                                    drop=drop, attn_drop=attn_drop,
-                                    drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                                    norm_layer=norm_layer,
-                                    fused_window_process=fused_window_process)
-                for i in range(depth)])
-        else:
-            self.blocks = nn.ModuleList([
-                SwinTransformerBlock(dim=dim, input_resolution=input_resolution,
-                                    num_heads=num_heads, window_size=window_size,
-                                    shift_size=0 if (i % 2 == 0) else window_size // 2,
-                                    mlp_ratio=mlp_ratio,
-                                    qkv_bias=qkv_bias, qk_scale=qk_scale,
-                                    drop=drop, attn_drop=attn_drop,
-                                    drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                                    norm_layer=norm_layer,
-                                    fused_window_process=fused_window_process)
-                for i in range(depth)])
+        self.blocks = nn.ModuleList([
+            SwinTransformerBlock(dim=dim, input_resolution=input_resolution,
+                                 num_heads=num_heads, window_size=window_size,
+                                 shift_size=0 if (i % 2 == 0) else window_size // 2,
+                                 mlp_ratio=mlp_ratio,
+                                 qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                 drop=drop, attn_drop=attn_drop,
+                                 drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                                 norm_layer=norm_layer,
+                                 fused_window_process=fused_window_process)
+            for i in range(depth)])
 
         # patch merging layer
         if downsample is not None:
@@ -469,10 +442,9 @@ class BasicLayer(nn.Module):
                 x = checkpoint.checkpoint(blk, x)
             else:
                 x = blk(x, centroids)
-        ds = x
         if self.downsample is not None:
             x, centroids = self.downsample(x, centroids)
-        return ds, x, centroids
+        return x, centroids
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, depth={self.depth}"
@@ -535,7 +507,6 @@ class BasicLayerUpsample(nn.Module):
 
         features = torch.cat(feats, dim=3)
         features = features.reshape(features.size(0), -1, features.size(3))
-        
         features = self.linear(features)
         
         out = self.blocks(x_q, features)
@@ -822,7 +793,7 @@ class SwinUTransformer(nn.Module):
             self.layers.append(layer)
             resolutions.append(patches_resolution[0] // (2 ** i_layer))
             embed_dims.append(int(embed_dim * 2 ** i_layer))
-        # resolutions.append(patches_resolution[0] // (2 ** i_layer))
+        resolutions.append(patches_resolution[0] // (2 ** i_layer))
         embed_dims.reverse()
             
             
@@ -830,7 +801,7 @@ class SwinUTransformer(nn.Module):
         self.upsample_layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
             layer = BasicLayerUpsample(dim=embed_dims[i_layer],
-                                       total_dim=embed_dim*15,
+                                       total_dim=embed_dim*23,
                                input_resolution=resolutions,
                                num_heads=num_heads[self.num_layers-i_layer-1],
                                mlp_ratio=self.mlp_ratio,
@@ -840,7 +811,7 @@ class SwinUTransformer(nn.Module):
             self.upsample_layers.append(layer)
 
         self.upsample = nn.Upsample(size=img_size[0])
-        self.sod_head = nn.Linear(embed_dim*15, 1)
+        self.sod_head = nn.Linear(embed_dim*23, 1)
         
         self.apply(self._init_weights)
 
@@ -868,22 +839,21 @@ class SwinUTransformer(nn.Module):
         # x = x + pos
         x = self.pos_drop(x)
         
-        ft = []
+        ft = [x]
         
         for layer in self.layers:
-            ds, x, centroids = layer(x, centroids)
+            x, centroids = layer(x, centroids)
             
-            ft.append(ds)
+            ft.append(x)
 
-        # res = int(math.sqrt(x.size(1)))
-        # x_ = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
-        # x_ = self.upsample(x_).permute(0, 2, 3, 1)
-        # x_ = x_.reshape(x_.size(0), self.img_size**2, -1)
-        # up_ft = [x_]
-        up_ft = []
+        res = int(math.sqrt(x.size(1)))
+        x_ = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
+        x_ = self.upsample(x_).permute(0, 2, 3, 1)
+        x_ = x_.reshape(x_.size(0), self.img_size**2, -1)
+        up_ft = [x_]
         for idx, layer in enumerate(self.upsample_layers):
-            x = layer(ft[len(ft)-idx-1], ft)
-            ft[len(ft)-idx-1] = x
+            x = layer(ft[len(ft)-idx-2], ft)
+            ft[len(ft)-idx-2] = x
             
             res = int(math.sqrt(x.size(1)))
             x = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
