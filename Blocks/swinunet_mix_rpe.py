@@ -797,11 +797,11 @@ class SwinUTransformer(nn.Module):
         resolutions.append(patches_resolution[0] // (2 ** (i_layer+1)))
         embed_dims.append(int(embed_dim * 2 ** (i_layer+1)))
         embed_dims.reverse()
-        # num_heads.append(num_heads[0]*8)
+        num_heads.append(num_heads[0]*8)
         num_heads.reverse()
             
         self.upsample_layers = nn.ModuleList()
-        for i_layer in range(self.num_layers): # TODO Need to add +1 
+        for i_layer in range(self.num_layers+1): # TODO Need to add +1 
             layer = BasicLayerUpsample(dim=embed_dims[i_layer],
                                        total_dim=embed_dim*15,
                                input_resolution=resolutions,
@@ -813,7 +813,7 @@ class SwinUTransformer(nn.Module):
             self.upsample_layers.append(layer)
 
         self.upsample = nn.Upsample(size=img_size[0])
-        self.sod_head = nn.Linear(embed_dim*14, 1)
+        self.sod_head = nn.Linear(embed_dim*15, 1)
         
         self.apply(self._init_weights)
 
