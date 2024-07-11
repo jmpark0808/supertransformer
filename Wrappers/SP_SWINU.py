@@ -69,10 +69,11 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         #                                                 self.tfm_hp[0]*8], mlp_ratio=4, attn_drop_rate=self.dropout_edge)
         # SWIN Mix-attention with RPE
         self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
-                                       embed_dim=self.tfm_hp[2], depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3],
+                                       embed_dim=self.tfm_hp[2], depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
                                          num_heads=[self.tfm_hp[0],
                                                     self.tfm_hp[0]*2,
-                                                    self.tfm_hp[0]*4], mlp_ratio=1)
+                                                    self.tfm_hp[0]*4,
+                                                    self.tfm_hp[0]*8], mlp_ratio=1)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
         kwargs['parameters'] = parameter_count(self.supert)['']
