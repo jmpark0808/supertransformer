@@ -2,7 +2,10 @@ from typing import Optional
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
-# from Blocks.swintransformer_original_rpe import SwinUTransformer
+# from Blocks.swintransformer import SwinUTransformer
+# from Blocks.swinunet_upernet import SwinUTransformer
+# from Blocks.swinunet_upernet_exp import SwinUTransformer
+# from Blocks.swin_experimental import SwinUTransformer
 from Blocks.swinunet_mix_rpe import SwinUTransformer
 # from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
@@ -22,6 +25,10 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         self.num_seg = kwargs.get('num_seg')
         self.es_patience = kwargs.get('es_patience')
         self.dropout = kwargs.get('dropout')
+        
+        self.heads = kwargs.get('heads')
+        self.dims = kwargs.get('dims')
+        self.depths = kwargs.get('depths')
         self.tfm_hp = kwargs.get('tfmhp')
         self.coeff = kwargs.get('coeff')
         self.dilation = kwargs.get('dilation')
@@ -32,18 +39,46 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         self.image_size = kwargs.get('size')
         self.warmup_epochs = kwargs.get('warmup_epochs')
         self.total_train_epochs = kwargs.get('epoch')
+        self.factor = kwargs.get('factor')
         input_dim = get_input_dim(kwargs)
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
+        # SWIN UPerNet Production
+        # self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=1, window_size=self.window_size,
+        #                                depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3]
+        #                                , num_heads=[self.tfm_hp[0],
+        #                                              self.tfm_hp[0]*2,
+        #                                              self.tfm_hp[0]*4],
+        #                                embed_dim=self.tfm_hp[2])
+        # SWIN UPerNet Experimental
+        # self.supert = SwinUTransformer(in_chans=input_dim, img_size=res, patch_size=1, window_size=self.window_size,
+        #                                depths=self.depths
+        #                                , num_heads=self.heads,
+        #                                embed_dim=self.dims)
+        # SWIN UPerNet Experimental Patch
+        # self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=2, window_size=self.window_size,
+        #                                depths=self.depths
+        #                                , num_heads=self.heads,
+        #                                embed_dim=self.dims)
+        # SWIN Mix-attention 
+        # self.supert = SwinUTransformer(img_size=res, in_chans=16, patch_size=1, window_size=self.window_size, embed_dim=self.tfm_hp[2],
+        #                                 depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
+        #                                  num_heads=[self.tfm_hp[0],
+        #                                             self.tfm_hp[0]*2,
+        #                                             self.tfm_hp[0]*4,
+        #                                                 self.tfm_hp[0]*8], mlp_ratio=4, attn_drop_rate=self.dropout_edge)
+        # SWIN Mix-attention with RPE
         self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
                                        embed_dim=self.tfm_hp[2], depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
                                          num_heads=[self.tfm_hp[0],
                                                     self.tfm_hp[0]*2,
                                                     self.tfm_hp[0]*4,
-                                                        self.tfm_hp[0]*8], mlp_ratio=1)
+                                                    self.tfm_hp[0]*8], mlp_ratio=1)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
         kwargs['parameters'] = parameter_count(self.supert)['']
+        # print(parameter_count(self.supert))
+        # assert(0)
         inp = torch.randn([1, input_dim+2, res, res])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
@@ -58,7 +93,9 @@ class SP_SWINU_Wrapper(pl.LightningModule):
             checkpoint = torch.load(self.pretrain)
             for key in list(checkpoint['state_dict'].keys()):
                 checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
-            
+                if 'patch_embed' in key:
+                    checkpoint['state_dict'].pop(key.replace('supert.', ''))
+
             self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
         
         self.save_hyperparameters()
@@ -112,9 +149,8 @@ class SP_SWINU_Wrapper(pl.LightningModule):
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-
         pred = self.supert(input)
-
+        pred = pred.reshape(pred.size(0), -1)
         return pred
 
     def on_train_epoch_start(self):
