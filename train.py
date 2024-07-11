@@ -39,7 +39,8 @@ from Wrappers.SP_GATv3 import SP_GATv3_Wrapper
 from Wrappers.SP_GATv4 import SP_GATv4_Wrapper
 from Wrappers.SP_CTFM import SP_CTFM_Wrapper
 from Wrappers.SP_SWIN import SP_SWIN_Wrapper
-from Wrappers.SP_SWINU import SP_SWINU_Wrapper
+from Wrappers.SP_SWINUU import SP_SWINUU_Wrapper
+from Wrappers.SP_SWINUM import SP_SWINUM_Wrapper
 from Wrappers.SP_SWIN_Kernel import SP_SWIN_Kernel_Wrapper
 from Wrappers.SP_SWIN_PyG import SP_SWIN_PyG_Wrapper
 from Wrappers.Image_SOD_SWINU import Image_SWINU_Wrapper
@@ -104,7 +105,8 @@ MODEL_DIRECTORY = {
     'SP_GATv3': SP_GATv3_Wrapper,
     'SP_GATv4': SP_GATv4_Wrapper,
     'SP_SWIN': SP_SWIN_Wrapper,
-    'SP_SWINU': SP_SWINU_Wrapper,
+    'SP_SWINUU': SP_SWINUU_Wrapper,
+    'SP_SWINUM': SP_SWINUM_Wrapper,
     # 'SP_MAMBA': SP_MAMBA_Wrapper,
     'SP_SWIN_Kernel': SP_SWIN_Kernel_Wrapper,
     'SP_SWIN_PyG': SP_SWIN_PyG_Wrapper,
