@@ -255,7 +255,6 @@ if __name__ == "__main__":
         log_every_n_steps=10,
         gradient_clip_val=dict_args['clip_grad_norm'],
         devices=[dict_args['gpus']],
-        precision=16
     ) 
 
     # Trainer: train model
