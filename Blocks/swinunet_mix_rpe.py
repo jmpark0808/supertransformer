@@ -89,10 +89,9 @@ class WindowAttention(nn.Module):
         self.window_size = window_size  # Wh, Ww
         self.num_heads = num_heads
         head_dim = dim // num_heads
-        self.head_dim = head_dim
         self.scale = qk_scale or head_dim ** -0.5
 
-        # # define a parameter table of relative position bias
+        # define a parameter table of relative position bias
         # self.relative_position_bias_table = nn.Parameter(
         #     torch.zeros((2 * window_size[0] - 1) * (2 * window_size[1] - 1), num_heads))  # 2*Wh-1 * 2*Ww-1, nH
 
@@ -109,7 +108,6 @@ class WindowAttention(nn.Module):
         # relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
         # self.register_buffer("relative_position_index", relative_position_index)
 
-
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
@@ -118,10 +116,7 @@ class WindowAttention(nn.Module):
         # trunc_normal_(self.relative_position_bias_table, std=.02)
         self.softmax = nn.Softmax(dim=-1)
 
-        self.pos_linear_k = nn.Linear(2, head_dim)
-        self.pos_linear_v = nn.Linear(2, head_dim)
-
-    def forward(self, x, centroids, mask=None):
+    def forward(self, x, mask=None):
         """
         Args:
             x: input features with shape of (num_windows*B, N, C)
@@ -134,14 +129,7 @@ class WindowAttention(nn.Module):
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
 
         q = q * self.scale
-
-        rpe = centroids.unsqueeze(2) - centroids.unsqueeze(1) # B, N, N, 2
-        rpe_k = self.pos_linear_k(rpe) # B, N, N, D
-        
-        rpe_v = self.pos_linear_v(rpe) # B, N, N, D
-
-        attn = (q @ k.transpose(-2, -1)) + (q.transpose(1, 2) @ rpe_k.permute(0, 1, 3, 2)).permute(0, 2, 1, 3)
-
+        attn = (q @ k.transpose(-2, -1))
 
         # relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
         #     self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
@@ -158,8 +146,7 @@ class WindowAttention(nn.Module):
 
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B_, N, C) + (attn.permute(0, 2, 1, 3) @ rpe_v).reshape(B_, N, C)
-        # x = torch.mean(x, 2)
+        x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
@@ -254,7 +241,7 @@ class SwinTransformerBlock(nn.Module):
         self.register_buffer("attn_mask", attn_mask)
         self.fused_window_process = fused_window_process
 
-    def forward(self, x, centroids):
+    def forward(self, x):
         H, W = self.input_resolution
         B, L, C = x.shape
         assert L == H * W, "input feature has wrong size"
@@ -262,7 +249,6 @@ class SwinTransformerBlock(nn.Module):
         shortcut = x
         x = self.norm1(x)
         x = x.view(B, H, W, C)
-        centroids = centroids.view(B, 2, H, W).permute(0, 2, 3, 1)
 
         # cyclic shift
         if self.shift_size > 0:
@@ -270,24 +256,17 @@ class SwinTransformerBlock(nn.Module):
                 shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
                 # partition windows
                 x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
-
-                shifted_centroids = torch.roll(centroids, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
-                centroid_windows = window_partition(shifted_centroids, self.window_size) 
-                # partition windows
             else:
                 x_windows = WindowProcess.apply(x, B, H, W, C, -self.shift_size, self.window_size)
         else:
             shifted_x = x
-            shifted_centroids = centroids
             # partition windows
             x_windows = window_partition(shifted_x, self.window_size)  # nW*B, window_size, window_size, C
-            centroid_windows = window_partition(shifted_centroids, self.window_size)
 
         x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
-        centroid_windows = centroid_windows.view(-1, self.window_size*self.window_size, 2)
 
         # W-MSA/SW-MSA
-        attn_windows = self.attn(x_windows, centroid_windows, mask=self.attn_mask)  # nW*B, window_size*window_size, C
+        attn_windows = self.attn(x_windows, mask=self.attn_mask)  # nW*B, window_size*window_size, C
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
@@ -342,10 +321,10 @@ class PatchMerging(nn.Module):
         super().__init__()
         self.input_resolution = input_resolution
         self.dim = dim
-        self.reduction = nn.Linear(4 * dim, 2 * dim, bias=False)
+        self.reduction = nn.Linear(4 * dim, 2*dim, bias=False)
         self.norm = norm_layer(4 * dim)
 
-    def forward(self, x, centroids):
+    def forward(self, x):
         """
         x: B, H*W, C
         """
@@ -360,20 +339,13 @@ class PatchMerging(nn.Module):
         x1 = x[:, 1::2, 0::2, :]  # B H/2 W/2 C
         x2 = x[:, 0::2, 1::2, :]  # B H/2 W/2 C
         x3 = x[:, 1::2, 1::2, :]  # B H/2 W/2 C
-
-        c0 = centroids[:, :, 0::2, 0::2]  # B 2, H/2 W/2 
-        c1 = centroids[:, :, 1::2, 0::2]  # B 2, H/2 W/2 
-        c2 = centroids[:, :, 0::2, 1::2]  # B 2, H/2 W/2 
-        c3 = centroids[:, :, 1::2, 1::2]  # B 2, H/2 W/2 
         x = torch.cat([x0, x1, x2, x3], -1)  # B H/2 W/2 4*C
         x = x.view(B, -1, 4 * C)  # B H/2*W/2 4*C
-
-        centroids = torch.mean(torch.stack([c0, c1, c2, c3], 1), dim=1) # B, 2, H/2, W/2
 
         x = self.norm(x)
         x = self.reduction(x)
 
-        return x, centroids
+        return x
 
     def extra_repr(self) -> str:
         return f"input_resolution={self.input_resolution}, dim={self.dim}"
@@ -432,19 +404,20 @@ class BasicLayer(nn.Module):
 
         # patch merging layer
         if downsample is not None:
-            self.downsample = downsample(input_resolution, dim=dim, norm_layer=norm_layer)
+            self.downsample = downsample(input_resolution, dim=dim, norm_layer=norm_layer)#,  num_heads=num_heads)
         else:
             self.downsample = None
 
-    def forward(self, x, centroids):
+    def forward(self, x):
         for blk in self.blocks:
             if self.use_checkpoint:
                 x = checkpoint.checkpoint(blk, x)
             else:
-                x = blk(x, centroids)
+                x = blk(x)
+        h = x
         if self.downsample is not None:
-            x, centroids = self.downsample(x, centroids)
-        return x, centroids
+            x = self.downsample(x)
+        return h, x
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, depth={self.depth}"
@@ -812,6 +785,7 @@ class SwinUTransformer(nn.Module):
 
         self.upsample = nn.Upsample(size=img_size[0])
         self.sod_head = nn.Linear(embed_dim*23, 1)
+        self.locations = nn.Sequential(*[nn.Linear(22, embed_dim)])
         
         self.apply(self._init_weights)
 
@@ -832,17 +806,17 @@ class SwinUTransformer(nn.Module):
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
 
-    def forward_features(self, x):
-        centroids = x[:, :2, :, : ]
-        x = x[:, 2:, :, :]
+    def forward_features(self, x, locations):
+        # centroids = x[:, :2, :, : ]
+        # x = x[:, 2:, :, :]
         x = self.patch_embed(x)
-        # x = x + pos
+        x = x + locations
         x = self.pos_drop(x)
         
         ft = [x]
         
         for layer in self.layers:
-            x, centroids = layer(x, centroids)
+            ds, x = layer(x)
             
             ft.append(x)
 
@@ -867,7 +841,15 @@ class SwinUTransformer(nn.Module):
 
 
     def forward(self, x):
-        x = self.forward_features(x)
+        centroids = x[:, :2, :, :]
+        fft = x[:, 8:-10, :, :]
+        lbp = x[:, -10:, :, :]
+        color = x[:, 2:8, :, :]
+        x = torch.cat((color, lbp), dim=1)
+        locations = torch.cat((centroids, fft), dim=1).permute(0, 2, 3, 1)
+        locations = self.locations(locations)
+        locations = locations.reshape(locations.size(0), -1, locations.size(3))
+        x = self.forward_features(x, locations)
         x = self.sod_head(x)
 
         return x
