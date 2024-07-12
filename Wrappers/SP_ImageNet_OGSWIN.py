@@ -1,7 +1,7 @@
 import pytorch_lightning as pl
 import torch
 # from Blocks.swinunet_upernet import SwinTransformer
-from Blocks.swintransformer import SwinUTransformerEncoder
+from Blocks.swin_encoder_rpe import SwinTransformer
 import torch.nn.functional as F
 import numpy as np
 from dataset.constants import *
@@ -32,7 +32,9 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         self.window_size = kwargs.get('window_size')
         self.warmup_epochs = kwargs.get('warmup_epochs')
         self.total_train_epochs = kwargs.get('epoch')
-        
+        self.heads = kwargs.get('heads')
+        self.dims = kwargs.get('dims')
+        self.depths = kwargs.get('depths')
         
         input_dim = get_input_dim(kwargs)
         self.res = (int(self.num_seg**0.5), int(self.num_seg**0.5))
@@ -51,12 +53,9 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         #                                             self.tfm_hp[0]*4,
         #                                                 self.tfm_hp[0]*8], mlp_ratio=4, num_classes=self.classes)
         # Mix attention encoder
-        self.supert = SwinUTransformerEncoder(img_size=self.res, in_chans=16, patch_size=1, window_size=self.window_size,
-                                       embed_dim=self.tfm_hp[2], depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
-                                         num_heads=[self.tfm_hp[0],
-                                                    self.tfm_hp[0]*2,
-                                                    self.tfm_hp[0]*4,
-                                                        self.tfm_hp[0]*8], mlp_ratio=4, num_classes=self.classes)
+        self.supert = SwinTransformer(img_size=self.res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
+                                       embed_dim=self.dims, depths=self.depths,
+                                         num_heads=self.heads, mlp_ratio=1, num_classes=self.classes)
         kwargs['parameters'] = parameter_count(self.supert)['']
         
         inp = torch.randn([1, input_dim+2, self.res[0], self.res[1]])
@@ -96,35 +95,13 @@ class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
         """
         Choose what optimizers and learning-rate schedulers to use in your optimization.
         """
-        skip_list = {'absolute_pos_embed'}
-        skip_keywords = {'relative_position_bias_table'}
-        has_decay = []
-        no_decay = []
-
-        def check_keywords_in_name(name, keywords=()):
-            isin = False
-            for keyword in keywords:
-                if keyword in name:
-                    isin = True
-            return isin
-
-        for name, param in self.supert.named_parameters():
-            if not param.requires_grad:
-                continue  # frozen weights
-            if len(param.shape) == 1 or name.endswith(".bias") or (name in skip_list) or \
-                    check_keywords_in_name(name, skip_keywords):
-                no_decay.append(param)
-                # print(f"{name} has no weight decay")
-            else:
-                has_decay.append(param)
-        parameters = [{'params': has_decay},
-                {'params': no_decay, 'weight_decay': 0.}]
-        optimizer = torch.optim.AdamW(parameters, lr=self.lr, weight_decay=0.05)
+        
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=0.05)
 
         self.trainer.fit_loop.setup_data()
         dataset= self.trainer.train_dataloader
         self.scheduler = CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
-                                                      1, 5e-6)
+                                                      1, 5e-8)
         # self.scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=5, min_lr = 5e-6)
         
         return optimizer
