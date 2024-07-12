@@ -10,13 +10,14 @@ import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
-from Blocks.swin_rpe import BasicLayerRPE, PatchMergingRPE
-from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA
+from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA, BasicLayer, PatchMerging
 
 WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
 
+
+    
 class SwinUTransformer(nn.Module):
     r""" Swin Transformer
         A PyTorch impl of : `Swin Transformer: Hierarchical Vision Transformer using Shifted Windows`  -
@@ -60,7 +61,7 @@ class SwinUTransformer(nn.Module):
 
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim[0],
+            img_size=img_size, patch_size=patch_size, in_chans=16, embed_dim=embed_dim[0],
             norm_layer=norm_layer if self.patch_norm else None)
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -70,6 +71,7 @@ class SwinUTransformer(nn.Module):
         self.num_patches = patches_resolution[0] * patches_resolution[1]
 
         # absolute position embedding
+
 
         self.pos_drop = nn.Dropout(p=drop_rate)
 
@@ -81,8 +83,8 @@ class SwinUTransformer(nn.Module):
         resolutions = []
         embed_dims = []
         for i_layer in range(self.num_layers):
-            layer = BasicLayerRPE(dim=embed_dim[i_layer], 
-                                  out_dim = embed_dim[i_layer+1] if i_layer < self.num_layers-1 else None,
+            layer = BasicLayer(dim=embed_dim[i_layer],
+                                   out_dim=embed_dim[i_layer+1] if i_layer < self.num_layers-1 else None,
                                input_resolution=(patches_resolution[0] // (2 ** i_layer),
                                                  patches_resolution[1] // (2 ** i_layer)),
                                depth=depths[i_layer],
@@ -93,7 +95,7 @@ class SwinUTransformer(nn.Module):
                                drop=drop_rate, attn_drop=attn_drop_rate,
                                drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
                                norm_layer=norm_layer,
-                               downsample=PatchMergingRPE if (i_layer < self.num_layers - 1) else None,
+                               downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
                                use_checkpoint=use_checkpoint)
             self.layers.append(layer)
             resolutions.append(patches_resolution[0] // (2 ** i_layer))
@@ -138,17 +140,16 @@ class SwinUTransformer(nn.Module):
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
 
-    def forward_features(self, x):
-        centroids = x[:, :2, :, : ]
-        x = x[:, 2:, :, :]
+    def forward_features(self, x, pos):
         x = self.patch_embed(x)
-
-        x = self.pos_drop(x)
         
+        x = self.pos_drop(x)
+        x = x + pos
+
         ft = [x]
         
         for layer in self.layers:
-            ds, x, centroids = layer(x, centroids)
+            ds, x = layer(x)
             
             ft.append(x)
 
@@ -173,8 +174,17 @@ class SwinUTransformer(nn.Module):
 
 
     def forward(self, x):
-        x = self.forward_features(x)
+        centroids = x[:, :2, :, :]
+        fft = x[:, 8:-10, :, :]
+        lbp = x[:, -10:, :, :]
+        color = x[:, 2:8, :, :]
+        x = torch.cat((color, lbp), dim=1)
+        locations = torch.cat((centroids, fft), dim=1).permute(0, 2, 3, 1)
+        locations = self.locations(locations)
+        locations = locations.reshape(locations.size(0), -1, locations.size(3))
+        x = self.forward_features(x, locations)
         x = self.sod_head(x)
 
         return x
  
+

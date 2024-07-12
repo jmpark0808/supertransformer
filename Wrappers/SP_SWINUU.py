@@ -2,12 +2,9 @@ from typing import Optional
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
-# from Blocks.swintransformer import SwinUTransformer
-from Blocks.swinunet_upernet import SwinUTransformer
-# from Blocks.swinunet_upernet_exp import SwinUTransformer
-# from Blocks.swin_experimental import SwinUTransformer
-# from Blocks.swinunet_mix_rpe import SwinUTransformer
-# from Models.SP_SWIN import SP_SWINU
+
+from Blocks.swinunet_upernet_rpe import SwinUTransformer
+
 import torch.nn.functional as F
 import numpy as np
 from dataset.constants import *
@@ -44,12 +41,10 @@ class SP_SWINUU_Wrapper(pl.LightningModule):
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
         # SWIN UPerNet Production
-        self.supert = SwinUTransformer(in_chans=16, img_size=res, patch_size=1, window_size=self.window_size,
-                                       depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3]
-                                       , num_heads=[self.tfm_hp[0],
-                                                     self.tfm_hp[0]*2,
-                                                     self.tfm_hp[0]*4],
-                                       embed_dim=self.tfm_hp[2])
+        self.supert = SwinUTransformer(in_chans=input_dim, img_size=res, patch_size=1, window_size=self.window_size,
+                                       depths=self.depths
+                                       , num_heads=self.heads,
+                                       embed_dim=self.dims, mlp_ratio=1)
         # SWIN UPerNet Experimental
         # self.supert = SwinUTransformer(in_chans=input_dim, img_size=res, patch_size=1, window_size=self.window_size,
         #                                depths=self.depths
