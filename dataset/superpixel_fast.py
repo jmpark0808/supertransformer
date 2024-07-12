@@ -353,22 +353,6 @@ class SPDatasetExport(data.Dataset):
         np.save(sp_file_path_segments, sample[2])
         np.save(sp_file_path_mask, mask.detach().cpu().numpy())
 
-        segments = sample[2]
-        edge_attr = sample[5]
-        
-    
-        
-        # vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
-        # vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
-        # vs_diagonal_r = np.vstack([segments[:-1,:-1].ravel(), segments[1:,1:].ravel()])
-        # vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
-        # bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
-        # neighbor_array = np.eye(self.num_seg)
-        # neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
-        # neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
-        
-        # np.save(sp_file_path_edge_index, neighbor_array)
-        # sp.save_npz(sp_file_path_edge_attr, sp.csr_matrix(edge_attr))
 
         return torch.empty(0)
 
