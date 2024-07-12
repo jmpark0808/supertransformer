@@ -9,13 +9,16 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
+from torch.nn import init
 import math
+from einops import rearrange, repeat
+from Blocks.swin_common import PatchEmbed, SwinASPP, SwinDecoder
 from Blocks.swin_rpe import BasicLayerRPE, PatchMergingRPE
-from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA
-
 WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
+
+    
 
 class SwinUTransformer(nn.Module):
     r""" Swin Transformer
@@ -41,35 +44,36 @@ class SwinUTransformer(nn.Module):
         ape (bool): If True, add absolute position embedding to the patch embedding. Default: False
         patch_norm (bool): If True, add normalization after patch embedding. Default: True
         use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False
+        fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
     """
 
     def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000,
-                 embed_dim=[96, 96*2, 96*4, 96*8], depths=[2, 2, 6, 2], num_heads=[3, 6, 12, 24],
+                 embed_dim=[96, 192, 384], depths=[2, 2, 6], num_heads=[3, 6, 12],
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
-                 use_checkpoint=False, fused_window_process=False, **kwargs):
+                 use_checkpoint=False, fused_window_process=False, factor=1.0, **kwargs):
         super().__init__()
-        self.img_size = img_size
+        assert len(depths) == len(num_heads) == len(embed_dim), 'Number of layers must be equal between heads, dims, and depths'
         self.num_classes = num_classes
         self.num_layers = len(depths)
         self.embed_dim = embed_dim[0]
         self.ape = ape
         self.patch_norm = patch_norm
+        # self.num_features = int(embed_dim * 2 ** (self.num_layers - 1))
         self.mlp_ratio = mlp_ratio
 
         # split image into non-overlapping patches
+
         self.patch_embed = PatchEmbed(
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim[0],
             norm_layer=norm_layer if self.patch_norm else None)
-        img_size = to_2tuple(img_size)
-        patch_size = to_2tuple(patch_size)
-        patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
-        self.patch_size = patch_size
+        num_patches = self.patch_embed.num_patches
+        patches_resolution = self.patch_embed.patches_resolution
         self.patches_resolution = patches_resolution
-        self.num_patches = patches_resolution[0] * patches_resolution[1]
 
         # absolute position embedding
+
 
         self.pos_drop = nn.Dropout(p=drop_rate)
 
@@ -78,11 +82,11 @@ class SwinUTransformer(nn.Module):
 
         # build layers
         self.layers = nn.ModuleList()
-        resolutions = []
-        embed_dims = []
+        dim_list = []
+        resolution_list = []
         for i_layer in range(self.num_layers):
-            layer = BasicLayerRPE(dim=embed_dim[i_layer], 
-                                  out_dim = embed_dim[i_layer+1] if i_layer < self.num_layers-1 else None,
+            layer = BasicLayerRPE(dim=embed_dim[i_layer],
+                                  out_dim=embed_dim[i_layer+1] if i_layer < self.num_layers-1 else None,
                                input_resolution=(patches_resolution[0] // (2 ** i_layer),
                                                  patches_resolution[1] // (2 ** i_layer)),
                                depth=depths[i_layer],
@@ -91,34 +95,65 @@ class SwinUTransformer(nn.Module):
                                mlp_ratio=self.mlp_ratio,
                                qkv_bias=qkv_bias, qk_scale=qk_scale,
                                drop=drop_rate, attn_drop=attn_drop_rate,
-                               drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
+                               drop_path=0,
                                norm_layer=norm_layer,
                                downsample=PatchMergingRPE if (i_layer < self.num_layers - 1) else None,
-                               use_checkpoint=use_checkpoint)
+                               use_checkpoint=use_checkpoint,
+                               fused_window_process=fused_window_process)
             self.layers.append(layer)
-            resolutions.append(patches_resolution[0] // (2 ** i_layer))
-            embed_dims.append(embed_dim[i_layer])
-        resolutions.append(patches_resolution[0] // (2 ** i_layer))
-        embed_dims.reverse()
-            
-            
-
-        self.upsample_layers = nn.ModuleList()
-        for i_layer in range(self.num_layers):
-            layer = BasicLayerUpsampleMA(dim=embed_dims[i_layer],
-                                       total_dim=sum(embed_dim)+embed_dim[0],
-                               input_resolution=resolutions,
-                               num_heads=num_heads[self.num_layers-i_layer-1],
-                               mlp_ratio=self.mlp_ratio,
-                               qkv_bias=qkv_bias, 
-                               drop=drop_rate, 
-                               use_checkpoint=use_checkpoint)
-            self.upsample_layers.append(layer)
-
-        self.upsample = nn.Upsample(size=img_size[0])
-        self.sod_head = nn.Linear(sum(embed_dim)+embed_dim[0], 1)
-        self.locations = nn.Sequential(*[nn.Linear(22, embed_dim[0])])
+            dim_list.append(embed_dim[i_layer])
+            resolution_list.append((patches_resolution[0] // (2 ** i_layer),
+                                                 patches_resolution[1] // (2 ** i_layer)))
         
+        dim_list.reverse()
+        resolution_list.reverse()
+        
+        
+        self.upsample_layers = SwinDecoder(input_dim=embed_dim[0],# 输入的通道数为96
+            input_high_dim = dim_list[0], # 384
+            input_middle_dim = dim_list[1],
+            input_size=resolution_list[0][0], # 14 × 14
+            low_level_idx=0, # 0
+            high_level_idx=2, # 2
+            num_classes=1,
+            depth=2, # 2
+            last_layer_depth=6, # 6
+            num_heads=num_heads[0], # 3
+            window_size=window_size, # 7
+            mlp_ratio=self.mlp_ratio, # 4
+            qk_scale=qk_scale,
+            qkv_bias=qkv_bias,
+            drop_path_rate=drop_path_rate,
+            drop_rate=drop_rate,
+            attn_drop_rate=attn_drop_rate,
+            norm_layer=norm_layer,
+            decoder_norm=True, # True
+            use_checkpoint=False)
+
+
+        self.aspp = SwinASPP(
+            input_size=resolution_list[0][0], # 14×14
+            input_dim=dim_list[0], # 384 
+            out_dim=dim_list[-1],  # 96
+            depth=2, # 2
+            cross_attn='CBAM', # CBAM
+            num_heads=num_heads[0], # 3头
+            mlp_ratio=self.mlp_ratio, # 4
+            qk_scale=qk_scale,
+            qkv_bias=qkv_bias,
+            drop_rate=drop_rate,
+            attn_drop_rate=attn_drop_rate,
+            drop_path_rate=0, # 0.1
+            norm_layer=norm_layer,
+            aspp_norm=False,
+            aspp_activation='relu', # relu
+            start_window_size=2,
+            aspp_dropout=0.1, # 0.1
+            downsample=None, #None
+            use_checkpoint=False
+        )
+        
+
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -144,37 +179,33 @@ class SwinUTransformer(nn.Module):
         x = self.patch_embed(x)
 
         x = self.pos_drop(x)
+  
+        all_layers = []
+        for idx, layer in enumerate(self.layers):
+            pre_ds, x, centroids  = layer(x, centroids)
+            size = int(math.sqrt(pre_ds.size(1)))
+            all_layers.append(pre_ds.view(-1, size, size, pre_ds.shape[-1]))
+
         
-        ft = [x]
-        
-        for layer in self.layers:
-            ds, x, centroids = layer(x, centroids)
-            
-            ft.append(x)
+        x = self.aspp(all_layers[-1])
+        x = self.upsample_layers(all_layers[0], all_layers[1], all_layers[2], x)
 
-        res = int(math.sqrt(x.size(1)))
-        x_ = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
-        x_ = self.upsample(x_).permute(0, 2, 3, 1)
-        x_ = x_.reshape(x_.size(0), self.img_size**2, -1)
-        up_ft = [x_]
-        for idx, layer in enumerate(self.upsample_layers):
-            x = layer(ft[len(ft)-idx-2], ft)
-            ft[len(ft)-idx-2] = x
-            
-            res = int(math.sqrt(x.size(1)))
-            x = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
-            x = self.upsample(x).permute(0, 2, 3, 1)
-            x = x.reshape(x.size(0), self.img_size**2, -1)
-            up_ft.append(x)
-
-        up_ft = torch.cat(up_ft, dim=2)
-        return up_ft
-
-
+       
+        return x
 
     def forward(self, x):
         x = self.forward_features(x)
-        x = self.sod_head(x)
-
+        
+        
         return x
- 
+
+
+    
+
+
+    
+    
+
+
+
+

@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 # from Blocks.swintransformer_original_rpe import SwinUTransformer
-from Blocks.swinunet_mix_rpe import SwinUTransformer
+from Blocks.swinunet_mix_ape import SwinUTransformer
 # from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
 import numpy as np
@@ -32,15 +32,15 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
         self.image_size = kwargs.get('size')
         self.warmup_epochs = kwargs.get('warmup_epochs')
         self.total_train_epochs = kwargs.get('epoch')
+        self.heads = kwargs.get('heads')
+        self.dims = kwargs.get('dims')
+        self.depths = kwargs.get('depths')
         input_dim = get_input_dim(kwargs)
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
-        self.supert = SwinUTransformer(img_size=res, in_chans=16, patch_size=1, window_size=self.window_size,
-                                       embed_dim=self.tfm_hp[2], depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
-                                         num_heads=[self.tfm_hp[0],
-                                                    self.tfm_hp[0]*2,
-                                                    self.tfm_hp[0]*4,
-                                                        self.tfm_hp[0]*8], mlp_ratio=4)
+        self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
+                                       embed_dim=self.dims, depths=self.depths,
+                                         num_heads=self.heads, mlp_ratio=4)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
         kwargs['parameters'] = parameter_count(self.supert)['']
