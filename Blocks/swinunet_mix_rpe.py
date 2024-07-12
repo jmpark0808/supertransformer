@@ -98,7 +98,7 @@ class SwinUTransformer(nn.Module):
             self.layers.append(layer)
             resolutions.append(patches_resolution[0] // (2 ** i_layer))
             embed_dims.append(embed_dim[i_layer])
-        resolutions.append(patches_resolution[0] // (2 ** i_layer))
+        # resolutions.append(patches_resolution[0] // (2 ** i_layer))
         embed_dims.reverse()
             
             
@@ -106,7 +106,7 @@ class SwinUTransformer(nn.Module):
         self.upsample_layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
             layer = BasicLayerUpsampleMA(dim=embed_dims[i_layer],
-                                       total_dim=sum(embed_dim)+embed_dim[0],
+                                       total_dim=sum(embed_dim),
                                input_resolution=resolutions,
                                num_heads=num_heads[self.num_layers-i_layer-1],
                                mlp_ratio=self.mlp_ratio,
@@ -116,8 +116,7 @@ class SwinUTransformer(nn.Module):
             self.upsample_layers.append(layer)
 
         self.upsample = nn.Upsample(size=img_size[0])
-        self.sod_head = nn.Linear(sum(embed_dim)+embed_dim[0], 1)
-        self.locations = nn.Sequential(*[nn.Linear(22, embed_dim[0])])
+        self.sod_head = nn.Linear(sum(embed_dim), 1)
         
         self.apply(self._init_weights)
 
@@ -145,21 +144,22 @@ class SwinUTransformer(nn.Module):
 
         x = self.pos_drop(x)
         
-        ft = [x]
+        ft = []
         
         for layer in self.layers:
             ds, x, centroids = layer(x, centroids)
             
-            ft.append(x)
+            ft.append(ds)
 
-        res = int(math.sqrt(x.size(1)))
-        x_ = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
-        x_ = self.upsample(x_).permute(0, 2, 3, 1)
-        x_ = x_.reshape(x_.size(0), self.img_size**2, -1)
-        up_ft = [x_]
+        # res = int(math.sqrt(x.size(1)))
+        # x_ = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
+        # x_ = self.upsample(x_).permute(0, 2, 3, 1)
+        # x_ = x_.reshape(x_.size(0), self.img_size**2, -1)
+        # up_ft = [x_]
+        up_ft = []
         for idx, layer in enumerate(self.upsample_layers):
-            x = layer(ft[len(ft)-idx-2], ft)
-            ft[len(ft)-idx-2] = x
+            x = layer(ft[len(ft)-idx-1], ft)
+            ft[len(ft)-idx-1] = x
             
             res = int(math.sqrt(x.size(1)))
             x = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
