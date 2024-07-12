@@ -12,7 +12,7 @@ from util.optimizers import SoftTargetCrossEntropy
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingWarmRestarts
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 
-class SP_ImageNet_OGSWIN_Wrapper(pl.LightningModule):
+class SP_ImageNet_OGSWIN_RPE_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
