@@ -55,7 +55,7 @@ class SP_ImageNet_OGSWIN_RPE_Wrapper(pl.LightningModule):
         # Mix attention encoder
         self.supert = SwinTransformer(img_size=self.res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
                                        embed_dim=self.dims, depths=self.depths,
-                                         num_heads=self.heads, mlp_ratio=1, num_classes=self.classes)
+                                         num_heads=self.heads, mlp_ratio=4, num_classes=self.classes)
         kwargs['parameters'] = parameter_count(self.supert)['']
         
         inp = torch.randn([1, input_dim+2, self.res[0], self.res[1]])
