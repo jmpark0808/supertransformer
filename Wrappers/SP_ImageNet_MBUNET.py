@@ -12,6 +12,7 @@ from util.optimizers import SoftTargetCrossEntropy
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingWarmRestarts
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 from math import cos, pi
+from Blocks.resnet import resnet50
 
 class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
@@ -39,7 +40,8 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
         self.res = int(self.num_seg**0.5)
         
         # Generator that produces the HeatMap
-        self.supert = MobileNetV2SP(in_channels=16)
+        # self.supert = MobileNetV2SP(in_channels=16)
+        self.supert = resnet50(pretrained=False, num_channels=input_dim+2)
         kwargs['parameters'] = parameter_count(self.supert)['']
         
         inp = torch.randn([1, input_dim+2, self.res, self.res])
