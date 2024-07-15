@@ -155,6 +155,7 @@ class MobileViTv3_v2(nn.Module):
         channels.append(int(256 * width_multiplier))
         channels.append(int(384 * width_multiplier))
         channels.append(int(512 * width_multiplier))
+        self.channels = channels
         attn_dim = []
         attn_dim.append(int(128 * width_multiplier))
         attn_dim.append(int(192 * width_multiplier))
@@ -164,7 +165,7 @@ class MobileViTv3_v2(nn.Module):
         ffn_multiplier = 2
         mv2_exp_mult = 2
 
-        self.conv_0 = conv_2d(3, channels[0], kernel_size=3, stride=2)
+        self.conv_0 = conv_2d(3, channels[0], kernel_size=3, stride=2, padding=1)
 
         self.layer_1 = nn.Sequential(
             InvertedResidual(channels[0], channels[1], stride=1, expand_ratio=mv2_exp_mult)
