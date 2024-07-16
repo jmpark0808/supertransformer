@@ -63,8 +63,8 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
             self.supert.load_state_dict(ckpt['state_dict'])
 
         self.validation_step_outputs = []
-        # self.loss_fn = SoftTargetCrossEntropy()
-        self.loss_fn = torch.nn.CrossEntropyLoss()
+        self.loss_fn = SoftTargetCrossEntropy()
+        # self.loss_fn = torch.nn.CrossEntropyLoss()
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()
@@ -146,7 +146,7 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
         features, target = batch
 
         features = features.reshape(features.size(0), self.res, self.res, -1).permute(0, 3, 1, 2)
-        # features, target = self.mixup(features, target)
+        features, target = self.mixup(features, target)
         # features = features.permute(0, 2, 3, 1).reshape(features.size(0), self.res*self.res, -1)
         # forward pass
         
@@ -155,9 +155,9 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
         loss = self.loss(pred, target)
         
         max_scores, max_idx_class = pred.max(dim=1)
-        # max_scores, max_idx_label = target.max(dim=1)
+        max_scores, max_idx_label = target.max(dim=1)
         n = pred.size(0)
-        acc = (max_idx_class == target).sum().item() 
+        acc = (max_idx_class == max_idx_label).sum().item() 
 
         self.train_acc += acc
         self.num_samples += n
@@ -190,7 +190,7 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
         
         pred = self.forward(features)
 
-        loss = self.loss(pred, label)
+        loss = self.loss(pred, F.one_hot(label, num_classes=1000))
         
         max_scores, max_idx_class = pred.max(dim=1)
         n = pred.size(0)
@@ -223,7 +223,7 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
         features = features.reshape(features.size(0), self.res, self.res, -1).permute(0, 3, 1, 2)
         pred = self.forward(features)
 
-        loss = self.loss(pred, label)
+        loss = self.loss(pred, F.one_hot(label, num_classes=1000))
         
         max_scores, max_idx_class = pred.max(dim=1)
 
