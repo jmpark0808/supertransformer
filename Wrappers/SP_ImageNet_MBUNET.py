@@ -63,8 +63,8 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
             self.supert.load_state_dict(ckpt['state_dict'])
 
         self.validation_step_outputs = []
-        # self.loss_fn = SoftTargetCrossEntropy()
-        self.loss_fn = torch.nn.CrossEntropyLoss()
+        self.loss_fn = SoftTargetCrossEntropy()
+        # self.loss_fn = torch.nn.CrossEntropyLoss()
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()
