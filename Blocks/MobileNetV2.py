@@ -47,6 +47,25 @@ def conv_1x1_bn(inp, oup):
         nn.ReLU6(inplace=True)
     )
 
+class conv_3x3_bn_pe(nn.Module):
+    def __init__(self, inp, oup, stride):
+        super().__init__()
+        
+        self.conv = nn.Conv2d(inp, oup, 1, stride, bias=False)
+        self.pe = nn.Conv2d(2, oup, 1, bias=False)
+        self.bn = nn.BatchNorm2d(oup)
+        self.relu = nn.ReLU6(inplace=True)
+        
+
+    def forward(self, x, pe):
+        x = self.conv(x)
+        pe = self.pe(pe)
+       
+        x = x + pe
+        x = self.bn(x)
+        x = self.relu(x)
+        return x
+
 
 class InvertedResidual(nn.Module):
     def __init__(self, inp, oup, stride, expand_ratio):
@@ -164,7 +183,7 @@ class MobileNetV2SP(nn.Module):
         # building first layer
         input_channel = _make_divisible(32 * width_mult, 4 if width_mult == 0.1 else 8)
         self.pe = nn.Sequential(*[nn.Conv2d(22, input_channel, 1)])
-        layers = [conv_3x3_bn(in_channels, input_channel, 1)] # 32
+        layers = [conv_3x3_bn_pe(in_channels, input_channel, 1)] # 32
         # building inverted residual blocks
         block = InvertedResidual
         for t, c, n, s in self.cfgs:
@@ -186,12 +205,12 @@ class MobileNetV2SP(nn.Module):
         fft = x[:, 8:-10, :, :]
         lbp = x[:, -10:, :, :]
         color = x[:, 2:8, :, :]
-        x = torch.cat((color, lbp), dim=1)
+        x = torch.cat((color, lbp, fft), dim=1)
         # x = color
-        locations = torch.cat((centroids, fft), dim=1)
-        locations = self.pe(locations)
-        x = self.features[0](x)
-        x = x + locations
+        # locations = torch.cat((centroids, fft), dim=1)
+        # locations = self.pe(c)
+        x = self.features[0](x, centroids)
+        # x = x + locations
 
         x = self.features[1:](x)
         # x = self.features(x)
