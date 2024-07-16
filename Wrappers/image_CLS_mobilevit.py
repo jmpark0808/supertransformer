@@ -31,10 +31,11 @@ class ImageNet_MBVIT_Wrapper(pl.LightningModule):
         self.window_size = kwargs.get('window_size')
         self.warmup_epochs = kwargs.get('warmup_epochs')
         self.total_train_epochs = kwargs.get('epoch')
+        self.size = kwargs.get('size')
         
         # Generator that produces the HeatMap
 
-        self.supert = MobileViTv3_v2(image_size=(256, 256), width_multiplier=0.5, num_classes=1000)
+        self.supert = MobileViTv3_v2(image_size=(self.size, self.size), width_multiplier=0.5, num_classes=1000)
         self.mixup = Mixup(
             mixup_alpha=0.8, cutmix_alpha=1.0, cutmix_minmax=None,
             prob=1.0, switch_prob=0.5, mode='batch',
