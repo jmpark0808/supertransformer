@@ -184,7 +184,7 @@ class SP_ImageNet_MBNET_Wrapper(pl.LightningModule):
         """
         features, label = batch
 
-
+        
         # forward pass
         features = features.reshape(features.size(0), self.res, self.res, -1).permute(0, 3, 1, 2)
         
