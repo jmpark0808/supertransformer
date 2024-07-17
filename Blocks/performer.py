@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from performer_pytorch import Performer as perf
+# from performer_pytorch import Performer as perf
 from einops import rearrange, repeat
 import math
 
