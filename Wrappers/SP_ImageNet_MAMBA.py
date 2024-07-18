@@ -11,10 +11,10 @@ from dataset.mixup import Mixup
 from util.optimizers import SoftTargetCrossEntropy
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingWarmRestarts
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
-from Models.SP_TFM import SP_TFM_Imgnet
+from Blocks.mamba import Vim
 import torch.nn as nn
 
-class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
+class SP_ImageNet_MAMBA_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -43,8 +43,17 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
         
         
         self.classes= 1000
-        
-        self.supert = SP_TFM_Imgnet(input_dim, self.tfm_hp[2], self.tfm_hp[0], self.tfm_hp[1], self.dropout, self.dropout_edge, 1000)
+        # UPerNet encoder
+        # self.supert = SwinTransformer(img_size=self.res, in_chans=16, patch_size=1, window_size=self.window_size,
+        #                                embed_dim=self.tfm_hp[2], depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
+        #                                  num_heads=[self.tfm_hp[0],
+        #                                             self.tfm_hp[0]*2,
+        #                                             self.tfm_hp[0]*4,
+        #                                                 self.tfm_hp[0]*8], mlp_ratio=4, num_classes=self.classes)
+        # Mix attention encoder
+        self.supert = Vim(dim=self.tfm_hp[2], dt_rank=32, 
+                          dim_inner=self.tfm_hp[2], d_state=self.tfm_hp[2], num_classes=1000, channels=input_dim, depth=self.tfm_hp[1])
+        # self.supert = Mamba(input_dim, self.tfm_hp[2], self.tfm_hp[0], self.tfm_hp[1], 1000)
 
         kwargs['parameters'] = parameter_count(self.supert)['']
         
@@ -54,8 +63,7 @@ class SP_ImageNet_TFM_Wrapper(pl.LightningModule):
         # from fvcore.nn import FlopCountAnalysis, flop_count_table
         # inp = torch.randn([1, input_dim+2, 32, 32])
         # flops = FlopCountAnalysis(self.supert, inp)
-        print(kwargs['parameters'], kwargs['flops'])
-        assert(0)
+        
         self.mixup = Mixup(
             mixup_alpha=0.8, cutmix_alpha=1.0, cutmix_minmax=None,
             prob=1.0, switch_prob=0.5, mode='batch',
