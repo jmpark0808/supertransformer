@@ -58,10 +58,33 @@ class Token_performer(nn.Module):
         return x
 
 
+class PerformerBlock(nn.Module):
+    def __init__(self, dim, heads, attn_dropout, dropout, mlp_ratio):
+        super().__init__()
+        
+        self.norm1 = nn.LayerNorm(dim)
+        self.norm2 = nn.LayerNorm(dim)
+        self.epsilon = 1e-8  # for stable in division
+
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, mlp_ratio * dim),
+            nn.GELU(),
+            nn.Linear(mlp_ratio * dim, dim),
+            nn.Dropout(dropout),
+        )
+
+        self.layer = SelfAttention(dim=dim, heads=heads, dim_head=dim//heads, dropout=attn_dropout)
+
+
+    def forward(self, x):
+        x = x + self.layer(self.norm1(x))
+        x = x + self.mlp(self.norm2(x))
+        return x
+
 
 
 class Performer(nn.Module):
-    def __init__(self, input_dim, embed_dim, heads, depth, num_classes):
+    def __init__(self, input_dim, embed_dim, heads, depth, num_classes, attn_dropout, dropout, mlp_ratio):
         super().__init__()
         # self.performer = perf(
         #         dim = embed_dim,
@@ -71,15 +94,15 @@ class Performer(nn.Module):
         #         causal = False
         # )
         # self.performer = nn.Sequential(*[Token_performer(embed_dim, embed_dim, head_cnt=heads) for _ in range(depth)])
-        self.performer = nn.Sequential(*[SelfAttention(dim=embed_dim, heads=heads, dim_head=embed_dim//heads) for _ in range(depth)])
+        self.performer = nn.Sequential(*[PerformerBlock(dim=embed_dim, heads=heads,
+                                                         attn_dropout=attn_dropout,
+                                                           dropout=dropout, mlp_ratio=mlp_ratio) for _ in range(depth)])
         self.cls_token = nn.Parameter(torch.randn(1, 1, embed_dim))
         self.to_patch_embedding = nn.Sequential(
-            nn.Linear(input_dim, embed_dim),
-            nn.LayerNorm(embed_dim),
+            nn.Linear(input_dim, embed_dim), 
         )
         self.locations = nn.Sequential(
             nn.Linear(2, embed_dim),
-            nn.LayerNorm(embed_dim),
         )
 
         self.to_latent = nn.Identity()
@@ -103,7 +126,7 @@ class Performer(nn.Module):
         x = torch.cat((cls_tokens, x), dim=1)
         
         # x = self.dropout(x)
-
+        
         x = self.performer(x)
 
         x = x[:, 0]

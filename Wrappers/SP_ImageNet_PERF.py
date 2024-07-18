@@ -51,7 +51,8 @@ class SP_ImageNet_PERF_Wrapper(pl.LightningModule):
         #                                             self.tfm_hp[0]*4,
         #                                                 self.tfm_hp[0]*8], mlp_ratio=4, num_classes=self.classes)
         # Mix attention encoder
-        self.supert = Performer(input_dim, self.tfm_hp[2], self.tfm_hp[0], self.tfm_hp[1], 1000)
+        self.supert = Performer(input_dim, self.tfm_hp[2], self.tfm_hp[0], self.tfm_hp[1], 1000, attn_dropout=self.dropout_edge,
+                                dropout=self.dropout, mlp_ratio=4)
 
         kwargs['parameters'] = parameter_count(self.supert)['']
         
