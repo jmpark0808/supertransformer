@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-# from performer_pytorch import Performer as perf
+from performer_pytorch import SelfAttention
 from einops import rearrange, repeat
 import math
 
@@ -70,7 +70,8 @@ class Performer(nn.Module):
         #         dim_head = embed_dim,
         #         causal = False
         # )
-        self.performer = nn.Sequential(*[Token_performer(embed_dim, embed_dim, head_cnt=heads) for _ in range(depth)])
+        # self.performer = nn.Sequential(*[Token_performer(embed_dim, embed_dim, head_cnt=heads) for _ in range(depth)])
+        self.performer = nn.Sequential(*[SelfAttention(dim=embed_dim, heads=heads, dim_head=embed_dim//heads) for _ in range(depth)])
         self.cls_token = nn.Parameter(torch.randn(1, 1, embed_dim))
         self.to_patch_embedding = nn.Sequential(
             nn.Linear(input_dim, embed_dim),

@@ -26,6 +26,8 @@ from Wrappers.image_CLS_mobilevit import ImageNet_MBVIT_Wrapper
 from Wrappers.Image_CLS_stopsigns import Image_Stopsigns_Wrapper
 from Wrappers.image_CLS_mobilenet import ImageNet_MBNET_Wrapper
 from Wrappers.SP_ImageNet_PERF import SP_ImageNet_PERF_Wrapper
+from Wrappers.SP_ImageNet_TFM import SP_ImageNet_TFM_Wrapper
+from Wrappers.SP_ImageNet_MAMBA import SP_ImageNet_MAMBA_Wrapper
 
 # Import dataset modules
 from dataset.imagenet import SPImageNetDataModule
@@ -56,6 +58,7 @@ MODEL_DIRECTORY = {
     'SP_ImageNet_MBNET': SP_ImageNet_MBNET_Wrapper,
     'SP_ImageNet_MBVIT': SP_ImageNet_MBVIT_Wrapper,
     'SP_ImageNet_PERF': SP_ImageNet_PERF_Wrapper,
+    'SP_ImageNet_MAMBA': SP_ImageNet_MAMBA_Wrapper,
     'MBVIT': ImageNet_MBVIT_Wrapper,
     'Topk': Image_Stopsigns_Wrapper,
     'MBNET': ImageNet_MBNET_Wrapper

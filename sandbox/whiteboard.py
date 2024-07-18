@@ -1,16 +1,45 @@
 import torch
+from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
+from Blocks.TransformerBlocks import Transformer, Attention
+from Blocks.performer import Token_performer
+from performer_pytorch import Performer
+from performer_pytorch import SelfAttention
 
-t = torch.arange(0, 1024).reshape(1, 32 ,32, 1)
-B, H, W, C = t.shape
-window_size = 8
-x = t.view(1, window_size, H // window_size, window_size, W // window_size,  C)
-    
+from zeta.nn import MambaBlock
 
-windows = x.permute(0, 2, 4, 1, 3, 5).contiguous().view(-1, window_size, window_size, C)
-    
-B = int(windows.shape[0] / (H * W / window_size / window_size))
-x = windows.view(B, H // window_size, W // window_size, window_size, window_size, -1)
-x = x.permute(0, 3, 1, 4, 2, 5).contiguous().view(B, H, W, -1)
-    
-print(torch.sum(torch.abs(t-x)))
-print(x)
+block = MambaBlock(dim=128, depth=1)
+
+# print(output.shape)
+
+inp = torch.randn([1, 1024, 128])
+supert = Token_performer(128, 128, 1)
+supert_1 = Transformer(128, 1, 1, 128, 128, 0, 0)
+
+
+# model = Performer(
+#     dim = 128,
+#     depth = 1,
+#     heads = 1,
+#     dim_head =128,
+#     causal = False
+# )
+model = SelfAttention(dim=128, causal=False, heads=4, dim_head=32)
+# supert_2 = MixerModel(128, 1, )
+# supert_1 = Attention(128, 1, 128, 0, 0)
+
+flops = FlopCountAnalysis(supert_1, inp)
+print('Transformer', flops.total())
+
+flops = FlopCountAnalysis(block, inp)
+print('Mamba', flops.total())
+
+flops = FlopCountAnalysis(model, inp)
+print('Performer packaged', flops.total())
+
+flops = FlopCountAnalysis(supert, inp)
+print('Performer impl', flops.total())
+
+
+
+
+
