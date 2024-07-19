@@ -12,6 +12,26 @@ def conv_2d(inp, oup, kernel_size=3, stride=1, padding=0, groups=1, bias=False, 
         conv.add_module('Activation', nn.SiLU())
     return conv
 
+class conv_3x3_bn_pe(nn.Module):
+    def __init__(self, inp, oup, kernel_size=3, stride=1, padding=0, groups=1, bias=False, norm=True, act=True):
+        super().__init__()
+        
+        self.conv = nn.Conv2d(inp, oup, kernel_size, stride, padding, bias=bias, groups=groups)
+        self.pe = nn.Conv2d(2, oup, 1, bias=bias)
+        self.bn = nn.BatchNorm2d(oup)
+        self.relu = nn.SiLU()
+        
+
+    def forward(self, x, pe):
+        x = self.conv(x)
+        pe = self.pe(pe)
+       
+        x = x + pe
+        x = self.bn(x)
+        x = self.relu(x)
+        return x
+
+
 
 class InvertedResidual(nn.Module):
     def __init__(self, inp, oup, stride, expand_ratio):
@@ -190,6 +210,80 @@ class MobileViTv3_v2(nn.Module):
 
     def forward(self, x):
         x = self.conv_0(x)
+        x = self.layer_1(x)
+        x = self.layer_2(x) 
+        x = self.layer_3(x)
+        x = self.layer_4(x)
+        x = self.layer_5(x)
+        
+        # FF head
+        x = torch.mean(x, dim=[-2, -1])
+        x = self.out(x)
+
+        return x
+    
+
+class MobileViTSPv3_v2(nn.Module):
+    def __init__(self, image_size, in_channels, width_multiplier, num_classes, patch_size=(2, 2)):  
+        """
+        Implementation of MobileViTv3 based on v2
+        """
+        super().__init__()
+        # check image size
+        ih, iw = image_size
+        self.ph, self.pw = patch_size
+        assert ih % self.ph == 0 and iw % self.pw == 0 
+        assert width_multiplier in [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+
+        # model size
+        channels = []
+        channels.append(int(max(16, min(64, 32 * width_multiplier))))
+        channels.append(int(64 * width_multiplier))
+        channels.append(int(128 * width_multiplier))
+        channels.append(int(256 * width_multiplier))
+        channels.append(int(384 * width_multiplier))
+        channels.append(int(512 * width_multiplier))
+        self.channels = channels
+        attn_dim = []
+        attn_dim.append(int(128 * width_multiplier))
+        attn_dim.append(int(192 * width_multiplier))
+        attn_dim.append(int(256 * width_multiplier))
+
+        # default shown in paper
+        ffn_multiplier = 2
+        mv2_exp_mult = 2
+
+        self.conv_0 = conv_3x3_bn_pe(in_channels, channels[0], kernel_size=3, stride=1, padding=1)
+
+        self.layer_1 = nn.Sequential(
+            InvertedResidual(channels[0], channels[1], stride=1, expand_ratio=mv2_exp_mult)
+        )
+        self.layer_2 = nn.Sequential(
+            InvertedResidual(channels[1], channels[2], stride=2, expand_ratio=mv2_exp_mult),
+            InvertedResidual(channels[2], channels[2], stride=1, expand_ratio=mv2_exp_mult)
+        )
+        self.layer_3 = nn.Sequential(
+            InvertedResidual(channels[2], channels[3], stride=2, expand_ratio=mv2_exp_mult),
+            MobileViTBlockv3_v2(channels[3], attn_dim[0], ffn_multiplier, 2, patch_size=patch_size)
+        )
+        self.layer_4 = nn.Sequential(
+            InvertedResidual(channels[3], channels[4], stride=2, expand_ratio=mv2_exp_mult),
+            MobileViTBlockv3_v2(channels[4], attn_dim[1], ffn_multiplier, 4, patch_size=patch_size)
+        )
+        self.layer_5 = nn.Sequential(
+            InvertedResidual(channels[4], channels[5], stride=2, expand_ratio=mv2_exp_mult),
+            MobileViTBlockv3_v2(channels[5], attn_dim[2], ffn_multiplier, 3, patch_size=patch_size)
+        )
+        self.out = nn.Linear(channels[-1], num_classes, bias=True)
+
+    def forward(self, x):
+        centroids = x[:, :2, :, :]
+        fft = x[:, 8:-10, :, :]
+        lbp = x[:, -10:, :, :]
+        color = x[:, 2:8, :, :]
+        x = torch.cat((color, lbp, fft), dim=1)
+
+        x = self.conv_0(x, centroids)
         x = self.layer_1(x)
         x = self.layer_2(x) 
         x = self.layer_3(x)
