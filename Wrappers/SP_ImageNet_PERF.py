@@ -11,7 +11,8 @@ from dataset.mixup import Mixup
 from util.optimizers import SoftTargetCrossEntropy
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingWarmRestarts
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
-from Blocks.performer import Performer
+# from Blocks.performer import Performer
+from Blocks.performer2 import ViP
 import torch.nn as nn
 
 class SP_ImageNet_PERF_Wrapper(pl.LightningModule):
@@ -43,16 +44,10 @@ class SP_ImageNet_PERF_Wrapper(pl.LightningModule):
         
         
         self.classes= 1000
-        # UPerNet encoder
-        # self.supert = SwinTransformer(img_size=self.res, in_chans=16, patch_size=1, window_size=self.window_size,
-        #                                embed_dim=self.tfm_hp[2], depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
-        #                                  num_heads=[self.tfm_hp[0],
-        #                                             self.tfm_hp[0]*2,
-        #                                             self.tfm_hp[0]*4,
-        #                                                 self.tfm_hp[0]*8], mlp_ratio=4, num_classes=self.classes)
-        # Mix attention encoder
-        self.supert = Performer(input_dim, self.tfm_hp[2], self.tfm_hp[0], self.tfm_hp[1], 1000, attn_dropout=self.dropout_edge,
-                                dropout=self.dropout, mlp_ratio=4)
+        self.supert = ViP(image_size=self.res[0], patch_size=1, num_classes=1000, dim=self.tfm_hp[2], heads=self.tfm_hp[0],
+                          mlp_dim=self.tfm_hp[2]*4, channels=input_dim, dim_head=self.tfm_hp[2]//self.tfm_hp[0], depth=self.tfm_hp[1])
+        # self.supert = Performer(input_dim, self.tfm_hp[2], self.tfm_hp[0], self.tfm_hp[1], 1000, attn_dropout=self.dropout_edge,
+        #                         dropout=self.dropout, mlp_ratio=4)
 
         kwargs['parameters'] = parameter_count(self.supert)['']
         
