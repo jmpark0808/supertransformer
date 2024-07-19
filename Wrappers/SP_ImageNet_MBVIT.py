@@ -1,6 +1,6 @@
 import pytorch_lightning as pl
 import torch
-from Blocks.MobileVitV1 import MobileViTv3_v1_SP, MobileViTv3_v1
+from Blocks.MobileVitV2 import MobileViTSPv3_v2
 
 import torch.nn.functional as F
 import numpy as np
@@ -34,7 +34,7 @@ class SP_ImageNet_MBVIT_Wrapper(pl.LightningModule):
         self.total_train_epochs = kwargs.get('epoch')
         
         
-        # input_dim = get_input_dim(kwargs)
+        input_dim = get_input_dim(kwargs)
         self.res = (int(self.num_seg**0.5), int(self.num_seg**0.5))
         
         # Generator that produces the HeatMap
@@ -44,11 +44,11 @@ class SP_ImageNet_MBVIT_Wrapper(pl.LightningModule):
             self.supert = ObserverTransformer(16, 5, 22, 128, 3, 4, 4)
             self.classes = 4
         else:
-            self.supert = MobileViTv3_v1_SP(image_size=self.res, mode='x_small', num_classes=1000)
+            self.supert = MobileViTSPv3_v2(image_size=self.res, in_channels=input_dim, width_multiplier=0.5, num_classes=1000)
             self.classes= 1000
         kwargs['parameters'] = parameter_count(self.supert)['']
         
-        inp = torch.randn([1, self.res[0]*self.res[1], 16+22])
+        inp = torch.randn([1,  16+22, self.res[0], self.res[1]])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
         # from fvcore.nn import FlopCountAnalysis, flop_count_table
@@ -184,7 +184,7 @@ class SP_ImageNet_MBVIT_Wrapper(pl.LightningModule):
 
 
         # forward pass
-        # features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
+        features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
         
         pred = self.forward(features)
 
@@ -219,7 +219,7 @@ class SP_ImageNet_MBVIT_Wrapper(pl.LightningModule):
         features, label = batch
 
         # forward pass
-        # features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
+        features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
         pred = self.forward(features)
 
         loss = self.loss(pred, F.one_hot(label, num_classes=self.classes))
