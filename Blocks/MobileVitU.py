@@ -65,7 +65,7 @@ class MobileVITV3_unet(nn.Module):
         self.dconv4 = nn.ConvTranspose2d(channels[-4], channels[-5], 4, padding=1, stride=2)
         self.invres4 = InvertedResidual(channels[-5]*2, channels[-5], 1, 6)
 
-        self.dconv5 = nn.ConvTranspose2d(channels[-5], channels[-5], 4, padding=1, stride=2)
+        # self.dconv5 = nn.ConvTranspose2d(channels[-5], channels[-5], 4, padding=1, stride=2)
 
         self.conv_last = nn.Conv2d(channels[-5], 1, 1)
 
@@ -88,27 +88,27 @@ class MobileVITV3_unet(nn.Module):
   
         x = self.backbone.layer_1(self.backbone.conv_0(x, centroids))
         x1 = x
-       
+     
         
         x = self.backbone.layer_2(x)
         x2 = x
       
-
+    
         
         x = self.backbone.layer_3(x)
         x3 = x
        
-
+      
         
         x = self.backbone.layer_4(x)
         x4 = x
        
-
+       
         
         x = self.backbone.layer_5(x)
         x5 = x
     
-        
+       
         
         up1 = torch.cat([
             x4,
@@ -116,7 +116,7 @@ class MobileVITV3_unet(nn.Module):
         ], dim=1)
         up1 = self.invres1(up1)
        
-
+       
         up2 = torch.cat([
             x3,
             self.dconv2(up1)
@@ -129,7 +129,7 @@ class MobileVITV3_unet(nn.Module):
             self.dconv3(up2)
         ], dim=1)
         up3 = self.invres3(up3)
-        
+       
 
         up4 = torch.cat([
             x1,
@@ -138,8 +138,10 @@ class MobileVITV3_unet(nn.Module):
         up4 = self.invres4(up4)
        
         
-        x = self.dconv5(up4)
-        x = self.conv_last(x)
+        # x = self.dconv5(up4)
+        
+        x = self.conv_last(up4)
+       
 
 
         # x = self.conv_score(x)
