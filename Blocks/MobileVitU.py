@@ -1,7 +1,7 @@
 
 import torch.nn as nn
 import torch
-from Blocks.MobileVitV2 import MobileViTv3_v2
+from Blocks.MobileVitV2 import MobileViTSPv3_v2
 
 
 
@@ -47,10 +47,10 @@ class InvertedResidual(nn.Module):
 
 
 class MobileVITV3_unet(nn.Module):
-    def __init__(self, input_size, pre_trained='weights/mobilenet_v2.pth.tar'):
+    def __init__(self, input_size, in_channels, pre_trained='weights/mobilenet_v2.pth.tar'):
         super(MobileVITV3_unet, self).__init__()
 
-        self.backbone = MobileViTv3_v2(image_size=input_size, width_multiplier=0.5, num_classes=1000)
+        self.backbone = MobileViTSPv3_v2(image_size=input_size, in_channels=in_channels, width_multiplier=0.5, num_classes=1000)
         channels = self.backbone.channels
 
         self.dconv1 = nn.ConvTranspose2d(channels[-1], channels[-2], 4, padding=1, stride=2)
@@ -79,10 +79,14 @@ class MobileVITV3_unet(nn.Module):
             self.backbone.load_state_dict(torch.load(pre_trained, map_location=torch.device('cpu')))
 
     def forward(self, x):
-
+        centroids = x[:, :2, :, :]
+        fft = x[:, 8:-10, :, :]
+        lbp = x[:, -10:, :, :]
+        color = x[:, 2:8, :, :]
+        x = torch.cat((color, lbp, fft), dim=1)
  
   
-        x = self.backbone.layer_1(self.backbone.conv_0(x))
+        x = self.backbone.layer_1(self.backbone.conv_0(x, centroids))
         x1 = x
        
         
@@ -124,6 +128,7 @@ class MobileVITV3_unet(nn.Module):
             x2,
             self.dconv3(up2)
         ], dim=1)
+        up3 = self.invres3(up3)
         
 
         up4 = torch.cat([
