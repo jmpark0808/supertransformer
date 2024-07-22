@@ -293,6 +293,10 @@ class SelfAttention(Attention):
 #         print(1, "self attention module")
         return super().forward(*args, **kwargs)
 
+class CrossAttention(Attention):
+    def forward(self, *args, context = None, **kwargs):
+        assert exists(context), 'cross attention should receive context'
+        return super().forward(*args, context = context, **kwargs)
 # helpers
 
 def pair(t):
@@ -345,6 +349,32 @@ class Transformer(nn.Module):
     def forward(self, x):
         for attn, ff in self.layers:
             x = attn(x) + x
+            x = ff(x) + x
+        return x
+    
+
+class TransformerDecoder(nn.Module):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
+        super().__init__()
+        self.layers = nn.ModuleList([])
+        local_attn_heads = 0
+        local_window_size = 256
+        causal = False
+        nb_features = None
+        generalized_attention = False
+        kernel_fn = nn.ReLU()
+        attn_dropout = 0.
+        no_projection = False
+        qkv_bias = True
+        attn_out_bias = True
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                PreNorm(dim, CrossAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads, local_window_size = local_window_size, nb_features = nb_features, generalized_attention = generalized_attention, kernel_fn = kernel_fn, dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias, attn_out_bias = attn_out_bias)),
+                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+            ]))
+    def forward(self, x, context):
+        for attn, ff in self.layers:
+            x = attn(x, context=context) + x
             x = ff(x) + x
         return x
 
@@ -410,4 +440,65 @@ class ViP(nn.Module):
         x = x.mean(dim = 1) if self.pool == 'mean' else x[:, 0]
 
         x = self.to_latent(x)
+        return self.mlp_head(x)
+    
+
+
+
+class ViPU(nn.Module):
+    def __init__(self, *, image_size, patch_size, num_classes, dim, depth, heads, mlp_dim, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
+        super().__init__()
+        image_height, image_width = pair(image_size)
+        patch_height, patch_width = pair(patch_size)
+
+        assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
+
+        num_patches = (image_height // patch_height) * (image_width // patch_width)
+        patch_dim = channels
+        assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
+
+        self.to_patch_embedding = nn.Sequential(
+            # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
+            nn.LayerNorm(patch_dim),
+            nn.Linear(patch_dim, dim),
+            nn.LayerNorm(dim),
+        )
+
+        # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
+        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+        self.dropout = nn.Dropout(emb_dropout)
+        self.locations = nn.Sequential(nn.Linear(2, dim), nn.LayerNorm(dim))
+
+        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
+        self.transformer_dec = TransformerDecoder(dim, depth, heads, dim_head, mlp_dim, dropout)
+
+        
+
+        self.mlp_head = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, 1)
+        )
+
+
+
+    def forward(self, x):
+        centroids = x[:, :, :2]
+        fft = x[:, :, 8:-10]
+        lbp = x[:, :,  -10:]
+        color = x[:, :, 2:8]
+        x = torch.cat((color, lbp, fft), dim=2)
+        
+        locations = self.locations(centroids)
+
+
+        x = self.to_patch_embedding(x)
+        b, n, _ = x.shape
+
+        x += locations
+  
+        x = self.dropout(x)
+
+        x = self.transformer(x)
+        x = self.transformer_dec(x, x)
+
         return self.mlp_head(x)
