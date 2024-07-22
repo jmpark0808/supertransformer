@@ -399,7 +399,7 @@ class ViP(nn.Module):
         )
 
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
-        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+        self.cls_token = nn.Parameter(torch.randn(1, 4, dim))
         self.dropout = nn.Dropout(emb_dropout)
         self.locations = nn.Sequential(nn.Linear(2, dim), nn.LayerNorm(dim))
 
@@ -409,8 +409,8 @@ class ViP(nn.Module):
         self.to_latent = nn.Identity()
 
         self.mlp_head = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, num_classes)
+            nn.LayerNorm(dim*4),
+            nn.Linear(dim*4, num_classes)
         )
 
 
@@ -428,7 +428,7 @@ class ViP(nn.Module):
         x = self.to_patch_embedding(x)
         b, n, _ = x.shape
 
-        cls_tokens = repeat(self.cls_token, '1 1 d -> b 1 d', b = b)
+        cls_tokens = repeat(self.cls_token, '1 c d -> b c d', b = b)
 
         x += locations
         x = torch.cat((cls_tokens, x), dim=1)
@@ -437,8 +437,9 @@ class ViP(nn.Module):
 
         x = self.transformer(x)
 
-        x = x.mean(dim = 1) if self.pool == 'mean' else x[:, 0]
+        x = x.mean(dim = 1) if self.pool == 'mean' else x[:, :4]
 
+        x = x.reshape(x.size(0), -1)
         x = self.to_latent(x)
         return self.mlp_head(x)
     
