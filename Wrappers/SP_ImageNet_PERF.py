@@ -57,6 +57,8 @@ class SP_ImageNet_PERF_Wrapper(pl.LightningModule):
         # from fvcore.nn import FlopCountAnalysis, flop_count_table
         # inp = torch.randn([1, input_dim+2, 32, 32])
         # flops = FlopCountAnalysis(self.supert, inp)
+        print(kwargs['parameters'], kwargs['flops'])
+        assert(0)
         
         self.mixup = Mixup(
             mixup_alpha=0.8, cutmix_alpha=1.0, cutmix_minmax=None,
@@ -73,6 +75,7 @@ class SP_ImageNet_PERF_Wrapper(pl.LightningModule):
         self.iteration = 0
         self.test_iteration = 0
         self.save_hyperparameters()
+        self.switch_flag = True
         
 
     def loss(self, pred, label):
@@ -87,30 +90,29 @@ class SP_ImageNet_PERF_Wrapper(pl.LightningModule):
         """
         Choose what optimizers and learning-rate schedulers to use in your optimization.
         """
-        
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=0.00005)
-        # optimizer = torch.optim.SGD(self.parameters(), lr=self.lr, momentum=0.9, weight_decay=0.00004)
+          
+        optimizer = torch.optim.SGD(self.parameters(), lr=0.0001, momentum=0.9, weight_decay=0.00004)
 
         # self.trainer.fit_loop.setup_data()
         # dataset= self.trainer.train_dataloader
         # self.scheduler = CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
         #                                               1, 5e-8)
-        self.scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=self.es_patience, min_lr = 5e-8)
+        
         
         return optimizer
     
-    def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure):
-        # update params
-        optimizer.step(closure=optimizer_closure)
+    # def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure):
+    #     # update params
+    #     optimizer.step(closure=optimizer_closure)
 
         
-        dataset= self.trainer.train_dataloader
-        # manually warm up lr without a scheduler
+    #     dataset= self.trainer.train_dataloader
+    #     # manually warm up lr without a scheduler
         
-        if epoch < self.warmup_epochs:
-            lr_scale = min(1.0, float(self.trainer.global_step + 1) / (len(dataset)*self.warmup_epochs))
-            for pg in optimizer.param_groups:
-                pg["lr"] = lr_scale * self.lr
+    #     if epoch < self.warmup_epochs:
+    #         lr_scale = min(1.0, float(self.trainer.global_step + 1) / (len(dataset)*self.warmup_epochs))
+    #         for pg in optimizer.param_groups:
+    #             pg["lr"] = lr_scale * self.lr
       
 
     def forward(self, input):
@@ -140,6 +142,12 @@ class SP_ImageNet_PERF_Wrapper(pl.LightningModule):
         logging resources:
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
+        if self.trainer.current_epoch >= self.warmup_epochs and self.switch_flag:
+            self.trainer.optimizers[0] = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=0.00005)
+            self.scheduler = ReduceLROnPlateau(self.trainer.optimizers[0], mode='max', factor=0.1, patience=self.es_patience, min_lr = 5e-8)
+            self.switch_flag = False
+
+
         features, target = batch
 
         features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
@@ -167,7 +175,8 @@ class SP_ImageNet_PERF_Wrapper(pl.LightningModule):
 
     def on_validation_epoch_end(self):
         acc = self.val_acc/self.val_num_samples
-        self.scheduler.step(acc)
+        if self.current_epoch >= self.warmup_epochs:
+            self.scheduler.step(acc)
         self.log('Validation Accuracy', acc, sync_dist=True)
         self.validation_step_outputs.clear()
 
