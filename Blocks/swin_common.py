@@ -711,8 +711,10 @@ class PatchExpand(nn.Module):
         """
         x: B, H*W, C
         """
+
         H, W = self.input_resolution
         x = self.expand(x) # 通道扩大4倍
+
         B, L, C = x.shape
         assert L == H * W, "input feature has wrong size"
 
