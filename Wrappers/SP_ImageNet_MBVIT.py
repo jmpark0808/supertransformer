@@ -44,7 +44,7 @@ class SP_ImageNet_MBVIT_Wrapper(pl.LightningModule):
             self.supert = ObserverTransformer(16, 5, 22, 128, 3, 4, 4)
             self.classes = 4
         else:
-            self.supert = MobileViTSPv3_v2(image_size=self.res, in_channels=input_dim, width_multiplier=0.5, num_classes=1000)
+            self.supert = MobileViTSPv3_v2(image_size=self.res, in_channels=input_dim, width_multiplier=1.0, num_classes=1000)
             self.classes= 1000
         kwargs['parameters'] = parameter_count(self.supert)['']
         

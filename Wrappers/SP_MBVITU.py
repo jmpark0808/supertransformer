@@ -36,7 +36,7 @@ class SP_MBVITU_Wrapper(pl.LightningModule):
         input_dim = get_input_dim(kwargs)
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
-        self.supert = MobileVITV3_unet((res, res), in_channels=input_dim, pre_trained=None)
+        self.supert = MobileVITV3_unet((res, res), in_channels=input_dim, width_multiplier=1.0, pre_trained=None)
         # self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
         #                                , depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
         #                                  num_heads=[self.tfm_hp[0],

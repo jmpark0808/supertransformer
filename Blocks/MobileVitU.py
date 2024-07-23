@@ -47,10 +47,10 @@ class InvertedResidual(nn.Module):
 
 
 class MobileVITV3_unet(nn.Module):
-    def __init__(self, input_size, in_channels, pre_trained='weights/mobilenet_v2.pth.tar'):
+    def __init__(self, input_size, in_channels, width_multiplier, pre_trained='weights/mobilenet_v2.pth.tar'):
         super(MobileVITV3_unet, self).__init__()
 
-        self.backbone = MobileViTSPv3_v2(image_size=input_size, in_channels=in_channels, width_multiplier=0.5, num_classes=1000)
+        self.backbone = MobileViTSPv3_v2(image_size=input_size, in_channels=in_channels, width_multiplier=width_multiplier, num_classes=1000)
         channels = self.backbone.channels
 
         self.dconv1 = nn.ConvTranspose2d(channels[-1], channels[-2], 4, padding=1, stride=2)
