@@ -335,7 +335,7 @@ class Transformer(nn.Module):
         local_window_size = 256
         causal = False
         nb_features = None
-        generalized_attention = False
+        generalized_attention = True
         kernel_fn = nn.ReLU()
         attn_dropout = 0.
         no_projection = False
@@ -343,7 +343,11 @@ class Transformer(nn.Module):
         attn_out_bias = True
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                PreNorm(dim, SelfAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads, local_window_size = local_window_size, nb_features = nb_features, generalized_attention = generalized_attention, kernel_fn = kernel_fn, dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias, attn_out_bias = attn_out_bias)),
+                PreNorm(dim, SelfAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
+                                            local_window_size = local_window_size, nb_features = nb_features,
+                                              generalized_attention = generalized_attention, kernel_fn = kernel_fn,
+                                                dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
+                                                  attn_out_bias = attn_out_bias)),
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
     def forward(self, x):
@@ -471,7 +475,7 @@ class ViPU(nn.Module):
         self.locations = nn.Sequential(nn.Linear(2, dim), nn.LayerNorm(dim))
 
         self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
-        self.transformer_dec = TransformerDecoder(dim, depth, heads, dim_head, mlp_dim, dropout)
+        # self.transformer_dec = TransformerDecoder(dim, depth, heads, dim_head, mlp_dim, dropout)
 
         
 
@@ -500,6 +504,6 @@ class ViPU(nn.Module):
         x = self.dropout(x)
 
         x = self.transformer(x)
-        x = self.transformer_dec(x, x)
+        # x = self.transformer_dec(x, x)
 
         return self.mlp_head(x)
