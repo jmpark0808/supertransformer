@@ -6,7 +6,7 @@ from einops.layers.torch import Rearrange
 from math import ceil
 from functools import partial
 from contextlib import contextmanager
-
+from Blocks.swin_common import PatchMerging, PatchExpand
 
 def exists(val):
     return val is not None
@@ -328,7 +328,7 @@ class FeedForward(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0.):
         super().__init__()
         self.layers = nn.ModuleList([])
         local_attn_heads = 0
@@ -337,7 +337,7 @@ class Transformer(nn.Module):
         nb_features = None
         generalized_attention = True
         kernel_fn = nn.ReLU()
-        attn_dropout = 0.
+        # attn_dropout = 0.
         no_projection = False
         qkv_bias = True
         attn_out_bias = True
@@ -357,26 +357,74 @@ class Transformer(nn.Module):
         return x
     
 
-class TransformerDecoder(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
+
+class TransformerEncoder(nn.Module):
+    def __init__(self, dim, input_resolution, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., downsample=False):
         super().__init__()
         self.layers = nn.ModuleList([])
         local_attn_heads = 0
         local_window_size = 256
         causal = False
         nb_features = None
-        generalized_attention = False
+        generalized_attention = True
         kernel_fn = nn.ReLU()
-        attn_dropout = 0.
         no_projection = False
         qkv_bias = True
         attn_out_bias = True
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                PreNorm(dim, CrossAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads, local_window_size = local_window_size, nb_features = nb_features, generalized_attention = generalized_attention, kernel_fn = kernel_fn, dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias, attn_out_bias = attn_out_bias)),
+                PreNorm(dim, SelfAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
+                                            local_window_size = local_window_size, nb_features = nb_features,
+                                              generalized_attention = generalized_attention, kernel_fn = kernel_fn,
+                                                dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
+                                                  attn_out_bias = attn_out_bias)),
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
+        if downsample:
+            self.downsample = PatchMerging(input_resolution, dim, dim)
+        else:
+            self.downsample = None
+    def forward(self, x):
+        for attn, ff in self.layers:
+            x = attn(x) + x
+            x = ff(x) + x
+
+        if self.downsample:
+            x = self.downsample(x)
+        return x
+    
+
+class TransformerDecoder(nn.Module):
+    def __init__(self, dim, input_resolution, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., upsample=False):
+        super().__init__()
+        self.layers = nn.ModuleList([])
+        local_attn_heads = 0
+        local_window_size = 256
+        causal = False
+        nb_features = None
+        generalized_attention = True
+        kernel_fn = nn.ReLU()
+        # attn_dropout = 0.
+        no_projection = False
+        qkv_bias = True
+        attn_out_bias = True
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                PreNorm(dim, CrossAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
+                                             local_window_size = local_window_size, nb_features = nb_features,
+                                               generalized_attention = generalized_attention, kernel_fn = kernel_fn,
+                                               dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
+                                                 attn_out_bias = attn_out_bias)),
+                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+            ]))
+
+        if upsample:
+            self.upsample = PatchExpand(input_resolution, dim, dim_scale=2)
+        else:
+            self.upsample = None
     def forward(self, x, context):
+        if self.upsample:
+            x = self.upsample(x)
         for attn, ff in self.layers:
             x = attn(x, context=context) + x
             x = ff(x) + x
@@ -384,13 +432,15 @@ class TransformerDecoder(nn.Module):
 
 
 class ViP(nn.Module):
-    def __init__(self, *, image_size, patch_size, num_classes, dim, depth, heads, mlp_dim, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
+    def __init__(self, *, image_size, patch_size, dim, depth, heads,
+                  mlp_dim, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0., task='cls'):
         super().__init__()
         image_height, image_width = pair(image_size)
         patch_height, patch_width = pair(patch_size)
 
         assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
-
+        assert task in ['cls', 'sod'], 'Task must be either cls or sod'
+        self.task = task
         num_patches = (image_height // patch_height) * (image_width // patch_width)
         patch_dim = channels
         assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
@@ -407,11 +457,15 @@ class ViP(nn.Module):
         self.dropout = nn.Dropout(emb_dropout)
         self.locations = nn.Sequential(nn.Linear(2, dim), nn.LayerNorm(dim))
 
-        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
+        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
 
         self.pool = pool
         self.to_latent = nn.Identity()
 
+        if self.task == 'sod':
+            num_classes = 1
+        else:
+            num_classes = 1000 
         self.mlp_head = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, num_classes)
@@ -441,17 +495,22 @@ class ViP(nn.Module):
 
         x = self.transformer(x)
 
-        x = x.mean(dim = 1) # if self.pool == 'mean' else x[:, :4]
+        if self.task == 'cls':
+            x = x.mean(dim = 1) # if self.pool == 'mean' else x[:, :4]
 
-        x = x.reshape(x.size(0), -1)
-        x = self.to_latent(x)
-        return self.mlp_head(x)
+            # x = x.reshape(x.size(0), -1)
+            x = self.to_latent(x)
+            return self.mlp_head(x)
+        else:
+            x= self.to_latent(x)
+            return self.mlp_head(x)
     
 
 
 
 class ViPU(nn.Module):
-    def __init__(self, *, image_size, patch_size, num_classes, dim, depth, heads, mlp_dim, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
+    def __init__(self, *, image_size, patch_size, dim, depth, heads, mlp_dim, 
+                  channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
         super().__init__()
         image_height, image_width = pair(image_size)
         patch_height, patch_width = pair(patch_size)
@@ -460,7 +519,7 @@ class ViPU(nn.Module):
 
         num_patches = (image_height // patch_height) * (image_width // patch_width)
         patch_dim = channels
-        assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
+     
 
         self.to_patch_embedding = nn.Sequential(
             # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
@@ -474,8 +533,13 @@ class ViPU(nn.Module):
         self.dropout = nn.Dropout(emb_dropout)
         self.locations = nn.Sequential(nn.Linear(2, dim), nn.LayerNorm(dim))
 
-        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
-        # self.transformer_dec = TransformerDecoder(dim, depth, heads, dim_head, mlp_dim, dropout)
+        self.transformer_enc_1 = TransformerEncoder(dim, (image_size, image_size), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, downsample=True)
+        self.transformer_enc_2 = TransformerEncoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, downsample=True)
+        
+        self.transformer_dec_1 = TransformerDecoder(dim, (image_size//4, image_size//4), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, False)
+        self.transformer_dec_2 = TransformerDecoder(dim, (image_size//4, image_size//4), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, True)
+        self.transformer_dec_3 = TransformerDecoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, True)
+
 
         
 
@@ -503,7 +567,11 @@ class ViPU(nn.Module):
   
         x = self.dropout(x)
 
-        x = self.transformer(x)
+        x1 = self.transformer_enc_1(x)
+        x2 = self.transformer_enc_2(x1)
+        x3 = self.transformer_dec_1(x2, x2)
+        x4 = self.transformer_dec_2(x2, x3)
+        x5 = self.transformer_dec_3(x1, x4)
         # x = self.transformer_dec(x, x)
 
-        return self.mlp_head(x)
+        return self.mlp_head(x5)
