@@ -252,12 +252,12 @@ class Attention(nn.Module):
         b, n, _, h, gh = *x.shape, self.heads, self.global_heads
 
         cross_attend = exists(context)
-
+        # print(x.size(), context.size())
         context = default(context, x)
         context_mask = default(context_mask, mask) if not cross_attend else context_mask
-
+  
         q, k, v = self.to_q(x), self.to_k(context), self.to_v(context)
-
+  
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), (q, k, v))
         (q, lq), (k, lk), (v, lv) = map(lambda t: (t[:, :gh], t[:, gh:]), (q, k, v))
 
@@ -388,10 +388,10 @@ class TransformerEncoder(nn.Module):
         for attn, ff in self.layers:
             x = attn(x) + x
             x = ff(x) + x
-
+        ds = x
         if self.downsample:
             x = self.downsample(x)
-        return x
+        return ds, x
     
 
 class TransformerDecoder(nn.Module):
@@ -423,6 +423,7 @@ class TransformerDecoder(nn.Module):
         else:
             self.upsample = None
     def forward(self, x, context):
+        
         if self.upsample:
             x = self.upsample(x)
         for attn, ff in self.layers:
@@ -533,12 +534,19 @@ class ViPU(nn.Module):
         self.dropout = nn.Dropout(emb_dropout)
         self.locations = nn.Sequential(nn.Linear(2, dim), nn.LayerNorm(dim))
 
-        self.transformer_enc_1 = TransformerEncoder(dim, (image_size, image_size), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, downsample=True)
-        self.transformer_enc_2 = TransformerEncoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, downsample=True)
+        self.transformer_enc_1 = TransformerEncoder(dim, (image_size, image_size), depth, heads, dim_head, mlp_dim,
+                                                     emb_dropout, dropout, downsample=True)
+        self.transformer_enc_2 = TransformerEncoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim,
+                                                     emb_dropout, dropout, downsample=True)
+        self.transformer_enc_3 = torch.nn.TransformerEncoder(torch.nn.TransformerEncoderLayer(dim, heads, mlp_dim, dropout,
+                                                                                               batch_first=True, norm_first=True),
+                                                             num_layers=depth*3)
+        # self.transformer_enc_3 = TransformerEncoder(dim, (image_size//4, image_size//4), depth*3, heads, dim_head, mlp_dim,
+        #                                              emb_dropout, dropout, downsample=False)
         
         self.transformer_dec_1 = TransformerDecoder(dim, (image_size//4, image_size//4), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, False)
-        self.transformer_dec_2 = TransformerDecoder(dim, (image_size//4, image_size//4), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, True)
-        self.transformer_dec_3 = TransformerDecoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, True)
+        self.transformer_dec_2 = TransformerDecoder(dim, (image_size//4, image_size//4), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, False)
+        # self.transformer_dec_3 = TransformerDecoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, True)
 
 
         
@@ -567,11 +575,15 @@ class ViPU(nn.Module):
   
         x = self.dropout(x)
 
-        x1 = self.transformer_enc_1(x)
-        x2 = self.transformer_enc_2(x1)
-        x3 = self.transformer_dec_1(x2, x2)
-        x4 = self.transformer_dec_2(x2, x3)
-        x5 = self.transformer_dec_3(x1, x4)
+        x1, x = self.transformer_enc_1(x)
+        x2, x = self.transformer_enc_2(x)
+        x = self.transformer_enc_3(x)
+
+
+        x = self.transformer_dec_1(x2, x)
+        x = self.transformer_dec_2(x1, x)
+        
+
         # x = self.transformer_dec(x, x)
 
-        return self.mlp_head(x5)
+        return self.mlp_head(x)
