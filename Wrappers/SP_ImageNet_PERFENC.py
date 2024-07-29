@@ -15,7 +15,7 @@ from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 from Blocks.performer2 import ViP
 import torch.nn as nn
 
-class SP_ImageNet_PERF_Wrapper(pl.LightningModule):
+class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -179,6 +179,7 @@ class SP_ImageNet_PERF_Wrapper(pl.LightningModule):
         if self.current_epoch >= self.warmup_epochs:
             self.scheduler.step(acc)
         self.log('Validation Accuracy', acc, sync_dist=True)
+        
         self.validation_step_outputs.clear()
 
     def on_validation_start(self):
