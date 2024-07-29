@@ -7,7 +7,7 @@ from math import ceil
 from functools import partial
 from contextlib import contextmanager
 from Blocks.swin_common import PatchMerging, PatchExpand
-
+from Blocks.TransformerBlocks import Transformer as TFM
 def exists(val):
     return val is not None
 
@@ -700,9 +700,10 @@ class ViPEnc(nn.Module):
                                                      emb_dropout, dropout, downsample=True)
         self.transformer_enc_2 = TransformerEncoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim,
                                                      emb_dropout, dropout, downsample=True)
-        self.transformer_enc_3 = torch.nn.TransformerEncoder(torch.nn.TransformerEncoderLayer(dim, heads, mlp_dim, dropout,
-                                                                                               batch_first=True, norm_first=True),
-                                                             num_layers=depth*3)
+        self.transformer_enc_3 = TFM(dim, depth*3, heads, dim_head, mlp_dim, emb_dropout, dropout)
+        # self.transformer_enc_3 = torch.nn.TransformerEncoder(torch.nn.TransformerEncoderLayer(dim, heads, mlp_dim, dropout,
+        #                                                                                        batch_first=True, norm_first=True),
+        #                                                      num_layers=depth*3)
         
 
         
