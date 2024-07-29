@@ -42,6 +42,8 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         inp = torch.randn([1, self.num_seg, input_dim+2])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
+        print(kwargs['parameters'], kwargs['flops'])
+        assert(0)
         # self.mixup = MixupSaliency(
         #     cutmix_alpha=1.0, cutmix_minmax=None,
         #     prob=1.0,  mode='batch',

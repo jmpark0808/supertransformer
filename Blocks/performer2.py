@@ -587,3 +587,74 @@ class ViPU(nn.Module):
         # x = self.transformer_dec(x, x)
 
         return self.mlp_head(x)
+    
+
+
+class ViPEnc(nn.Module):
+    def __init__(self, *, image_size, patch_size, dim, depth, heads, mlp_dim, 
+                  channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
+        super().__init__()
+        image_height, image_width = pair(image_size)
+        patch_height, patch_width = pair(patch_size)
+
+        assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
+
+        num_patches = (image_height // patch_height) * (image_width // patch_width)
+        patch_dim = channels
+     
+
+        self.to_patch_embedding = nn.Sequential(
+            # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
+            nn.LayerNorm(patch_dim),
+            nn.Linear(patch_dim, dim),
+            nn.LayerNorm(dim),
+        )
+
+        # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
+        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+        self.dropout = nn.Dropout(emb_dropout)
+        self.locations = nn.Sequential(nn.Linear(2, dim), nn.LayerNorm(dim))
+
+        self.transformer_enc_1 = TransformerEncoder(dim, (image_size, image_size), depth, heads, dim_head, mlp_dim,
+                                                     emb_dropout, dropout, downsample=True)
+        self.transformer_enc_2 = TransformerEncoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim,
+                                                     emb_dropout, dropout, downsample=True)
+        self.transformer_enc_3 = torch.nn.TransformerEncoder(torch.nn.TransformerEncoderLayer(dim, heads, mlp_dim, dropout,
+                                                                                               batch_first=True, norm_first=True),
+                                                             num_layers=depth*3)
+        
+
+        
+
+        self.mlp_head = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, 1000)
+        )
+
+
+
+    def forward(self, x):
+        centroids = x[:, :, :2]
+        fft = x[:, :, 8:-10]
+        lbp = x[:, :,  -10:]
+        color = x[:, :, 2:8]
+        x = torch.cat((color, lbp, fft), dim=2)
+        
+        locations = self.locations(centroids)
+
+
+        x = self.to_patch_embedding(x)
+        b, n, _ = x.shape
+
+        x += locations
+  
+        x = self.dropout(x)
+
+        x1, x = self.transformer_enc_1(x)
+        x2, x = self.transformer_enc_2(x)
+        x = self.transformer_enc_3(x)
+
+
+        
+        x = x.mean(dim = 1)
+        return self.mlp_head(x)
