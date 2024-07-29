@@ -58,8 +58,8 @@ class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
         # from fvcore.nn import FlopCountAnalysis, flop_count_table
         # inp = torch.randn([1, input_dim+2, 32, 32])
         # flops = FlopCountAnalysis(self.supert, inp)
-        print(kwargs['parameters'], kwargs['flops'])
-        assert(0)
+        # print(kwargs['parameters'], kwargs['flops'])
+        # assert(0)
         
         self.mixup = Mixup(
             mixup_alpha=0.8, cutmix_alpha=1.0, cutmix_minmax=None,
