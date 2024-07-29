@@ -12,7 +12,7 @@ from util.optimizers import SoftTargetCrossEntropy
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingWarmRestarts
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 # from Blocks.performer import Performer
-from Blocks.performer2 import ViP
+from Blocks.performer2 import ViPEnc
 import torch.nn as nn
 
 class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
@@ -44,9 +44,9 @@ class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
         
         
         self.classes= 1000
-        self.supert = ViP(image_size=self.res[0], patch_size=1,  dim=self.tfm_hp[2], heads=self.tfm_hp[0],
+        self.supert = ViPEnc(image_size=self.res[0], patch_size=1,  dim=self.tfm_hp[2], heads=self.tfm_hp[0],
                           mlp_dim=self.tfm_hp[2]*4, channels=input_dim, dim_head=self.tfm_hp[2]//self.tfm_hp[0], depth=self.tfm_hp[1],
-                          task='cls')
+                          )
         # self.supert = Performer(input_dim, self.tfm_hp[2], self.tfm_hp[0], self.tfm_hp[1], 1000, attn_dropout=self.dropout_edge,
         #                         dropout=self.dropout, mlp_ratio=4)
 
@@ -58,8 +58,8 @@ class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
         # from fvcore.nn import FlopCountAnalysis, flop_count_table
         # inp = torch.randn([1, input_dim+2, 32, 32])
         # flops = FlopCountAnalysis(self.supert, inp)
-        # print(kwargs['parameters'], kwargs['flops'])
-        # assert(0)
+        print(kwargs['parameters'], kwargs['flops'])
+        assert(0)
         
         self.mixup = Mixup(
             mixup_alpha=0.8, cutmix_alpha=1.0, cutmix_minmax=None,
