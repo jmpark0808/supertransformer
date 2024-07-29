@@ -92,7 +92,8 @@ class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
         Choose what optimizers and learning-rate schedulers to use in your optimization.
         """
           
-        optimizer = torch.optim.SGD(self.parameters(), lr=self.lr, momentum=0.9, weight_decay=0.00004)
+        # optimizer = torch.optim.SGD(self.parameters(), lr=self.lr, momentum=0.9, weight_decay=0.00004)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
 
         # self.trainer.fit_loop.setup_data()
         # dataset= self.trainer.train_dataloader
