@@ -381,7 +381,8 @@ class TransformerEncoder(nn.Module):
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
         if downsample:
-            self.downsample = PatchMerging(input_resolution, dim, dim)
+            # self.downsample = PatchMerging(input_resolution, dim, dim)
+            self.downsample = SelectTopK(dim, input_resolution)
         else:
             self.downsample = None
     def forward(self, x):
@@ -390,7 +391,7 @@ class TransformerEncoder(nn.Module):
             x = ff(x) + x
         ds = x
         if self.downsample:
-            x = self.downsample(x)
+            x, perm = self.downsample(x)
         return ds, x
     
 
@@ -634,12 +635,13 @@ class SelectTopK(nn.Module):
     def __init__(
         self,
         in_channels,
+        input_resolution,
         ):
         super().__init__()
 
-
+        
         self.in_channels = in_channels
- 
+        self.input_resolution = input_resolution
 
         self.weight = torch.nn.Parameter(torch.randn(1, 1, in_channels))
 
@@ -649,19 +651,22 @@ class SelectTopK(nn.Module):
 
     def forward(
         self,
-        x,k
+        x
 
         ):
         """"""  # noqa: D419
         
-
+        H, W = self.input_resolution
         score = (x * self.weight).sum(dim=-1)
 
         
         score = torch.tanh(score / self.weight.norm(p=2, dim=-1))
         
         score = score.view(score.size(0), -1)
-        topk, perm = torch.topk(score, k)
+        topk, perm = torch.topk(score, H*W//4)
+        
+        topk = torch.gather(x, 1, perm.unsqueeze(-1).repeat(1, 1, x.size(-1)))
+        
 
         return topk, perm
     
