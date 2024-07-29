@@ -381,8 +381,8 @@ class TransformerEncoder(nn.Module):
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
         if downsample:
-            # self.downsample = PatchMerging(input_resolution, dim, dim)
-            self.downsample = SelectTopK(dim, input_resolution)
+            self.downsample = PatchMerging(input_resolution, dim, dim)
+            # self.downsample = SelectTopK(dim, input_resolution)
         else:
             self.downsample = None
     def forward(self, x):
