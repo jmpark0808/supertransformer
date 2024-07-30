@@ -8,7 +8,7 @@ from functools import partial
 from contextlib import contextmanager
 from Blocks.swin_common import PatchMerging, PatchExpand
 from Blocks.TransformerBlocks import Transformer as TFM
-from Blocks.Topkpooling import TopKPooling
+from Blocks.GraphPooling import TopKPooling
 def exists(val):
     return val is not None
 
@@ -360,7 +360,7 @@ class Transformer(nn.Module):
 
 
 class TransformerEncoder(nn.Module):
-    def __init__(self, dim, input_resolution, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., downsample=False):
+    def __init__(self, dim, nodes, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., downsample=False):
         super().__init__()
         self.layers = nn.ModuleList([])
         local_attn_heads = 0
@@ -382,8 +382,13 @@ class TransformerEncoder(nn.Module):
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
         if downsample:
+            self.downsample = nn.Sequential(PreNorm(dim, SelfAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
+                                            local_window_size = local_window_size, nb_features = nb_features,
+                                              generalized_attention = generalized_attention, kernel_fn = kernel_fn,
+                                                dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
+                                                  attn_out_bias = attn_out_bias)), nn.Linear(dim, int(0.5*nodes)))
             # self.downsample = PatchMerging(input_resolution, dim, dim)
-            self.downsample = TopKPooling(dim, 0.25)
+            # self.downsample = TopKPooling(dim, 0.25)
         else:
             self.downsample = None
     def forward(self, x):
@@ -394,8 +399,19 @@ class TransformerEncoder(nn.Module):
         # print('linear', self.layers[0][1].fn.net[0].weight.grad)
         
         if self.downsample:
+            s = self.downsample(x)
+            s = torch.softmax(s, dim=-1)
+            x = torch.matmul(s.transpose(1, 2), x) # B, k, D 
+            # out_adj = torch.matmul(torch.matmul(s.transpose(1, 2), adj), s)
+
+            # link_loss = adj - torch.matmul(s, s.transpose(1, 2))
+            # link_loss = torch.norm(link_loss, p=2)
+            # if normalize is True:
+            #     link_loss = link_loss / adj.numel()
+
+            # ent_loss = (-s * torch.log(s + 1e-15)).sum(dim=-1).mean()
             # print('downsample', self.downsample.select.weight.grad)
-            x, perm, score = self.downsample(x)
+            # x, perm, score = self.downsample(x)
         return ds, x
     
 
@@ -621,11 +637,18 @@ class ViPEnc(nn.Module):
         self.dropout = nn.Dropout(emb_dropout)
         self.locations = nn.Sequential(nn.Linear(2, dim), nn.LayerNorm(dim))
 
-        self.transformer_enc_1 = TransformerEncoder(dim, (image_size, image_size), depth, heads, dim_head, mlp_dim,
-                                                     emb_dropout, dropout, downsample=True)
-        self.transformer_enc_2 = TransformerEncoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim,
-                                                     emb_dropout, dropout, downsample=True)
-        self.transformer_enc_3 = TFM(dim, depth*3, heads, dim_head, mlp_dim, emb_dropout, dropout)
+        
+        self.transformer_enc = nn.ModuleList([])
+        nodes = image_size*image_size
+        for i in range(depth):
+            self.transformer_enc.append(TransformerEncoder(dim, nodes, 1, heads, dim_head, mlp_dim,
+                                                     emb_dropout, dropout, downsample=True))
+            nodes = int(nodes*0.5)
+        # self.transformer_enc_1 = TransformerEncoder(dim, (image_size, image_size), depth, heads, dim_head, mlp_dim,
+        #                                              emb_dropout, dropout, downsample=True)
+        # self.transformer_enc_2 = TransformerEncoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim,
+        #                                              emb_dropout, dropout, downsample=True)
+        # self.transformer_enc_3 = TFM(dim, depth*3, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer_enc_3 = torch.nn.TransformerEncoder(torch.nn.TransformerEncoderLayer(dim, heads, mlp_dim, dropout,
         #                                                                                        batch_first=True, norm_first=True),
         #                                                      num_layers=depth*3)
@@ -657,9 +680,12 @@ class ViPEnc(nn.Module):
   
         x = self.dropout(x)
 
-        x1, x = self.transformer_enc_1(x)
-        x2, x = self.transformer_enc_2(x)
-        x = self.transformer_enc_3(x)
+        for layer in self.transformer_enc:
+            ds, x = layer(x)
+            print(x.size())
+        # x1, x = self.transformer_enc_1(x)
+        # x2, x = self.transformer_enc_2(x)
+        # x = self.transformer_enc_3(x)
 
         
         
