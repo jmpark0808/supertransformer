@@ -1,11 +1,12 @@
 import pytorch_lightning as pl
 import torch
 from Models.SP_GUNET import SP_GUNET_PyG
+from Blocks.CustomGUNet import GraphUNet2
 
 import torch.nn.functional as F
 import numpy as np
 from dataset.constants import *
-
+from torch_geometric.nn.models import GraphUNet
 from fvcore.nn import FlopCountAnalysis
 from fvcore.nn import flop_count_table
 from torch_geometric.data import Data
@@ -27,7 +28,8 @@ class SP_GUNET_PyG_Wrapper(pl.LightningModule):
         self.dropout_edge = kwargs.get('dropout_edge')
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
-        self.model = SP_GUNET_PyG(input_dim, self.tfm_hp[1], self.tfm_hp[0], self.num_seg, self.tfm_hp[2], self.dropout, self.mode, self.dropout_edge)
+        # self.model = SP_GUNET_PyG(input_dim, self.tfm_hp[1], self.tfm_hp[0], self.num_seg, self.tfm_hp[2], self.dropout, self.mode, self.dropout_edge)
+        self.model = GraphUNet2(input_dim+2, self.tfm_hp[2], 1, self.tfm_hp[1])
         
         # data = Data(x=torch.ones(self.num_seg, input_dim),
         #              edge_index=torch.ones(self.num_seg,self.num_seg),
