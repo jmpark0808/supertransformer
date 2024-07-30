@@ -8,6 +8,7 @@ from functools import partial
 from contextlib import contextmanager
 from Blocks.swin_common import PatchMerging, PatchExpand
 from Blocks.TransformerBlocks import Transformer as TFM
+from Blocks.Topkpooling import TopKPooling
 def exists(val):
     return val is not None
 
@@ -382,7 +383,7 @@ class TransformerEncoder(nn.Module):
             ]))
         if downsample:
             # self.downsample = PatchMerging(input_resolution, dim, dim)
-            self.downsample = SelectTopK(dim, input_resolution)
+            self.downsample = TopKPooling(dim, 0.25)
         else:
             self.downsample = None
     def forward(self, x):
@@ -390,8 +391,11 @@ class TransformerEncoder(nn.Module):
             x = attn(x) + x
             x = ff(x) + x
         ds = x
+        # print('linear', self.layers[0][1].fn.net[0].weight.grad)
+        
         if self.downsample:
-            x, perm = self.downsample(x)
+            # print('downsample', self.downsample.select.weight.grad)
+            x, perm, score = self.downsample(x)
         return ds, x
     
 
@@ -590,85 +594,6 @@ class ViPU(nn.Module):
         return self.mlp_head(x)
     
 
-
-class SelectTopK(nn.Module):
-    r"""Selects the top-:math:`k` nodes with highest projection scores from the
-    `"Graph U-Nets" <https://arxiv.org/abs/1905.05178>`_, `"Towards Sparse
-    Hierarchical Graph Classifiers" <https://arxiv.org/abs/1811.01287>`_
-    and `"Understanding Attention and Generalization in Graph Neural
-    Networks" <https://arxiv.org/abs/1905.02850>`_ papers.
-
-    If :obj:`min_score` :math:`\tilde{\alpha}` is :obj:`None`, computes:
-
-        .. math::
-            \mathbf{y} &= \sigma \left( \frac{\mathbf{X}\mathbf{p}}{\|
-            \mathbf{p} \|} \right)
-
-            \mathbf{i} &= \mathrm{top}_k(\mathbf{y})
-
-    If :obj:`min_score` :math:`\tilde{\alpha}` is a value in :obj:`[0, 1]`,
-    computes:
-
-        .. math::
-            \mathbf{y} &= \mathrm{softmax}(\mathbf{X}\mathbf{p})
-
-            \mathbf{i} &= \mathbf{y}_i > \tilde{\alpha}
-
-    where :math:`\mathbf{p}` is the learnable projection vector.
-
-    Args:
-        in_channels (int): Size of each input sample.
-        ratio (float or int): The graph pooling ratio, which is used to compute
-            :math:`k = \lceil \mathrm{ratio} \cdot N \rceil`, or the value
-            of :math:`k` itself, depending on whether the type of :obj:`ratio`
-            is :obj:`float` or :obj:`int`.
-            This value is ignored if :obj:`min_score` is not :obj:`None`.
-            (default: :obj:`0.5`)
-        min_score (float, optional): Minimal node score :math:`\tilde{\alpha}`
-            which is used to compute indices of pooled nodes
-            :math:`\mathbf{i} = \mathbf{y}_i > \tilde{\alpha}`.
-            When this value is not :obj:`None`, the :obj:`ratio` argument is
-            ignored. (default: :obj:`None`)
-        act (str or callable, optional): The non-linearity :math:`\sigma`.
-            (default: :obj:`"tanh"`)
-    """
-    def __init__(
-        self,
-        in_channels,
-        input_resolution,
-        ):
-        super().__init__()
-
-        
-        self.in_channels = in_channels
-        self.input_resolution = input_resolution
-
-        self.weight = torch.nn.Parameter(torch.randn(1, 1, in_channels))
-
-        
-
-    
-
-    def forward(
-        self,
-        x
-
-        ):
-        """"""  # noqa: D419
-        
-        H, W = self.input_resolution
-        score = (x * self.weight).sum(dim=-1)
-
-        
-        score = torch.tanh(score / self.weight.norm(p=2, dim=-1))
-        
-        score = score.view(score.size(0), -1)
-        topk, perm = torch.topk(score, H*W//4)
-        
-        topk = torch.gather(x, 1, perm.unsqueeze(-1).repeat(1, 1, x.size(-1)))
-        
-
-        return topk, perm
     
 
 class ViPEnc(nn.Module):
@@ -736,7 +661,7 @@ class ViPEnc(nn.Module):
         x2, x = self.transformer_enc_2(x)
         x = self.transformer_enc_3(x)
 
-
+        
         
         x = x.mean(dim = 1)
         return self.mlp_head(x)
