@@ -50,6 +50,7 @@ from Wrappers.Image_SOD_MBVITU import Image_MBVITU_Wrapper
 from Wrappers.SP_PERFU import SP_PERFU_Wrapper
 from Wrappers.SP_MBVITU import SP_MBVITU_Wrapper
 from Wrappers.SP_PERF import SP_PERF_Wrapper
+from Wrappers.SP_PERFEncDec import SP_PERFEncDec_Wrapper
 # from Wrappers.SP_MAMBA import SP_MAMBA_Wrapper
 
 
@@ -120,6 +121,7 @@ MODEL_DIRECTORY = {
     'SP_MBNET': SP_MBNET_Wrapper,
     'SP_PERFU': SP_PERFU_Wrapper,
     'SP_PERF': SP_PERF_Wrapper,
+    'SP_PERFEncDec': SP_PERFEncDec_Wrapper,
     'SP_MBVITU': SP_MBVITU_Wrapper
 }
 DATALOADER_DIRECTORY = {
