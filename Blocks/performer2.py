@@ -8,7 +8,7 @@ from functools import partial
 from contextlib import contextmanager
 from Blocks.swin_common import PatchMerging, PatchExpand
 from Blocks.TransformerBlocks import Transformer as TFM
-from Blocks.GraphPooling import TopKPooling
+# from Blocks.GraphPooling import TopKPooling
 def exists(val):
     return val is not None
 
