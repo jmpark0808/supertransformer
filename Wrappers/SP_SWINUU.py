@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 
-from Blocks.swinunet_upernet_rpe import SwinUTransformer
+from Blocks.swinunet_upernet_ape import SwinUTransformer
 
 import torch.nn.functional as F
 import numpy as np
