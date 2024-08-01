@@ -434,7 +434,7 @@ class PatchMerging(nn.Module):
         x = self.norm(x)
         x = self.reduction(x)
 
-        return x, None
+        return x
 
     def extra_repr(self) -> str:
         return f"input_resolution={self.input_resolution}, dim={self.dim}"
@@ -503,6 +503,7 @@ class BasicLayer(nn.Module):
         ds = x
         if self.downsample is not None:
             x = self.downsample(x)
+        
         return ds, x
 
     def extra_repr(self) -> str:
