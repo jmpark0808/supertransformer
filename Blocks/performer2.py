@@ -358,7 +358,7 @@ class Transformer(nn.Module):
         return x
     
 
-
+'''
 class TransformerEncoder(nn.Module):
     def __init__(self, dim, nodes, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., downsample=False):
         super().__init__()
@@ -420,6 +420,70 @@ class TransformerEncoder(nn.Module):
             # ent_loss = (-s * torch.log(s + 1e-15)).sum(dim=-1).mean()
             # print('downsample', self.downsample.select.weight.grad)
             # x, perm, score = self.downsample(x)
+        return ds, x
+'''  
+class TFMEncoder(nn.Module):
+    def __init__(self, dim, out_dim, input_resolution, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., downsample=False):
+        super().__init__()
+        # self.layers = nn.ModuleList([])
+        local_attn_heads = 0
+        local_window_size = 256
+        causal = False
+        nb_features = None
+        generalized_attention = True
+        kernel_fn = nn.ReLU()
+        no_projection = False
+        qkv_bias = True
+        attn_out_bias = True
+        self.layers = TFM(dim=dim, depth=depth, heads=heads, dim_head=dim_head, mlp_dim=mlp_dim, dropout=dropout, attn_dropout=attn_dropout)
+        if downsample:
+            self.downsample = PatchMerging(input_resolution, dim, out_dim)
+        else:
+            self.downsample = None
+    def forward(self, x):
+        x = self.layers(x)
+        ds = x
+        # print('linear', self.layers[0][1].fn.net[0].weight.grad)
+        
+        if self.downsample:
+            x = self.downsample(x)
+        return ds, x
+
+class TransformerEncoder(nn.Module):
+    def __init__(self, dim, out_dim, input_resolution, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., downsample=False):
+        super().__init__()
+        self.layers = nn.ModuleList([])
+        local_attn_heads = 0
+        local_window_size = 256
+        causal = False
+        nb_features = None
+        generalized_attention = True
+        kernel_fn = nn.ReLU()
+        no_projection = False
+        qkv_bias = True
+        attn_out_bias = True
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                PreNorm(dim, SelfAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
+                                            local_window_size = local_window_size, nb_features = nb_features,
+                                              generalized_attention = generalized_attention, kernel_fn = kernel_fn,
+                                                dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
+                                                  attn_out_bias = attn_out_bias)),
+                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+            ]))
+        if downsample:
+            self.downsample = PatchMerging(input_resolution, dim, out_dim)
+        else:
+            self.downsample = None
+    def forward(self, x):
+        for attn, ff in self.layers:
+            x = attn(x) + x
+            x = ff(x) + x
+        ds = x
+        # print('linear', self.layers[0][1].fn.net[0].weight.grad)
+        
+        if self.downsample:
+            x = self.downsample(x)
         return ds, x
     
 
@@ -735,8 +799,8 @@ class ViPU(nn.Module):
     
 
 class ViPEnc(nn.Module):
-    def __init__(self, *, image_size, patch_size, dim, depth, heads, mlp_dim, 
-                  channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
+    def __init__(self, *, image_size, patch_size, dims, depths, heads, mlp_ratio, 
+                  channels = 3, dropout = 0., emb_dropout = 0.):
         super().__init__()
         image_height, image_width = pair(image_size)
         patch_height, patch_width = pair(patch_size)
@@ -750,37 +814,35 @@ class ViPEnc(nn.Module):
         self.to_patch_embedding = nn.Sequential(
             # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
             nn.LayerNorm(patch_dim),
-            nn.Linear(patch_dim, dim),
-            nn.LayerNorm(dim),
+            nn.Linear(patch_dim, dims[0]),
+            nn.LayerNorm(dims[0]),
         )
 
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
         # self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.dropout = nn.Dropout(emb_dropout)
-        self.locations = nn.Sequential(nn.Linear(2, dim), nn.LayerNorm(dim))
+        self.locations = nn.Sequential(nn.Linear(2, dims[0]), nn.LayerNorm(dims[0]))
 
         
         self.transformer_enc = nn.ModuleList([])
         nodes = image_size*image_size
-        for i in range(depth):
-            self.transformer_enc.append(TransformerEncoder(dim, nodes, 1, heads, dim_head, mlp_dim,
-                                                     emb_dropout, dropout, downsample=True))
-            nodes = int(nodes*0.5)
-        # self.transformer_enc_1 = TransformerEncoder(dim, (image_size, image_size), depth, heads, dim_head, mlp_dim,
-        #                                              emb_dropout, dropout, downsample=True)
-        # self.transformer_enc_2 = TransformerEncoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim,
-        #                                              emb_dropout, dropout, downsample=True)
-        # self.transformer_enc_3 = TFM(dim, depth*3, heads, dim_head, mlp_dim, emb_dropout, dropout)
-        # self.transformer_enc_3 = torch.nn.TransformerEncoder(torch.nn.TransformerEncoderLayer(dim, heads, mlp_dim, dropout,
-        #                                                                                        batch_first=True, norm_first=True),
-        #                                                      num_layers=depth*3)
-        
+        for idx, depth in enumerate(depths):
+            if idx == len(depths)-1:
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size//(2**idx), image_size//(2**idx)), depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
+            elif idx < 2:
+                self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
+            else:
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
 
-        
+
+            
 
         self.mlp_head = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, 1000)
+            nn.LayerNorm(dims[-1]),
+            nn.Linear(dims[-1], 1000)
         )
 
 
