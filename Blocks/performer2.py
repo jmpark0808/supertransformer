@@ -6,7 +6,7 @@ from einops.layers.torch import Rearrange
 from math import ceil
 from functools import partial
 from contextlib import contextmanager
-from Blocks.swin_common import PatchMerging, PatchExpand
+from Blocks.swin_common import PatchMerging, PatchExpandLowerDim
 from Blocks.TransformerBlocks import Transformer as TFM
 # from Blocks.GraphPooling import TopKPooling
 def exists(val):
@@ -425,16 +425,6 @@ class TransformerEncoder(nn.Module):
 class TFMEncoder(nn.Module):
     def __init__(self, dim, out_dim, input_resolution, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., downsample=False):
         super().__init__()
-        # self.layers = nn.ModuleList([])
-        local_attn_heads = 0
-        local_window_size = 256
-        causal = False
-        nb_features = None
-        generalized_attention = True
-        kernel_fn = nn.ReLU()
-        no_projection = False
-        qkv_bias = True
-        attn_out_bias = True
         self.layers = TFM(dim=dim, depth=depth, heads=heads, dim_head=dim_head, mlp_dim=mlp_dim, dropout=dropout, attn_dropout=attn_dropout)
         if downsample:
             self.downsample = PatchMerging(input_resolution, dim, out_dim)
@@ -489,7 +479,7 @@ class TransformerEncoder(nn.Module):
 
 
 class TransformerDecoder(nn.Module):
-    def __init__(self, dim, input_resolution, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., upsample=False):
+    def __init__(self, dim, in_dim, input_resolution, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., upsample=False):
         super().__init__()
         self.layers = nn.ModuleList([])
         local_attn_heads = 0
@@ -513,13 +503,12 @@ class TransformerDecoder(nn.Module):
             ]))
 
         if upsample:
-            self.upsample = PatchExpand(input_resolution, dim, dim_scale=2)
+            self.upsample = PatchExpandLowerDim(input_resolution, in_dim)
         else:
-            self.upsample = None
+            self.upsample = nn.Linear(in_dim, dim)
     def forward(self, x, context):
-        
-        if self.upsample:
-            x = self.upsample(x)
+        # print(x.size())
+        context = self.upsample(context)
         for attn, ff in self.layers:
             x = attn(x, context=context) + x
             x = ff(x) + x
@@ -717,8 +706,8 @@ class ViPEncDec(nn.Module):
 
 
 class ViPU(nn.Module):
-    def __init__(self, *, image_size, patch_size, dim, depth, heads, mlp_dim, 
-                  channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
+    def __init__(self, *, image_size, patch_size, dims, depths, heads, mlp_ratio, 
+                  channels = 3, dropout = 0., emb_dropout = 0.):
         super().__init__()
         image_height, image_width = pair(image_size)
         patch_height, patch_width = pair(patch_size)
@@ -732,35 +721,36 @@ class ViPU(nn.Module):
         self.to_patch_embedding = nn.Sequential(
             # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
             nn.LayerNorm(patch_dim),
-            nn.Linear(patch_dim, dim),
-            nn.LayerNorm(dim),
+            nn.Linear(patch_dim, dims[0]),
+            nn.LayerNorm(dims[0]),
         )
 
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
-        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+        # self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.dropout = nn.Dropout(emb_dropout)
-        self.locations = nn.Sequential(nn.Linear(2, dim), nn.LayerNorm(dim))
-
-        self.transformer_enc_1 = TransformerEncoder(dim, (image_size, image_size), depth, heads, dim_head, mlp_dim,
-                                                     emb_dropout, dropout, downsample=True)
-        self.transformer_enc_2 = TransformerEncoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim,
-                                                     emb_dropout, dropout, downsample=True)
-        self.transformer_enc_3 = torch.nn.TransformerEncoder(torch.nn.TransformerEncoderLayer(dim, heads, mlp_dim, dropout,
-                                                                                               batch_first=True, norm_first=True),
-                                                             num_layers=depth*3)
-        # self.transformer_enc_3 = TransformerEncoder(dim, (image_size//4, image_size//4), depth*3, heads, dim_head, mlp_dim,
-        #                                              emb_dropout, dropout, downsample=False)
+        self.locations = nn.Sequential(nn.Linear(2, dims[0]), nn.LayerNorm(dims[0]))
+        self.transformer_enc = nn.ModuleList([])
+        for idx, depth in enumerate(depths):
+            if idx == len(depths)-1:
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size//(2**idx), image_size//(2**idx)), depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
+            elif idx < 2:
+                self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
+            else:
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
         
-        self.transformer_dec_1 = TransformerDecoder(dim, (image_size//4, image_size//4), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, False)
-        self.transformer_dec_2 = TransformerDecoder(dim, (image_size//4, image_size//4), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, False)
+        self.transformer_dec_1 = TransformerDecoder(dims[1], dims[2], (image_size//4, image_size//4), depths[1], heads[1], dims[1]//heads[1], int(mlp_ratio*dims[1]), emb_dropout, dropout, False)
+        self.transformer_dec_2 = TransformerDecoder(dims[0], dims[1], (image_size//2, image_size//2), depths[0], heads[0], dims[0]//heads[0], int(mlp_ratio*dims[0]), emb_dropout, dropout, False)
         # self.transformer_dec_3 = TransformerDecoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, True)
 
 
         
 
         self.mlp_head = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, 1)
+            nn.LayerNorm(dims[0]),
+            nn.Linear(dims[0], 1)
         )
 
 
@@ -782,13 +772,18 @@ class ViPU(nn.Module):
   
         x = self.dropout(x)
 
-        x1, x = self.transformer_enc_1(x)
-        x2, x = self.transformer_enc_2(x)
-        x = self.transformer_enc_3(x)
+        feats = []
+        for idx, layer in enumerate(self.transformer_enc):
 
+            ds, x = layer(x)
+            feats.append(ds)
+            
+            
+            
+        # print(x.size())
 
-        x = self.transformer_dec_1(x2, x)
-        x = self.transformer_dec_2(x1, x)
+        x = self.transformer_dec_1(feats[1], x)
+        x = self.transformer_dec_2(feats[0], x)
         
 
         # x = self.transformer_dec(x, x)
