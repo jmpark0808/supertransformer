@@ -6,7 +6,8 @@ from einops.layers.torch import Rearrange
 from math import ceil
 from functools import partial
 from contextlib import contextmanager
-from Blocks.swin_common import PatchMerging, PatchExpandLowerDim
+from Blocks.swin_common import PatchMerging, PatchExpandLowerDim, SwinASPP, SwinDecoder
+  
 from Blocks.TransformerBlocks import Transformer as TFM
 # from Blocks.GraphPooling import TopKPooling
 def exists(val):
@@ -741,17 +742,59 @@ class ViPU(nn.Module):
                 self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
         
-        self.transformer_dec_1 = TransformerDecoder(dims[1], dims[2], (image_size//4, image_size//4), depths[1], heads[1], dims[1]//heads[1], int(mlp_ratio*dims[1]), emb_dropout, dropout, False)
-        self.transformer_dec_2 = TransformerDecoder(dims[0], dims[1], (image_size//2, image_size//2), depths[0], heads[0], dims[0]//heads[0], int(mlp_ratio*dims[0]), emb_dropout, dropout, False)
+        # self.transformer_dec_1 = TransformerDecoder(dims[1], dims[2], (image_size//4, image_size//4), depths[1], heads[1], dims[1]//heads[1], int(mlp_ratio*dims[1]), emb_dropout, dropout, False)
+        # self.transformer_dec_2 = TransformerDecoder(dims[0], dims[1], (image_size//2, image_size//2), depths[0], heads[0], dims[0]//heads[0], int(mlp_ratio*dims[0]), emb_dropout, dropout, False)
         # self.transformer_dec_3 = TransformerDecoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, True)
 
+        self.upsample_layers = SwinDecoder(input_dim=dims[0],# 输入的通道数为96
+            input_high_dim = dims[2], # 384
+            input_middle_dim = dims[1],
+            input_size=image_size//4, # 14 × 14
+            low_level_idx=0, # 0
+            high_level_idx=2, # 2
+            num_classes=1,
+            depth=2, # 2
+            last_layer_depth=6, # 6
+            num_heads=heads[0], # 3
+            window_size=8, # 7
+            mlp_ratio=mlp_ratio, # 4
+            qk_scale=None,
+            qkv_bias=True,
+            drop_path_rate=0,
+            drop_rate=emb_dropout,
+            attn_drop_rate=dropout,
+            norm_layer=nn.LayerNorm,
+            decoder_norm=True, # True
+            use_checkpoint=False)
 
+
+        self.aspp = SwinASPP(
+            input_size=image_size//4, # 14×14
+            input_dim=dims[2], # 384 
+            out_dim=dims[0],  # 96
+            depth=2, # 2
+            cross_attn='CBAM', # CBAM
+            num_heads=heads[0], # 3头
+            mlp_ratio=mlp_ratio, # 4
+            qk_scale=None,
+            qkv_bias=True,
+            drop_rate=emb_dropout,
+            attn_drop_rate=dropout,
+            drop_path_rate=0, # 0.1
+            norm_layer=nn.LayerNorm,
+            aspp_norm=False,
+            aspp_activation='relu', # relu
+            start_window_size=2,
+            aspp_dropout=0.1, # 0.1
+            downsample=None, #None
+            use_checkpoint=False
+        )
         
 
-        self.mlp_head = nn.Sequential(
-            nn.LayerNorm(dims[0]),
-            nn.Linear(dims[0], 1)
-        )
+        # self.mlp_head = nn.Sequential(
+        #     nn.LayerNorm(dims[0]),
+        #     nn.Linear(dims[0], 1)
+        # )
 
 
 
@@ -776,19 +819,22 @@ class ViPU(nn.Module):
         for idx, layer in enumerate(self.transformer_enc):
 
             ds, x = layer(x)
-            feats.append(ds)
+            size = int(math.sqrt(ds.size(1)))
+            feats.append(ds.view(-1, size, size, ds.shape[-1]))
             
             
             
         # print(x.size())
 
-        x = self.transformer_dec_1(feats[1], x)
-        x = self.transformer_dec_2(feats[0], x)
+        # x = self.transformer_dec_1(feats[1], x)
+        # x = self.transformer_dec_2(feats[0], x)
+        x = self.aspp(feats[-1])
+        x = self.upsample_layers(feats[0], feats[1], feats[2], x)
         
 
         # x = self.transformer_dec(x, x)
-
-        return self.mlp_head(x)
+        return x
+        # return self.mlp_head(x)
     
 
     
