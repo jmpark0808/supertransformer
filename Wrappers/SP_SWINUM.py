@@ -40,13 +40,15 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
         # Generator that produces the HeatMap
         self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
                                        embed_dim=self.dims, depths=self.depths,
-                                         num_heads=self.heads, mlp_ratio=1)
+                                         num_heads=self.heads, mlp_ratio=4)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
         kwargs['parameters'] = parameter_count(self.supert)['']
         inp = torch.randn([1, input_dim+2, res, res])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
+        # print(kwargs['parameters'] , kwargs['flops'])
+        # assert(0)
         self.mixup = MixupSaliency(
             cutmix_alpha=1.0, cutmix_minmax=None,
             prob=1.0,  mode='batch',

@@ -135,7 +135,7 @@ class SwinUTransformer(nn.Module):
             out_dim=dim_list[-1],  # 96
             depth=2, # 2
             cross_attn='CBAM', # CBAM
-            num_heads=num_heads[0], # 3头
+            num_heads=num_heads[-1], # 3头
             mlp_ratio=self.mlp_ratio, # 4
             qk_scale=qk_scale,
             qkv_bias=qkv_bias,
