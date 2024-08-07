@@ -44,7 +44,8 @@ class SP_SWINUU_Wrapper(pl.LightningModule):
         self.supert = SwinUTransformer(in_chans=input_dim, img_size=res, patch_size=1, window_size=self.window_size,
                                        depths=self.depths
                                        , num_heads=self.heads,
-                                       embed_dim=self.dims, mlp_ratio=4)
+                                       embed_dim=self.dims, mlp_ratio=4, attn_drop_rate=self.dropout_edge,
+                                       drop_rate=self.dropout)
         # SWIN UPerNet Experimental
         # self.supert = SwinUTransformer(in_chans=input_dim, img_size=res, patch_size=1, window_size=self.window_size,
         #                                depths=self.depths
