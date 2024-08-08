@@ -110,6 +110,86 @@ class PatchEmbed(nn.Module):
             flops += Ho * Wo * self.embed_dim
         return flops
     
+class UMixDecoder(nn.Module):
+    r""" Window based multi-head self attention (W-MSA) module with relative position bias.
+    It supports both of shifted and non-shifted window.
+
+    Args:
+        dim (int): Number of input channels.
+        window_size (tuple[int]): The height and width of the window.
+        num_heads (int): Number of attention heads.
+        qkv_bias (bool, optional):  If True, add a learnable bias to query, key, value. Default: True
+        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set
+        attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
+        proj_drop (float, optional): Dropout ratio of output. Default: 0.0
+    """
+
+    def __init__(self, dim, num_heads, mlp_ratio=4, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+
+        super().__init__()
+        self.dim = dim
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+        self.scale = qk_scale or head_dim ** -0.5
+
+        self.q_ln = nn.LayerNorm(dim)
+        self.kv_ln = nn.LayerNorm(dim)
+        self.ln = nn.LayerNorm(dim)
+
+
+        self.q = nn.Linear(dim, dim, bias=qkv_bias)
+        self.kv = nn.Linear(dim, dim*2, bias=qkv_bias)
+
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.mlp = Mlp(dim, int(dim*mlp_ratio), drop=proj_drop)
+
+        # trunc_normal_(self.relative_position_bias_table, std=.02)
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, q, kv):
+        """
+        Args:
+            x: input features with shape of (num_windows*B, N, C)
+            mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
+        """
+        B_, N_q, C = q.shape
+
+        q = self.q_ln(q)
+        q_skip = q
+
+        kv = self.kv_ln(kv)
+        
+
+        q = self.q(q).reshape(B_, N_q, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+        B_, N_kv, C = kv.shape
+        
+        kv = self.kv(kv).reshape(B_, N_kv, 2, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        
+        k, v = kv[0], kv[1]
+
+        q = q * self.scale
+        attn = (q @ k.transpose(-2, -1))
+
+        # relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
+        #     self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
+        # relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
+        # attn = attn + relative_position_bias.unsqueeze(0)
+
+        attn = self.softmax(attn)
+
+        attn = self.attn_drop(attn)
+
+        x = (attn @ v).transpose(1, 2).reshape(B_, N_q, C)
+
+        x += q_skip
+        x = self.ln(x)
+        x_skip = x
+        
+        x = self.mlp(x)
+
+        x += x_skip
+        return x
+
 
 
 class BasicLayerUpsampleMA(nn.Module):
@@ -133,17 +213,18 @@ class BasicLayerUpsampleMA(nn.Module):
     """
 
     def __init__(self, dim, total_dim, input_resolution, num_heads, 
-                 mlp_ratio=4., qkv_bias=True, drop=0.,  use_checkpoint=False):
+                 mlp_ratio=4., qkv_bias=True, qk_scale=1.0, attn_drop=0., drop=0.,  use_checkpoint=False):
 
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
         self.use_checkpoint = use_checkpoint
         # build blocks
-        self.blocks = nn.TransformerDecoderLayer(dim,nhead=num_heads, dim_feedforward=int(mlp_ratio*dim), 
-                                                 dropout=drop, batch_first=True, norm_first=True) 
+        self.blocks = UMixDecoder(dim, num_heads, mlp_ratio, qkv_bias, qk_scale, attn_drop, drop )
+        # self.blocks = nn.TransformerDecoderLayer(dim,nhead=num_heads, dim_feedforward=int(mlp_ratio*dim), 
+        #                                          dropout=drop, batch_first=True, norm_first=True) 
         min_res = min(input_resolution)
-        self.avg_pools = [nn.AvgPool2d(res//min_res, res//min_res) for res in input_resolution]
+        self.avg_pools = nn.ModuleList([nn.AvgPool2d(res//min_res, res//min_res) for res in input_resolution])
         
         self.linear = nn.Linear(total_dim, dim)
         

@@ -61,7 +61,7 @@ class SwinUTransformer(nn.Module):
 
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim[0],
+            img_size=img_size, patch_size=patch_size, in_chans=16, embed_dim=embed_dim[0],
             norm_layer=norm_layer if self.patch_norm else None)
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -113,13 +113,15 @@ class SwinUTransformer(nn.Module):
                                num_heads=num_heads[self.num_layers-i_layer-1],
                                mlp_ratio=self.mlp_ratio,
                                qkv_bias=qkv_bias, 
+                               qk_scale=qk_scale, 
                                drop=drop_rate, 
+                               attn_drop=attn_drop_rate,
                                use_checkpoint=use_checkpoint)
             self.upsample_layers.append(layer)
 
         self.upsample = nn.Upsample(size=img_size[0])
         self.sod_head = nn.Linear(sum(embed_dim), 1)
-        self.locations = nn.Sequential(*[nn.Linear(2, embed_dim[0])])
+        self.locations = nn.Sequential(*[nn.Linear(22, embed_dim[0]), nn.ReLU(), nn.Linear(embed_dim[0], embed_dim[0])])
         
         self.apply(self._init_weights)
 
@@ -179,8 +181,8 @@ class SwinUTransformer(nn.Module):
         fft = x[:, 8:-10, :, :]
         lbp = x[:, -10:, :, :]
         color = x[:, 2:8, :, :]
-        x = torch.cat((color, lbp, fft), dim=1)
-        locations = centroids.permute(0, 2, 3, 1)
+        x = torch.cat((color, lbp), dim=1)
+        locations = torch.cat((centroids, fft), dim=1).permute(0, 2, 3, 1)
         locations = self.locations(locations)
         locations = locations.reshape(locations.size(0), -1, locations.size(3))
         x = self.forward_features(x, locations)
