@@ -570,9 +570,9 @@ class ViP(nn.Module):
         )
 
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
-        # self.cls_token = nn.Parameter(torch.randn(1, 4, dim))
+        self.cls_token = nn.Parameter(torch.randn(1, 8, dim))
         self.dropout = nn.Dropout(emb_dropout)
-        self.locations = nn.Sequential(nn.Linear(2, dim), nn.LayerNorm(dim))
+        self.locations = nn.Sequential(nn.Linear(22, dim), nn.ReLU(), nn.Linear(dim, dim), nn.LayerNorm(dim))
 
         self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
 
@@ -584,8 +584,8 @@ class ViP(nn.Module):
         else:
             num_classes = 1000 
         self.mlp_head = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, num_classes)
+            nn.LayerNorm(dim*8),
+            nn.Linear(dim*8, num_classes)
         )
 
 
@@ -595,27 +595,28 @@ class ViP(nn.Module):
         fft = x[:, :, 8:-10]
         lbp = x[:, :,  -10:]
         color = x[:, :, 2:8]
-        x = torch.cat((color, lbp, fft), dim=2)
-        
-        locations = self.locations(centroids)
+        x = torch.cat((color, lbp), dim=2)
+        locations = torch.cat((centroids, fft), dim=2)
+        locations = self.locations(locations)
 
 
         x = self.to_patch_embedding(x)
         b, n, _ = x.shape
 
-        # cls_tokens = repeat(self.cls_token, '1 c d -> b c d', b = b)
+        cls_tokens = repeat(self.cls_token, '1 c d -> b c d', b = b)
 
         x += locations
-        # x = torch.cat((cls_tokens, x), dim=1)
+        x = torch.cat((cls_tokens, x), dim=1)
         # x += self.pos_embedding[:, :(n + 1)]
         x = self.dropout(x)
 
         x = self.transformer(x)
 
         if self.task == 'cls':
-            x = x.mean(dim = 1) # if self.pool == 'mean' else x[:, :4]
+            # x = x.mean(dim = 1) # if self.pool == 'mean' else x[:, :4]
+            x = x[:, :8]
 
-            # x = x.reshape(x.size(0), -1)
+            x = x.reshape(x.size(0), -1)
             x = self.to_latent(x)
             return self.mlp_head(x)
         else:
