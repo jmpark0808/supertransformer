@@ -574,7 +574,14 @@ class ViP(nn.Module):
         self.dropout = nn.Dropout(emb_dropout)
         self.locations = nn.Sequential(nn.Linear(22, dim), nn.ReLU(), nn.Linear(dim, dim), nn.LayerNorm(dim))
 
-        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
+        assert depth % 6 == 0, 'Depth must be a multiple of 6'
+
+        block_depth = depth//6
+        
+        self.transformer1 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
+        self.transformer2 = Transformer(dim, block_depth, heads*2, dim_head, mlp_dim, emb_dropout, dropout)
+        self.transformer3 = Transformer(dim, block_depth*3, heads*4, dim_head, mlp_dim, emb_dropout, dropout)
+        self.transformer4 = Transformer(dim, block_depth, heads*8, dim_head, mlp_dim, emb_dropout, dropout)
 
         self.pool = pool
         self.to_latent = nn.Identity()
@@ -610,7 +617,10 @@ class ViP(nn.Module):
         # x += self.pos_embedding[:, :(n + 1)]
         x = self.dropout(x)
 
-        x = self.transformer(x)
+        x = self.transformer1(x)
+        x = self.transformer2(x)
+        x = self.transformer3(x)
+        x = self.transformer4(x)
 
         if self.task == 'cls':
             # x = x.mean(dim = 1) # if self.pool == 'mean' else x[:, :4]
