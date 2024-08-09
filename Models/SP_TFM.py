@@ -12,33 +12,36 @@ class SP_TFM_Imgnet(nn.Module):
         
         self.performer = Transformer(dim=embed_dim, depth=depth, heads=heads, dim_head=embed_dim,
                                       mlp_dim=embed_dim, dropout=dropout, attn_dropout=attn_dropout)
-        self.cls_token = nn.Parameter(torch.randn(1, 1, embed_dim))
+        self.cls_token = nn.Parameter(torch.randn(1, 8, embed_dim))
         self.to_patch_embedding = nn.Sequential(
-            nn.Linear(input_dim, embed_dim),
+            nn.Linear(16, embed_dim),
             nn.LayerNorm(embed_dim),
         )
         self.locations = nn.Sequential(
-            nn.Linear(2, embed_dim),
+            nn.Linear(22, embed_dim),
+            nn.ReLU(),
+            nn.Linear(embed_dim, embed_dim),
             nn.LayerNorm(embed_dim),
         )
 
         self.to_latent = nn.Identity()
 
-        self.mlp_head = nn.Linear(embed_dim, num_classes)
+        self.mlp_head = nn.Linear(embed_dim*8, num_classes)
 
     def forward(self, x):
         centroids = x[:, :, :2]
         fft = x[:, :, 8:-10]
         lbp = x[:, :,  -10:]
         color = x[:, :, 2:8]
-        x = torch.cat((color, lbp, fft), dim=2)
+        x = torch.cat((color, lbp), dim=2)
         
-        locations = self.locations(centroids)
+        locations = torch.cat((centroids, fft), dim=2)
+        locations = self.locations(locations)
 
         x = self.to_patch_embedding(x)
         b, n, _ = x.shape
 
-        cls_tokens = repeat(self.cls_token, '1 1 d -> b 1 d', b = b)
+        cls_tokens = repeat(self.cls_token, '1 c d -> b c d', b = b)
         x += locations
         x = torch.cat((cls_tokens, x), dim=1)
         
@@ -46,7 +49,8 @@ class SP_TFM_Imgnet(nn.Module):
 
         x = self.performer(x)
 
-        x = x[:, 0]
+        x = x[:, :8]
+        x = x.reshape(x.size(0), -1)
 
         x = self.to_latent(x)
         return self.mlp_head(x)
