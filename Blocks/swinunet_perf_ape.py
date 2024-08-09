@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
-from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA, BasicLayer, PatchMerging
+from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA, BasicLayer, PatchMerging, UMixDecoder
 from Blocks.performer2 import TransformerDecoder
 WindowProcess = None
 WindowProcessReverse = None
@@ -61,7 +61,7 @@ class SwinUTransformer(nn.Module):
 
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim[0],
+            img_size=img_size, patch_size=patch_size, in_chans=16, embed_dim=embed_dim[0],
             norm_layer=norm_layer if self.patch_norm else None)
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -107,14 +107,16 @@ class SwinUTransformer(nn.Module):
         depths.reverse()
         num_heads.reverse()
         embed_dim.reverse()
+        self.decoder_linear = nn.Linear(embed_dim[0], embed_dim[-1])
         self.upsample_layers = nn.ModuleList()
-        for i_layer in range(self.num_layers):
-            self.upsample_layers.append(TransformerDecoder(embed_dim[i_layer], embed_dim[i_layer] if i_layer == 0 else embed_dim[i_layer-1],
-                                                            None, depths[i_layer], num_heads[i_layer],
-                                                              embed_dim[i_layer]//num_heads[i_layer], embed_dim[i_layer]*mlp_ratio,
-                                                    drop_rate, attn_drop_rate))
+        for i_layer in range(6):
+            self.upsample_layers.append(UMixDecoder(embed_dim[-1], num_heads[-1], mlp_ratio, qkv_bias, qk_scale, attn_drop_rate, drop_rate))
+            # self.upsample_layers.append(TransformerDecoder(embed_dim[i_layer], embed_dim[i_layer] if i_layer == 0 else embed_dim[i_layer-1],
+            #                                                 None, depths[i_layer], num_heads[i_layer],
+            #                                                   embed_dim[i_layer]//num_heads[i_layer], embed_dim[i_layer]*mlp_ratio,
+            #                                         drop_rate, attn_drop_rate))
         self.sod_head = nn.Linear(embed_dim[-1], 1)
-        self.locations = nn.Sequential(*[nn.Linear(2, embed_dim[-1])])
+        self.locations = nn.Sequential(*[nn.Linear(22, embed_dim[-1]), nn.ReLU(), nn.Linear(embed_dim[-1], embed_dim[-1])])
         
         self.apply(self._init_weights)
 
@@ -148,12 +150,13 @@ class SwinUTransformer(nn.Module):
             
             ft.append(ds)
 
-        ft.reverse()
-        up_ft = []
+        x = self.decoder_linear(x)
+        query = ft[0]
+        
         for idx, layer in enumerate(self.upsample_layers):
-            x = layer(ft[idx], x)
+            query = layer(query, x)
             
-        return x
+        return query
 
 
 
@@ -162,8 +165,8 @@ class SwinUTransformer(nn.Module):
         fft = x[:, 8:-10, :, :]
         lbp = x[:, -10:, :, :]
         color = x[:, 2:8, :, :]
-        x = torch.cat((color, lbp, fft), dim=1)
-        locations = centroids.permute(0, 2, 3, 1)
+        x = torch.cat((color, lbp), dim=1)
+        locations = torch.cat((centroids, fft), dim=1).permute(0, 2, 3, 1)
         locations = self.locations(locations)
         locations = locations.reshape(locations.size(0), -1, locations.size(3))
         x = self.forward_features(x, locations)
