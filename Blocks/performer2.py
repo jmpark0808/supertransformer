@@ -570,7 +570,7 @@ class ViP(nn.Module):
         )
 
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
-        self.cls_token = nn.Parameter(torch.randn(1, 8, dim))
+        # self.cls_token = nn.Parameter(torch.randn(1, 8, dim))
         self.dropout = nn.Dropout(emb_dropout)
         self.locations = nn.Sequential(nn.Linear(22, dim), nn.ReLU(), nn.Linear(dim, dim), nn.LayerNorm(dim))
 
@@ -579,20 +579,21 @@ class ViP(nn.Module):
         block_depth = depth//6
         
         self.transformer1 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
-        self.transformer2 = Transformer(dim, block_depth, heads*2, dim_head, mlp_dim, emb_dropout, dropout)
-        self.transformer3 = Transformer(dim, block_depth*3, heads*4, dim_head, mlp_dim, emb_dropout, dropout)
-        self.transformer4 = Transformer(dim, block_depth, heads*8, dim_head, mlp_dim, emb_dropout, dropout)
+        self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
+        self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
+        self.transformer4 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
 
         self.pool = pool
         self.to_latent = nn.Identity()
-
+        self.image_height = image_height
+        self.image_width = image_width
         if self.task == 'sod':
             num_classes = 1
         else:
             num_classes = 1000 
         self.mlp_head = nn.Sequential(
-            nn.LayerNorm(dim*8),
-            nn.Linear(dim*8, num_classes)
+            nn.LayerNorm(dim*16),
+            nn.Linear(dim*16, num_classes)
         )
 
 
@@ -610,10 +611,10 @@ class ViP(nn.Module):
         x = self.to_patch_embedding(x)
         b, n, _ = x.shape
 
-        cls_tokens = repeat(self.cls_token, '1 c d -> b c d', b = b)
+        # cls_tokens = repeat(self.cls_token, '1 c d -> b c d', b = b)
 
         x += locations
-        x = torch.cat((cls_tokens, x), dim=1)
+        # x = torch.cat((cls_tokens, x), dim=1)
         # x += self.pos_embedding[:, :(n + 1)]
         x = self.dropout(x)
 
@@ -624,7 +625,8 @@ class ViP(nn.Module):
 
         if self.task == 'cls':
             # x = x.mean(dim = 1) # if self.pool == 'mean' else x[:, :4]
-            x = x[:, :8]
+            x = x.reshape(x.size(0), self.image_height//4, 4, self.image_width//4, 4, -1)
+            x = x.mean(dim=3).mean(dim=1)
 
             x = x.reshape(x.size(0), -1)
             x = self.to_latent(x)
