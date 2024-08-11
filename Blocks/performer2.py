@@ -571,7 +571,7 @@ class ViP(nn.Module):
 
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
         self.num_tokens = 256//dim
-        # self.cls_token = nn.Parameter(torch.randn(1, self.num_tokens, dim))
+        self.cls_token = nn.Parameter(torch.randn(1, self.num_tokens, dim))
         self.dropout = nn.Dropout(emb_dropout)
         self.locations = nn.Sequential(nn.Linear(22, dim), nn.ReLU(), nn.Linear(dim, dim), nn.LayerNorm(dim))
 
@@ -593,8 +593,8 @@ class ViP(nn.Module):
         else:
             num_classes = 1000 
         self.mlp_head = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, num_classes)
+            nn.LayerNorm(dim*self.num_tokens),
+            nn.Linear(dim*self.num_tokens, num_classes)
         )
 
 
@@ -612,10 +612,10 @@ class ViP(nn.Module):
         x = self.to_patch_embedding(x)
         b, n, _ = x.shape
 
-        # cls_tokens = repeat(self.cls_token, '1 c d -> b c d', b = b)
+        cls_tokens = repeat(self.cls_token, '1 c d -> b c d', b = b)
 
         x += locations
-        # x = torch.cat((cls_tokens, x), dim=1)
+        x = torch.cat((cls_tokens, x), dim=1)
         # x += self.pos_embedding[:, :(n + 1)]
         x = self.dropout(x)
 
@@ -625,7 +625,7 @@ class ViP(nn.Module):
         # x = self.transformer4(x)
 
         if self.task == 'cls':
-            x = x.mean(dim=1)# if self.pool == 'mean' else x[:, :4]
+            x = x[:, :self.num_tokens]# if self.pool == 'mean' else x[:, :4]
             # x = x.reshape(x.size(0), self.image_height//4, 4, self.image_width//4, 4, -1)
             # x = x.mean(dim=3).mean(dim=1)
 
