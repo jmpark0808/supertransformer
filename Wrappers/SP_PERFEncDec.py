@@ -43,8 +43,8 @@ class SP_PERFEncDec_Wrapper(pl.LightningModule):
         # Generator that produces the HeatMap
         # SWIN UPerNet Production
         self.supert = ViPEncDec(image_size=res, patch_size=1, dim=self.tfm_hp[2], heads=self.tfm_hp[0], depth=self.tfm_hp[1],
-                           mlp_dim=self.tfm_hp[2]*4, channels=input_dim, dim_head=self.tfm_hp[2]//self.tfm_hp[0], dropout=self.dropout_edge,
-                            emb_dropout=self.dropout, task='sod')
+                           mlp_dim=self.tfm_hp[2]*4, channels=16, dim_head=self.tfm_hp[2]//2, dropout=self.dropout_edge,
+                            emb_dropout=self.dropout)
         # self.supert = ViPU(image_size=res, patch_size=1, dim=self.tfm_hp[2], heads=self.tfm_hp[0], depth=self.tfm_hp[1],
         #                    mlp_dim=self.tfm_hp[2]*1, channels=input_dim, dim_head=self.tfm_hp[2]//self.tfm_hp[0], dropout=self.dropout_edge,
         #                     emb_dropout=self.dropout )
