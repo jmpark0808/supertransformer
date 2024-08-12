@@ -641,14 +641,13 @@ class ViP(nn.Module):
 
 class ViPEncDec(nn.Module):
     def __init__(self, *, image_size, patch_size, dim, depth, heads,
-                  mlp_dim, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0., task='cls'):
+                  mlp_dim, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
         super().__init__()
         image_height, image_width = pair(image_size)
         patch_height, patch_width = pair(patch_size)
 
         assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
-        assert task in ['cls', 'sod'], 'Task must be either cls or sod'
-        self.task = task
+      
         num_patches = (image_height // patch_height) * (image_width // patch_width)
         patch_dim = channels
         assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
@@ -663,21 +662,18 @@ class ViPEncDec(nn.Module):
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
         # self.cls_token = nn.Parameter(torch.randn(1, 4, dim))
         self.dropout = nn.Dropout(emb_dropout)
-        self.locations = nn.Sequential(nn.Linear(2, dim), nn.LayerNorm(dim))
+        self.locations = nn.Sequential(nn.Linear(22, dim), nn.ReLU(), nn.Linear(dim, dim), nn.LayerNorm(dim))
 
-        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
-        self.transformer_dec = nn.ModuleList([TransformerDec(dim, depth, heads, dim_head, mlp_dim, emb_dropout, dropout) for _ in range(depth)])
+        self.transformer1 = Transformer(dim, depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
+        self.transformer_dec = nn.ModuleList([TransformerDec(dim, 1, heads, dim_head, mlp_dim, emb_dropout, dropout) for _ in range(depth)])
 
         self.pool = pool
         self.to_latent = nn.Identity()
 
-        if self.task == 'sod':
-            num_classes = 1
-        else:
-            num_classes = 1000 
+        
         self.mlp_head = nn.Sequential(
             nn.LayerNorm(dim),
-            nn.Linear(dim, num_classes)
+            nn.Linear(dim, 1)
         )
 
 
@@ -687,9 +683,10 @@ class ViPEncDec(nn.Module):
         fft = x[:, :, 8:-10]
         lbp = x[:, :,  -10:]
         color = x[:, :, 2:8]
-        x = torch.cat((color, lbp, fft), dim=2)
-        
-        locations = self.locations(centroids)
+        x = torch.cat((color, lbp), dim=2)
+
+        locations = torch.cat((centroids, fft), dim=2)
+        locations = self.locations(locations)
 
 
         x = self.to_patch_embedding(x)
@@ -702,20 +699,14 @@ class ViPEncDec(nn.Module):
         # x += self.pos_embedding[:, :(n + 1)]
         x = self.dropout(x)
 
-        x = self.transformer(x)
+        x = self.transformer1(x)
         context = x
         for layer in self.transformer_dec:
             x = layer(x, context)
 
-        if self.task == 'cls':
-            x = x.mean(dim = 1) # if self.pool == 'mean' else x[:, :4]
-
-            # x = x.reshape(x.size(0), -1)
-            x = self.to_latent(x)
-            return self.mlp_head(x)
-        else:
-            x= self.to_latent(x)
-            return self.mlp_head(x)
+        
+        x= self.to_latent(x)
+        return self.mlp_head(x)
     
 
 
