@@ -671,7 +671,7 @@ class ViPEncDec(nn.Module):
         self.to_latent = nn.Identity()
 
         
-        self.mlp_head = nn.Sequential(
+        self.head = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, 1)
         )
@@ -706,7 +706,7 @@ class ViPEncDec(nn.Module):
 
         
         x= self.to_latent(x)
-        return self.mlp_head(x)
+        return self.head(x)
     
 
 
