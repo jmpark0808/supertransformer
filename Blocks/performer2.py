@@ -570,16 +570,19 @@ class ViP(nn.Module):
         )
 
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
-        self.num_tokens = 1024//dim
-        self.cls_token = nn.Parameter(torch.randn(1, self.num_tokens, dim))
+        self.num_tokens = 256//dim
+        # self.cls_token = nn.Parameter(torch.randn(1, self.num_tokens, dim))
         self.dropout = nn.Dropout(emb_dropout)
         self.locations = nn.Sequential(nn.Linear(22, dim), nn.ReLU(), nn.Linear(dim, dim), nn.LayerNorm(dim))
 
         assert depth % 6 == 0, 'Depth must be a multiple of 6'
 
         block_depth = depth//6
-        
-        self.transformer1 = Transformer(dim, depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
+
+
+        self.transformer = nn.ModuleList([])
+        for _ in range(self.num_tokens):
+            self.transformer.append(Transformer(dim, depth, heads, dim_head, mlp_dim, emb_dropout, dropout))
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer4 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
@@ -612,20 +615,25 @@ class ViP(nn.Module):
         x = self.to_patch_embedding(x)
         b, n, _ = x.shape
 
-        cls_tokens = repeat(self.cls_token, '1 c d -> b c d', b = b)
+        # cls_tokens = repeat(self.cls_token, '1 c d -> b c d', b = b)
 
         x += locations
-        x = torch.cat((cls_tokens, x), dim=1)
+        # x = torch.cat((cls_tokens, x), dim=1)
         # x += self.pos_embedding[:, :(n + 1)]
         x = self.dropout(x)
 
-        x = self.transformer1(x)
+        all_xs = []
+        for layer in self.transformer:
+            x_ = layer(x)
+            all_xs.append(x_)
+
+        x = torch.cat(all_xs, dim=-1)
         # x = self.transformer2(x)
         # x = self.transformer3(x)
         # x = self.transformer4(x)
 
         if self.task == 'cls':
-            x = x[:, :self.num_tokens]# if self.pool == 'mean' else x[:, :4]
+            x = x.mean(dim=1)# if self.pool == 'mean' else x[:, :4]
             # x = x.reshape(x.size(0), self.image_height//4, 4, self.image_width//4, 4, -1)
             # x = x.mean(dim=3).mean(dim=1)
 
