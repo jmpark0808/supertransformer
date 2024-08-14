@@ -334,17 +334,20 @@ class PreNorm(nn.Module):
         return self.fn(self.norm(x), **kwargs)
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, hidden_dim, dropout = 0.):
+    def __init__(self, dim, hidden_dim, tokens, dropout = 0.):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(dim, hidden_dim),
+            nn.Conv1d(dim, dim, 1, groups=tokens),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, dim),
+            nn.Conv1d(dim, dim, 1, groups=tokens),
             nn.Dropout(dropout)
         )
     def forward(self, x):
-        return self.net(x)
+        x = x.permute(0, 2, 1)
+        x = self.net(x)
+        x = x.permute(0, 2, 1)
+        return x
 
 
 
@@ -370,7 +373,7 @@ class Transformer(nn.Module):
                                               generalized_attention = generalized_attention, kernel_fn = kernel_fn,
                                                 dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
                                                   attn_out_bias = attn_out_bias, tokens=num_tokens)),
-                PreNorm(dim, FeedForward(dim, dim, dropout = dropout))
+                PreNorm(dim, FeedForward(dim, dim, num_tokens, dropout = dropout))
             ]))
     def forward(self, x):
         # x = (B, N, D)
