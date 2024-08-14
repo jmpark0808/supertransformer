@@ -73,14 +73,15 @@ def softmax_kernel(data, *, projection_matrix, is_query, normalize_data=True, ep
     return data_dash.type_as(data)
 
 def generalized_kernel(data, *, projection_matrix, kernel_fn = nn.ReLU(), kernel_epsilon = 0.001, normalize_data = True, device = None):
-    b, h, *_ = data.shape
+    
+    b, h, t, *_ = data.shape
 
     data_normalizer = (data.shape[-1] ** -0.25) if normalize_data else 1.
 
     if projection_matrix is None:
         return kernel_fn(data_normalizer * data) + kernel_epsilon
-
-    projection = repeat(projection_matrix, 'j d -> b h j d', b = b, h = h)
+    
+    projection = repeat(projection_matrix, 'j d -> b h t j d', b = b, h = h, t = t)
     projection = projection.type_as(data)
 
     data_dash = torch.einsum('...id,...jd->...ij', (data_normalizer * data), projection)
@@ -212,6 +213,32 @@ class ProjectionUpdater(nn.Module):
     def forward(self, x):
         raise NotImplemented
 
+
+class SeparableLinear(nn.Module):
+    def __init__(self, in_dim, out_dim, tokens, bias=True):
+        super().__init__()
+        self.in_features = in_dim
+        self.out_features = out_dim
+        self.weight = nn.Parameter(torch.empty(tokens, in_dim, out_dim))
+        if bias:
+            self.bias = nn.Parameter(torch.empty(tokens, out_dim))
+        else:
+            self.register_parameter('bias', None)
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        # Setting a=sqrt(5) in kaiming_uniform is the same as initializing with
+        # uniform(-1/sqrt(in_features), 1/sqrt(in_features)). For details, see
+        # https://github.com/pytorch/pytorch/issues/57109
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, input):
+        # input = (B, N, t, D)
+        return torch.einsum('ijkl,klm->ijkm', input, self.weight)+self.bias
 # classes
 
 class Attention(nn.Module):
@@ -230,7 +257,8 @@ class Attention(nn.Module):
         dropout = 0.,
         no_projection = False,
         qkv_bias = False,
-        attn_out_bias = True
+        attn_out_bias = True,
+        tokens = 1
     ):
         super().__init__()
         assert dim % heads == 0, 'dimension must be divisible by number of heads'
@@ -242,16 +270,16 @@ class Attention(nn.Module):
         self.global_heads = heads - local_heads
         # self.local_attn = LocalAttention(window_size = local_window_size, causal = causal, autopad = True, dropout = dropout, look_forward = int(not causal), rel_pos_emb_config = (dim_head, local_heads)) if local_heads > 0 else None
 
-        self.to_q = nn.Linear(dim, inner_dim, bias = qkv_bias)
-        self.to_k = nn.Linear(dim, inner_dim, bias = qkv_bias)
-        self.to_v = nn.Linear(dim, inner_dim, bias = qkv_bias)
-        self.to_out = nn.Linear(inner_dim, dim, bias = attn_out_bias)
+        self.to_q = SeparableLinear(dim, inner_dim, tokens, bias = qkv_bias)
+        self.to_k = SeparableLinear(dim, inner_dim, tokens, bias = qkv_bias)
+        self.to_v = SeparableLinear(dim, inner_dim, tokens, bias = qkv_bias)
+        self.to_out = SeparableLinear(dim, inner_dim, tokens, bias = qkv_bias)#nn.Linear(inner_dim, dim, bias = attn_out_bias)
         self.dropout = nn.Dropout(dropout)
         
 
     def forward(self, x, pos_emb = None, context = None, mask = None, context_mask = None, **kwargs):
         
-        b, n, _, h, gh = *x.shape, self.heads, self.global_heads
+        b, n, _, _, h, gh = *x.shape, self.heads, self.global_heads
 
         cross_attend = exists(context)
         # print(x.size(), context.size())
@@ -260,7 +288,7 @@ class Attention(nn.Module):
   
         q, k, v = self.to_q(x), self.to_k(context), self.to_v(context)
   
-        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), (q, k, v))
+        q, k, v = map(lambda t: rearrange(t, 'b n l (h d) -> b h l n d', h = h), (q, k, v))
         (q, lq), (k, lk), (v, lv) = map(lambda t: (t[:, :gh], t[:, gh:]), (q, k, v))
 
         attn_outs = []
@@ -282,7 +310,7 @@ class Attention(nn.Module):
             attn_outs.append(out)
 
         out = torch.cat(attn_outs, dim = 1)
-        out = rearrange(out, 'b h n d -> b n (h d)')
+        out = rearrange(out, 'b h l n d -> b n l (h d)')
 #         print("Attention", out.size())
         out =  self.to_out(out)
         out = self.dropout(out)
@@ -315,13 +343,13 @@ class PreNorm(nn.Module):
         return self.fn(self.norm(x), **kwargs)
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, hidden_dim, dropout = 0.):
+    def __init__(self, dim, hidden_dim, tokens, dropout = 0.):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(dim, hidden_dim),
+            SeparableLinear(dim, hidden_dim, tokens, True),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, dim),
+            SeparableLinear(hidden_dim, dim, tokens, True),
             nn.Dropout(dropout)
         )
     def forward(self, x):
@@ -330,7 +358,7 @@ class FeedForward(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0.):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., num_tokens=1):
         super().__init__()
         self.layers = nn.ModuleList([])
         local_attn_heads = 0
@@ -343,19 +371,25 @@ class Transformer(nn.Module):
         no_projection = False
         qkv_bias = True
         attn_out_bias = True
+        self.num_tokens = num_tokens
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
                 PreNorm(dim, SelfAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
                                             local_window_size = local_window_size, nb_features = nb_features,
                                               generalized_attention = generalized_attention, kernel_fn = kernel_fn,
                                                 dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
-                                                  attn_out_bias = attn_out_bias)),
-                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+                                                  attn_out_bias = attn_out_bias, tokens=num_tokens)),
+                PreNorm(dim, FeedForward(dim, mlp_dim, num_tokens, dropout = dropout))
             ]))
     def forward(self, x):
+        # x = (B, N, D)
+        B, N, _ = x.shape
+        x = x.reshape(B, N, self.num_tokens, -1)
+        # x = x.reshape(B*self.num_tokens, N, -1)
         for attn, ff in self.layers:
             x = attn(x) + x
             x = ff(x) + x
+    
         return x
     
 
@@ -561,28 +595,28 @@ class ViP(nn.Module):
         num_patches = (image_height // patch_height) * (image_width // patch_width)
         patch_dim = channels
         assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
+        self.num_tokens = 256//dim
 
         self.to_patch_embedding = nn.Sequential(
             # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
             nn.LayerNorm(patch_dim),
-            nn.Linear(patch_dim, dim),
-            nn.LayerNorm(dim),
+            nn.Linear(patch_dim, dim*self.num_tokens),
+            nn.LayerNorm(dim*self.num_tokens),
         )
 
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
-        self.num_tokens = 256//dim
+        
         # self.cls_token = nn.Parameter(torch.randn(1, self.num_tokens, dim))
         self.dropout = nn.Dropout(emb_dropout)
-        self.locations = nn.Sequential(nn.Linear(22, dim), nn.ReLU(), nn.Linear(dim, dim), nn.LayerNorm(dim))
+        self.locations = nn.Sequential(nn.Linear(22, dim*self.num_tokens), nn.LayerNorm(dim*self.num_tokens))
 
         assert depth % 6 == 0, 'Depth must be a multiple of 6'
 
         block_depth = depth//6
 
 
-        self.transformer = nn.ModuleList([])
-        for _ in range(self.num_tokens):
-            self.transformer.append(Transformer(dim, depth, heads, dim_head, mlp_dim, emb_dropout, dropout))
+        
+        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, emb_dropout, dropout, self.num_tokens)
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer4 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
@@ -622,12 +656,9 @@ class ViP(nn.Module):
         # x += self.pos_embedding[:, :(n + 1)]
         x = self.dropout(x)
 
-        all_xs = []
-        for layer in self.transformer:
-            x_ = layer(x)
-            all_xs.append(x_)
+        x = self.transformer(x)
 
-        x = torch.cat(all_xs, dim=-1)
+        # x = torch.cat(all_xs, dim=-1)
         # x = self.transformer2(x)
         # x = self.transformer3(x)
         # x = self.transformer4(x)
