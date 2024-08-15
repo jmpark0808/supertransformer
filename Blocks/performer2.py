@@ -376,20 +376,20 @@ class Transformer(nn.Module):
                                               generalized_attention = generalized_attention, kernel_fn = kernel_fn,
                                                 dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
                                                   attn_out_bias = attn_out_bias, tokens=num_tokens)),
-                PreNorm(dim*num_tokens, FeedForward(dim*num_tokens, mlp_dim*num_tokens, dropout = dropout))
+                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
     def forward(self, x):
         # x = (B, N, D)
         B, N, _ = x.shape
         # x = x.reshape(B, N, self.num_tokens, -1).permute(0, 2, 1, 3)
         # x = x.reshape(B*self.num_tokens, N, -1)
+        x = rearrange(x, 'b n (t d) -> (b t) n d', t = self.num_tokens)
         for attn, ff in self.layers:
-            x = rearrange(x, 'b n (t d) -> (b t) n d', t = self.num_tokens)
+            
             x = attn(x) + x
-            x = rearrange(x, '(b t) n d -> b n (t d)', t = self.num_tokens)
             x = ff(x) + x
             # x = rearrange(x, 'b h n d -> b n (h d)')
-
+        x = rearrange(x, '(b t) n d -> b n (t d)', t = self.num_tokens)
         return x
     
 
