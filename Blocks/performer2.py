@@ -371,12 +371,12 @@ class Transformer(nn.Module):
         self.heads = heads
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                PreNorm(dim*num_tokens, SelfAttention(dim*num_tokens, causal = causal, heads = heads*num_tokens, dim_head = dim_head, local_heads = local_attn_heads,
+                PreNorm(dim, SelfAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
                                             local_window_size = local_window_size, nb_features = nb_features,
                                               generalized_attention = generalized_attention, kernel_fn = kernel_fn,
                                                 dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
                                                   attn_out_bias = attn_out_bias, tokens=num_tokens)),
-                PreNorm(dim_head, FeedForward(dim_head, dim_head*4, dropout = dropout))
+                PreNorm(dim*num_tokens, FeedForward(dim*num_tokens, mlp_dim*num_tokens, dropout = dropout))
             ]))
     def forward(self, x):
         # x = (B, N, D)
@@ -384,11 +384,11 @@ class Transformer(nn.Module):
         # x = x.reshape(B, N, self.num_tokens, -1).permute(0, 2, 1, 3)
         # x = x.reshape(B*self.num_tokens, N, -1)
         for attn, ff in self.layers:
-            # x = rearrange(x, 'b n (t d) -> (b t) n d', t = self.num_tokens)
+            x = rearrange(x, 'b n (t d) -> (b t) n d', t = self.num_tokens)
             x = attn(x) + x
-            x = rearrange(x, 'b n (h d) -> b h n d', h = self.heads*self.num_tokens)
+            x = rearrange(x, '(b t) n d -> b n (t d)', t = self.num_tokens)
             x = ff(x) + x
-            x = rearrange(x, 'b h n d -> b n (h d)')
+            # x = rearrange(x, 'b h n d -> b n (h d)')
 
         return x
     
