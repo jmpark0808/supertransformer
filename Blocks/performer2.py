@@ -271,7 +271,7 @@ class Attention(nn.Module):
         self.to_q = nn.Linear(dim, inner_dim, bias=qkv_bias)
         self.to_k = nn.Linear(dim, inner_dim, bias=qkv_bias)
         self.to_v = nn.Linear(dim, inner_dim, bias=qkv_bias)
-        # self.to_out = nn.Linear(inner_dim, dim, bias = attn_out_bias)
+        self.to_out = nn.Linear(inner_dim, dim, bias = attn_out_bias)
         self.dropout = nn.Dropout(dropout)
         
 
@@ -311,7 +311,7 @@ class Attention(nn.Module):
         out = torch.cat(attn_outs, dim = 1)
         out = rearrange(out, 'b h n d -> b n (h d)')
 #         print("Attention", out.size())
-        # out =  self.to_out(out)
+        out =  self.to_out(out)
         # out = self.dropout(out)
         return out
 
@@ -387,13 +387,13 @@ class Transformer(nn.Module):
         B, N, _ = x.shape
         # x = x.reshape(B, N, self.num_tokens, -1).permute(0, 2, 1, 3)
         # x = x.reshape(B*self.num_tokens, N, -1)
-        x = rearrange(x, 'b n (t d) -> (b t) n d', t = self.num_tokens)
+        # x = rearrange(x, 'b n (t d) -> (b t) n d', t = self.num_tokens)
         for attn, ff in self.layers:
             
             x = attn(x) + x
             x = ff(x) + x
             # x = rearrange(x, 'b h n d -> b n (h d)')
-        x = rearrange(x, '(b t) n d -> b n (t d)', t = self.num_tokens)
+        # x = rearrange(x, '(b t) n d -> b n (t d)', t = self.num_tokens)
         return x
     
 
@@ -599,7 +599,7 @@ class ViP(nn.Module):
         num_patches = (image_height // patch_height) * (image_width // patch_width)
         patch_dim = channels
         assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
-        self.num_tokens = 256//dim
+        self.num_tokens = 32//dim
 
         self.to_patch_embedding = nn.Sequential(
             # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
@@ -629,8 +629,8 @@ class ViP(nn.Module):
         else:
             num_classes = 1000 
         self.mlp_head = nn.Sequential(
-            nn.LayerNorm(dim*self.num_tokens),
-            nn.Linear(dim*self.num_tokens, num_classes)
+            nn.LayerNorm(image_size*image_size),
+            nn.Linear(image_size*image_size, num_classes)
         )
 
 
@@ -663,7 +663,7 @@ class ViP(nn.Module):
         # x = self.transformer4(x)
 
         if self.task == 'cls':
-            x = x.mean(dim=1)# if self.pool == 'mean' else x[:, :4]
+            x = x.mean(dim=2)# if self.pool == 'mean' else x[:, :4]
             # x = x.reshape(x.size(0), self.image_height//4, 4, self.image_width//4, 4, -1)
             # x = x.mean(dim=3).mean(dim=1)
 
