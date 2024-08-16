@@ -338,17 +338,20 @@ class PreNorm(nn.Module):
         return self.fn(self.norm(x), **kwargs)
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, hidden_dim, dropout = 0.):
+    def __init__(self, dim, hidden_dim, heads, dropout = 0.):
         super().__init__()
+        self.heads = heads
         self.net = nn.Sequential(
             nn.Linear(dim, hidden_dim),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, dim),
-            nn.Dropout(dropout)
+            # nn.Linear(hidden_dim, dim),
+            # nn.Dropout(dropout)
         )
     def forward(self, x):
-        x = self.net(x)
+        x = self.net(x) # (b h) n d -> (b) n d
+        x = rearrange(x, '(b h) n d->b h n d', h = self.heads)
+        x = x.mean(1)
         return x
 
 
@@ -376,7 +379,7 @@ class Transformer(nn.Module):
                                               generalized_attention = generalized_attention, kernel_fn = kernel_fn,
                                                 dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
                                                   attn_out_bias = attn_out_bias, tokens=num_tokens)),
-                PreNorm(dim*num_tokens, FeedForward(dim*num_tokens, mlp_dim*num_tokens, dropout = dropout))
+                PreNorm(dim//heads, FeedForward(dim//heads, dim, heads, dropout = dropout))
             ]))
     def forward(self, x):
         # x = (B, N, D)
@@ -384,10 +387,10 @@ class Transformer(nn.Module):
         # x = x.reshape(B, N, self.num_tokens, -1).permute(0, 2, 1, 3)
         # x = x.reshape(B*self.num_tokens, N, -1)
         for attn, ff in self.layers:
-            x = rearrange(x, 'b n (t d) -> (b t) n d', t = self.num_tokens)
             x = attn(x) + x
-            x = rearrange(x, '(b t) n d -> b n (t d)', t = self.num_tokens)
-            x = ff(x) + x
+            x_ = rearrange(x, 'b n (h d) -> (b h) n d', h = self.heads)
+            # x = rearrange(x, '(b t) n d -> b n (t d)', t = self.num_tokens)
+            x = ff(x_) + x
             # x = rearrange(x, 'b h n d -> b n (h d)')
 
         return x
@@ -611,7 +614,7 @@ class ViP(nn.Module):
         self.locations = nn.Sequential(nn.Linear(22, dim*self.num_tokens), nn.LayerNorm(dim*self.num_tokens))
 
         
-        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, emb_dropout, dropout, self.num_tokens)
+        self.transformer = Transformer(dim*self.num_tokens, depth, heads*self.num_tokens, dim_head, mlp_dim, emb_dropout, dropout, self.num_tokens)
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer4 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)

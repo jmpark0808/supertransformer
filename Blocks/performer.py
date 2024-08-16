@@ -338,21 +338,33 @@ class PreNorm(nn.Module):
         return self.fn(self.norm(x), **kwargs)
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, hidden_dim, dropout = 0., out_dim=None):
+    def __init__(self, dim, hidden_dim, num_tokens, dropout = 0., out_dim=None):
         super().__init__()
         if out_dim:
             pass
         else:
             out_dim = dim
-        self.net = nn.Sequential(
-            nn.Linear(dim, hidden_dim),
+        self.net1 = nn.Sequential(
+            nn.Conv1d(dim, hidden_dim, 1, groups=num_tokens),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, out_dim),
-            nn.Dropout(dropout)
+            # nn.Linear(hidden_dim, out_dim),
+            # nn.Dropout(dropout)
         )
+
+        self.net2 = nn.Sequential( nn.Conv1d(hidden_dim, hidden_dim, 1, groups=num_tokens),
+             nn.Dropout(dropout)
+
+        )
+        self.num_tokens = num_tokens
     def forward(self, x):
-        x = self.net(x)
+        x = rearrange(x,"(b t) n d->b n (t d)", t =self.num_tokens)
+        x = x.permute(0, 2, 1)
+        x = self.net1(x)
+        x = rearrange(x,"b (t d) n->b t d n", t =self.num_tokens)
+        x = x.mean(1)
+        x = self.net2(x)
+        x = x.permute(0, 2, 1)
         return x
 
 
@@ -494,13 +506,13 @@ class TransformerEncoder(nn.Module):
         self.num_tokens = num_tokens
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                PreNorm(dim//num_tokens, SelfAttention(dim//num_tokens, causal = causal, heads = heads//num_tokens,
+                PreNorm(dim, SelfAttention(dim, causal = causal, heads = heads,
                                                         dim_head = dim_head, local_heads = local_attn_heads,
                                             local_window_size = local_window_size, nb_features = nb_features,
                                               generalized_attention = generalized_attention, kernel_fn = kernel_fn,
                                                 dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
                                                   attn_out_bias = attn_out_bias, tokens=num_tokens)),
-                PreNorm(dim//num_tokens, FeedForward(dim//num_tokens, mlp_dim//num_tokens, dropout = dropout))
+                PreNorm(dim//num_tokens, FeedForward(dim, dim*num_tokens, num_tokens, dropout = dropout))
             ]))
         if downsample:
             self.downsample = PatchMerging(input_resolution, dim, out_dim)
@@ -509,14 +521,14 @@ class TransformerEncoder(nn.Module):
         else:
             self.downsample = None
     def forward(self, x):
-        x = rearrange(x, 'b n (t d) -> (b t) n d', t = self.num_tokens)
+        
         for attn, ff in self.layers:
             
             
             x = attn(x) + x
-            
-            x = ff(x) + x
-        x = rearrange(x, '(b t) n d -> b n (t d)', t = self.num_tokens)
+            x_ = rearrange(x, 'b n (t d) -> (b t) n d', t = self.num_tokens) 
+            x = ff(x_) + x
+        
         ds = x
         # print('linear', self.layers[0][1].fn.net[0].weight.grad)
         
