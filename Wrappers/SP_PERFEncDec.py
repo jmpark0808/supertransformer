@@ -4,7 +4,7 @@ from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 
 from Blocks.performer2 import ViPU, ViPEncDec
-from Blocks.performer import PerformerU
+# from Blocks.performer import PerformerU
 
 import torch.nn.functional as F
 import numpy as np
