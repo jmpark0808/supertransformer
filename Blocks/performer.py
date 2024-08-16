@@ -338,33 +338,20 @@ class PreNorm(nn.Module):
         return self.fn(self.norm(x), **kwargs)
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, hidden_dim, num_tokens, dropout = 0., out_dim=None):
+    def __init__(self, dim, hidden_dim, heads, dropout = 0.):
         super().__init__()
-        if out_dim:
-            pass
-        else:
-            out_dim = dim
-        self.net1 = nn.Sequential(
-            nn.Conv1d(dim, hidden_dim, 1, groups=num_tokens),
+        self.heads = heads
+        self.net = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
             nn.GELU(),
             nn.Dropout(dropout),
-            # nn.Linear(hidden_dim, out_dim),
+            # nn.Linear(hidden_dim, dim),
             # nn.Dropout(dropout)
         )
-
-        self.net2 = nn.Sequential( nn.Conv1d(hidden_dim, hidden_dim, 1, groups=num_tokens),
-             nn.Dropout(dropout)
-
-        )
-        self.num_tokens = num_tokens
     def forward(self, x):
-        x = rearrange(x,"(b t) n d->b n (t d)", t =self.num_tokens)
-        x = x.permute(0, 2, 1)
-        x = self.net1(x)
-        x = rearrange(x,"b (t d) n->b t d n", t =self.num_tokens)
+        x = self.net(x) # (b h) n d -> (b) n d
+        x = rearrange(x, '(b h) n d->b h n d', h = self.heads)
         x = x.mean(1)
-        x = self.net2(x)
-        x = x.permute(0, 2, 1)
         return x
 
 
@@ -491,7 +478,8 @@ class TFMEncoder(nn.Module):
         return ds, x
 
 class TransformerEncoder(nn.Module):
-    def __init__(self, dim, out_dim, input_resolution, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., downsample=False, num_tokens=1):
+    def __init__(self, dim, out_dim, input_resolution, depth, heads, dim_head, mlp_dim,
+                  dropout = 0., attn_dropout=0., downsample=False, num_tokens=1):
         super().__init__()
         self.layers = nn.ModuleList([])
         local_attn_heads = 0
@@ -504,15 +492,15 @@ class TransformerEncoder(nn.Module):
         qkv_bias = True
         attn_out_bias = True
         self.num_tokens = num_tokens
+        self.heads = heads
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                PreNorm(dim, SelfAttention(dim, causal = causal, heads = heads,
-                                                        dim_head = dim_head, local_heads = local_attn_heads,
+                PreNorm(dim, SelfAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
                                             local_window_size = local_window_size, nb_features = nb_features,
                                               generalized_attention = generalized_attention, kernel_fn = kernel_fn,
                                                 dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
                                                   attn_out_bias = attn_out_bias, tokens=num_tokens)),
-                PreNorm(dim//num_tokens, FeedForward(dim, dim*num_tokens, num_tokens, dropout = dropout))
+                PreNorm(dim//heads, FeedForward(dim//heads, dim, heads, dropout = dropout))
             ]))
         if downsample:
             self.downsample = PatchMerging(input_resolution, dim, out_dim)
@@ -523,11 +511,11 @@ class TransformerEncoder(nn.Module):
     def forward(self, x):
         
         for attn, ff in self.layers:
-            
-            
             x = attn(x) + x
-            x_ = rearrange(x, 'b n (t d) -> (b t) n d', t = self.num_tokens) 
+            x_ = rearrange(x, 'b n (h d) -> (b h) n d', h = self.heads)
+            # x = rearrange(x, '(b t) n d -> b n (t d)', t = self.num_tokens)
             x = ff(x_) + x
+            # x = rearrange(x, 'b h n d -> b n (h d)')
         
         ds = x
         # print('linear', self.layers[0][1].fn.net[0].weight.grad)
