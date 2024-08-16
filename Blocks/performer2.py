@@ -6,7 +6,7 @@ from einops.layers.torch import Rearrange
 from math import ceil
 from functools import partial
 from contextlib import contextmanager
-from Blocks.swin_common import PatchMerging, PatchExpandLowerDim, SwinASPP, SwinDecoder
+from Blocks.swin_common import PatchMerging, PatchExpandLowerDim, BasicLayerUpsampleMA
   
 from Blocks.TransformerBlocks import Transformer as TFM
 # from Blocks.GraphPooling import TopKPooling
@@ -126,12 +126,8 @@ def gaussian_orthogonal_random_matrix(nb_rows, nb_columns, scaling = 0, device =
 def linear_attention(q, k, v):
     k_cumsum = k.sum(dim = -2)
     D_inv = 1. / torch.einsum('...nd,...d->...n', q, k_cumsum.type_as(q))
-    # print('d_inv', D_inv.size())
     context = torch.einsum('...nd,...ne->...de', k, v)
-    # print('context', context.size())
     out = torch.einsum('...de,...nd,...n->...ne', context, q, D_inv)
-    # print('out', out.size())
-    # assert(0)
 #     print("linear attention", out.size)
     return out
 
@@ -271,7 +267,7 @@ class Attention(nn.Module):
         self.to_q = nn.Linear(dim, inner_dim, bias=qkv_bias)
         self.to_k = nn.Linear(dim, inner_dim, bias=qkv_bias)
         self.to_v = nn.Linear(dim, inner_dim, bias=qkv_bias)
-        self.to_out = nn.Linear(inner_dim, dim, bias = attn_out_bias)
+        # self.to_out = nn.Linear(inner_dim, dim, bias = attn_out_bias)
         self.dropout = nn.Dropout(dropout)
         
 
@@ -291,7 +287,7 @@ class Attention(nn.Module):
         (q, lq), (k, lk), (v, lv) = map(lambda t: (t[:, :gh], t[:, gh:]), (q, k, v))
         
         attn_outs = []
-        q, k, v = self.dropout(q), self.dropout(k), self.dropout(v)
+        
         if not empty(q):
             if exists(context_mask):
                 global_mask = context_mask[:, None, :, None]
@@ -311,8 +307,8 @@ class Attention(nn.Module):
         out = torch.cat(attn_outs, dim = 1)
         out = rearrange(out, 'b h n d -> b n (h d)')
 #         print("Attention", out.size())
-        out =  self.to_out(out)
-        # out = self.dropout(out)
+        # out =  self.to_out(out)
+        out = self.dropout(out)
         return out
 
 
@@ -380,20 +376,20 @@ class Transformer(nn.Module):
                                               generalized_attention = generalized_attention, kernel_fn = kernel_fn,
                                                 dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
                                                   attn_out_bias = attn_out_bias, tokens=num_tokens)),
-                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+                PreNorm(dim*num_tokens, FeedForward(dim*num_tokens, mlp_dim*num_tokens, dropout = dropout))
             ]))
     def forward(self, x):
         # x = (B, N, D)
         B, N, _ = x.shape
         # x = x.reshape(B, N, self.num_tokens, -1).permute(0, 2, 1, 3)
         # x = x.reshape(B*self.num_tokens, N, -1)
-        # x = rearrange(x, 'b n (t d) -> (b t) n d', t = self.num_tokens)
         for attn, ff in self.layers:
-            
+            x = rearrange(x, 'b n (t d) -> (b t) n d', t = self.num_tokens)
             x = attn(x) + x
+            x = rearrange(x, '(b t) n d -> b n (t d)', t = self.num_tokens)
             x = ff(x) + x
             # x = rearrange(x, 'b h n d -> b n (h d)')
-        # x = rearrange(x, '(b t) n d -> b n (t d)', t = self.num_tokens)
+
         return x
     
 
@@ -599,7 +595,7 @@ class ViP(nn.Module):
         num_patches = (image_height // patch_height) * (image_width // patch_width)
         patch_dim = channels
         assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
-        self.num_tokens = 32//dim
+        self.num_tokens = 256//dim
 
         self.to_patch_embedding = nn.Sequential(
             # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
@@ -629,8 +625,8 @@ class ViP(nn.Module):
         else:
             num_classes = 1000 
         self.mlp_head = nn.Sequential(
-            nn.LayerNorm(image_size*image_size),
-            nn.Linear(image_size*image_size, num_classes)
+            nn.LayerNorm(dim*self.num_tokens),
+            nn.Linear(dim*self.num_tokens, num_classes)
         )
 
 
@@ -663,7 +659,7 @@ class ViP(nn.Module):
         # x = self.transformer4(x)
 
         if self.task == 'cls':
-            x = x.mean(dim=2)# if self.pool == 'mean' else x[:, :4]
+            x = x.mean(dim=1)# if self.pool == 'mean' else x[:, :4]
             # x = x.reshape(x.size(0), self.image_height//4, 4, self.image_width//4, 4, -1)
             # x = x.mean(dim=3).mean(dim=1)
 
@@ -761,7 +757,7 @@ class ViPU(nn.Module):
         num_patches = (image_height // patch_height) * (image_width // patch_width)
         patch_dim = channels
      
-
+        self.img_size = image_size
         self.to_patch_embedding = nn.Sequential(
             # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
             nn.LayerNorm(patch_dim),
@@ -774,6 +770,7 @@ class ViPU(nn.Module):
         self.dropout = nn.Dropout(emb_dropout)
         self.locations = nn.Sequential(nn.Linear(2, dims[0]), nn.LayerNorm(dims[0]))
         self.transformer_enc = nn.ModuleList([])
+        resolutions = []
         for idx, depth in enumerate(depths):
             if idx == len(depths)-1:
                 self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size//(2**idx), image_size//(2**idx)), depth,
@@ -784,61 +781,33 @@ class ViPU(nn.Module):
             else:
                 self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
-        
+            resolutions.append(image_size // (2 ** idx))
         # self.transformer_dec_1 = TransformerDecoder(dims[1], dims[2], (image_size//4, image_size//4), depths[1], heads[1], dims[1]//heads[1], int(mlp_ratio*dims[1]), emb_dropout, dropout, False)
         # self.transformer_dec_2 = TransformerDecoder(dims[0], dims[1], (image_size//2, image_size//2), depths[0], heads[0], dims[0]//heads[0], int(mlp_ratio*dims[0]), emb_dropout, dropout, False)
         # self.transformer_dec_3 = TransformerDecoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, True)
 
-        self.upsample_layers = SwinDecoder(input_dim=dims[0],# 输入的通道数为96
-            input_high_dim = dims[2], # 384
-            input_middle_dim = dims[1],
-            input_size=image_size//4, # 14 × 14
-            low_level_idx=0, # 0
-            high_level_idx=2, # 2
-            num_classes=1,
-            depth=2, # 2
-            last_layer_depth=6, # 6
-            num_heads=heads[0], # 3
-            window_size=8, # 7
-            mlp_ratio=mlp_ratio, # 4
-            qk_scale=None,
-            qkv_bias=True,
-            drop_path_rate=0,
-            drop_rate=emb_dropout,
-            attn_drop_rate=dropout,
-            norm_layer=nn.LayerNorm,
-            decoder_norm=True, # True
-            use_checkpoint=False)
-
-
-        self.aspp = SwinASPP(
-            input_size=image_size//4, # 14×14
-            input_dim=dims[2], # 384 
-            out_dim=dims[0],  # 96
-            depth=2, # 2
-            cross_attn='CBAM', # CBAM
-            num_heads=heads[0], # 3头
-            mlp_ratio=mlp_ratio, # 4
-            qk_scale=None,
-            qkv_bias=True,
-            drop_rate=emb_dropout,
-            attn_drop_rate=dropout,
-            drop_path_rate=0, # 0.1
-            norm_layer=nn.LayerNorm,
-            aspp_norm=False,
-            aspp_activation='relu', # relu
-            start_window_size=2,
-            aspp_dropout=0.1, # 0.1
-            downsample=None, #None
-            use_checkpoint=False
-        )
+        dims.reverse()
+        self.upsample_layers = nn.ModuleList()
+        for i_layer in range(len(depths)):
+            layer = BasicLayerUpsampleMA(dim=dims[i_layer],
+                                       total_dim=sum(dims),
+                               input_resolution=resolutions,
+                               num_heads=heads[len(depths)-i_layer-1],
+                               mlp_ratio=4,
+                               qkv_bias=True, 
+                               qk_scale=1, 
+                               drop=emb_dropout, 
+                               attn_drop=dropout,
+                               use_checkpoint=False)
+            self.upsample_layers.append(layer)
         
 
         # self.mlp_head = nn.Sequential(
         #     nn.LayerNorm(dims[0]),
         #     nn.Linear(dims[0], 1)
         # )
-
+        self.upsample = nn.Upsample(size=image_size)
+        self.sod_head = nn.Linear(sum(dims), 1)
 
 
     def forward(self, x):
@@ -858,23 +827,33 @@ class ViPU(nn.Module):
   
         x = self.dropout(x)
 
-        feats = []
+        ft = []
         for idx, layer in enumerate(self.transformer_enc):
 
             ds, x = layer(x)
-            size = int(math.sqrt(ds.size(1)))
-            feats.append(ds.view(-1, size, size, ds.shape[-1]))
+            ft.append(ds)
             
             
+        up_ft = []
+        for idx, layer in enumerate(self.upsample_layers):
+            x = layer(ft[len(ft)-idx-1], ft)
+            ft[len(ft)-idx-1] = x
             
+            res = int(math.sqrt(x.size(1)))
+            x = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
+            x = self.upsample(x).permute(0, 2, 3, 1)
+            x = x.reshape(x.size(0), self.img_size**2, -1)
+            up_ft.append(x)
+
+        up_ft = torch.cat(up_ft, dim=2)
         # print(x.size())
 
         # x = self.transformer_dec_1(feats[1], x)
         # x = self.transformer_dec_2(feats[0], x)
-        x = self.aspp(feats[-1])
-        x = self.upsample_layers(feats[0], feats[1], feats[2], x)
+        # x = self.aspp(feats[-1])
+        # x = self.upsample_layers(feats[0], feats[1], feats[2], x)
         
-
+        x = self.sod_head(up_ft)
         # x = self.transformer_dec(x, x)
         return x
         # return self.mlp_head(x)
@@ -905,7 +884,7 @@ class ViPEnc(nn.Module):
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
         # self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.dropout = nn.Dropout(emb_dropout)
-        self.locations = nn.Sequential(nn.Linear(22, dims[0]), nn.LayerNorm(dims[0]))
+        self.locations = nn.Sequential(nn.Linear(2, dims[0]), nn.LayerNorm(dims[0]))
 
         
         self.transformer_enc = nn.ModuleList([])
@@ -936,10 +915,9 @@ class ViPEnc(nn.Module):
         fft = x[:, :, 8:-10]
         lbp = x[:, :,  -10:]
         color = x[:, :, 2:8]
-        x = torch.cat((color, lbp), dim=2)
+        x = torch.cat((color, lbp, fft), dim=2)
         
-        locations = torch.cat((centroids, fft), dim=2)
-        locations = self.locations(locations)
+        locations = self.locations(centroids)
 
 
         x = self.to_patch_embedding(x)
