@@ -126,8 +126,12 @@ def gaussian_orthogonal_random_matrix(nb_rows, nb_columns, scaling = 0, device =
 def linear_attention(q, k, v):
     k_cumsum = k.sum(dim = -2)
     D_inv = 1. / torch.einsum('...nd,...d->...n', q, k_cumsum.type_as(q))
+    # print('d_inv', D_inv.size())
     context = torch.einsum('...nd,...ne->...de', k, v)
+    # print('context', context.size())
     out = torch.einsum('...de,...nd,...n->...ne', context, q, D_inv)
+    # print('out', out.size())
+    # assert(0)
 #     print("linear attention", out.size)
     return out
 
@@ -287,7 +291,7 @@ class Attention(nn.Module):
         (q, lq), (k, lk), (v, lv) = map(lambda t: (t[:, :gh], t[:, gh:]), (q, k, v))
         
         attn_outs = []
-        
+        q, k, v = self.dropout(q), self.dropout(k), self.dropout(v)
         if not empty(q):
             if exists(context_mask):
                 global_mask = context_mask[:, None, :, None]
@@ -308,7 +312,7 @@ class Attention(nn.Module):
         out = rearrange(out, 'b h n d -> b n (h d)')
 #         print("Attention", out.size())
         # out =  self.to_out(out)
-        out = self.dropout(out)
+        # out = self.dropout(out)
         return out
 
 
@@ -901,7 +905,7 @@ class ViPEnc(nn.Module):
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
         # self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.dropout = nn.Dropout(emb_dropout)
-        self.locations = nn.Sequential(nn.Linear(2, dims[0]), nn.LayerNorm(dims[0]))
+        self.locations = nn.Sequential(nn.Linear(22, dims[0]), nn.LayerNorm(dims[0]))
 
         
         self.transformer_enc = nn.ModuleList([])
@@ -932,9 +936,10 @@ class ViPEnc(nn.Module):
         fft = x[:, :, 8:-10]
         lbp = x[:, :,  -10:]
         color = x[:, :, 2:8]
-        x = torch.cat((color, lbp, fft), dim=2)
+        x = torch.cat((color, lbp), dim=2)
         
-        locations = self.locations(centroids)
+        locations = torch.cat((centroids, fft), dim=2)
+        locations = self.locations(locations)
 
 
         x = self.to_patch_embedding(x)
