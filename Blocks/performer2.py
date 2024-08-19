@@ -338,21 +338,17 @@ class PreNorm(nn.Module):
         return self.fn(self.norm(x), **kwargs)
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, hidden_dim, heads, dropout = 0.):
+    def __init__(self, dim, hidden_dim, dropout = 0.):
         super().__init__()
-        self.heads = heads
         self.net = nn.Sequential(
             nn.Linear(dim, hidden_dim),
             nn.GELU(),
             nn.Dropout(dropout),
-            # nn.Linear(hidden_dim, dim),
-            # nn.Dropout(dropout)
+            nn.Linear(hidden_dim, dim),
+            nn.Dropout(dropout)
         )
     def forward(self, x):
-        x = self.net(x) # (b h) n d -> (b) n d
-        x = rearrange(x, '(b h) n d->b h n d', h = self.heads)
-        x = x.mean(1)
-        return x
+        return self.net(x)
 
 
 
@@ -771,7 +767,7 @@ class ViPU(nn.Module):
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
         # self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.dropout = nn.Dropout(emb_dropout)
-        self.locations = nn.Sequential(nn.Linear(2, dims[0]), nn.LayerNorm(dims[0]))
+        self.locations = nn.Sequential(nn.Linear(22, dims[0]), nn.LayerNorm(dims[0]))
         self.transformer_enc = nn.ModuleList([])
         resolutions = []
         for idx, depth in enumerate(depths):
