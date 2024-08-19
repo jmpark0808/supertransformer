@@ -367,7 +367,7 @@ class TransformerEncoder(nn.Module):
         local_window_size = 256
         causal = False
         nb_features = None
-        generalized_attention = True
+        generalized_attention = False
         kernel_fn = nn.ReLU()
         no_projection = False
         qkv_bias = True
