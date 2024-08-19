@@ -481,7 +481,7 @@ class TransformerEncoder(nn.Module):
         local_window_size = 256
         causal = False
         nb_features = None
-        generalized_attention = True
+        generalized_attention = False
         kernel_fn = nn.ReLU()
         no_projection = False
         qkv_bias = True
@@ -885,7 +885,7 @@ class ViPEnc(nn.Module):
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
         # self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.dropout = nn.Dropout(emb_dropout)
-        self.locations = nn.Sequential(nn.Linear(2, dims[0]), nn.LayerNorm(dims[0]))
+        self.locations = nn.Sequential(nn.Linear(22, dims[0]), nn.LayerNorm(dims[0]))
 
         
         self.transformer_enc = nn.ModuleList([])
@@ -916,9 +916,10 @@ class ViPEnc(nn.Module):
         fft = x[:, :, 8:-10]
         lbp = x[:, :,  -10:]
         color = x[:, :, 2:8]
-        x = torch.cat((color, lbp, fft), dim=2)
+        x = torch.cat((color, lbp), dim=2)
         
-        locations = self.locations(centroids)
+        locations = torch.cat((centroids, fft), dim=2)
+        locations = self.locations(locations)
 
 
         x = self.to_patch_embedding(x)
