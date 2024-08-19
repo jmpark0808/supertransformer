@@ -367,7 +367,7 @@ class TransformerEncoder(nn.Module):
         local_window_size = 256
         causal = False
         nb_features = None
-        generalized_attention = False
+        generalized_attention = True
         kernel_fn = nn.ReLU()
         no_projection = False
         qkv_bias = True
@@ -383,12 +383,11 @@ class TransformerEncoder(nn.Module):
                 PreNorm(dim, FeedForward(dim, int(dim*mlp_ratio), dropout = dropout))
             ]))
         if downsample:
-            factor = out_dim//dim
-            self.downsample = nn.Sequential(PreNorm(out_dim, SelfAttention(out_dim, causal = causal, heads = heads*factor, dim_head = dim_head, local_heads = local_attn_heads,
+            self.downsample = nn.Sequential(PreNorm(dim, SelfAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
                                             local_window_size = local_window_size, nb_features = nb_features,
                                               generalized_attention = generalized_attention, kernel_fn = kernel_fn,
                                                 dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
-                                                  attn_out_bias = attn_out_bias)), nn.Linear(out_dim, int(0.25*nodes)))
+                                                  attn_out_bias = attn_out_bias)), nn.Linear(dim, int(0.25*nodes)))
             self.dim_upsample = nn.Linear(dim, out_dim)
             # self.downsample = PatchMerging(input_resolution, dim, dim)
             # self.downsample = TopKPooling(dim, 0.25)
@@ -396,6 +395,8 @@ class TransformerEncoder(nn.Module):
             self.downsample = None
     def forward(self, x):
         # print(x.size())
+        s = x
+        
         for attn, ff in self.layers:
             x = attn(x) + x
             x = ff(x) + x
@@ -403,10 +404,10 @@ class TransformerEncoder(nn.Module):
         # print('linear', self.layers[0][1].fn.net[0].weight.grad)
         
         if self.downsample:
-            x = self.dim_upsample(x)
-            s = self.downsample(x)
+            s = self.downsample(s)
             s = torch.softmax(s, dim=-1)
             x = torch.matmul(s.transpose(1, 2), x) # B, k, D 
+            x = self.dim_upsample(x)
             # out_adj = torch.matmul(torch.matmul(s.transpose(1, 2), adj), s)
 
             # link_loss = adj - torch.matmul(s, s.transpose(1, 2))
