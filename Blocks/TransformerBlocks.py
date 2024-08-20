@@ -90,6 +90,46 @@ class Attention(nn.Module):
         out = torch.matmul(attn, v)
         out = rearrange(out, 'b h n d -> b n (h d)')
         return self.to_out(out)
+    
+class CrossAttention(nn.Module):
+    def __init__(self, dim, heads = 8, dim_head = 64, dropout = 0., attn_dropout=0.):
+        super().__init__()
+        inner_dim = dim_head *  heads
+        project_out = not (heads == 1 and dim_head == dim)
+
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+
+        self.attend = nn.Softmax(dim = -1)
+        self.to_q = nn.Linear(dim, inner_dim , bias = False)
+        self.to_k = nn.Linear(dim, inner_dim , bias = False)
+        self.to_v = nn.Linear(dim, inner_dim , bias = False)
+        self.attn_dropout = nn.Dropout(attn_dropout)
+
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            nn.Dropout(dropout)
+        ) if project_out else nn.Identity()
+
+    def forward(self, q, kv):
+        q = self.to_q(q)
+        k = self.to_k(kv)
+        v = self.to_v(kv)
+
+        
+        
+        q = rearrange(q, 'b n (h d) -> b h n d', h = self.heads)
+        k = rearrange(k, 'b n (h d) -> b h n d', h = self.heads)
+        v = rearrange(v, 'b n (h d) -> b h n d', h = self.heads)
+        
+        dots = torch.matmul(q, k.transpose(-1, -2))  #* self.scale
+        
+        attn = self.attend(dots)
+        attn = self.attn_dropout(attn)
+
+        out = torch.matmul(attn, v)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        return self.to_out(out)
 
 class PosAttention(nn.Module):
     def __init__(self, dim, dilation, heads = 8, dim_head = 64, dropout = 0., dropout_edge=0, edge_dim=1):
