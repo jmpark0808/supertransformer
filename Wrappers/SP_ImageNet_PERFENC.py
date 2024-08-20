@@ -12,7 +12,7 @@ from util.optimizers import SoftTargetCrossEntropy
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingWarmRestarts
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 # from Blocks.performer import Performer
-from Blocks.performer2 import ViPEnc
+from Blocks.performer_diffpool import ViPEnc
 import torch.nn as nn
 
 class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):

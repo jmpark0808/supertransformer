@@ -8,6 +8,7 @@ from functools import partial
 from contextlib import contextmanager
 from Blocks.swin_common import PatchMerging, PatchExpand
 from Blocks.TransformerBlocks import Transformer as TFM
+from Blocks.TransformerBlocks import CrossAttention as CA
 # from Blocks.GraphPooling import TopKPooling
 def exists(val):
     return val is not None
@@ -357,7 +358,36 @@ class Transformer(nn.Module):
             x = ff(x) + x
         return x
     
+class TFMEncoder(nn.Module):
+    def __init__(self, dim, out_dim, nodes, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., downsample=False):
+        super().__init__()
+        self.layers = TFM(dim=dim, depth=depth, heads=heads, dim_head=dim_head, mlp_dim=mlp_dim, dropout=dropout, attn_dropout=attn_dropout)
+        if downsample:
+            self.tokens = nn.Parameter(torch.randn(1, nodes, dim))
+        else:
+            self.tokens = None
 
+        if downsample:
+            self.downsample = CA(dim=dim, heads=heads, dim_head=dim_head, dropout=dropout, attn_dropout=attn_dropout)
+            self.dim_upsample = nn.Linear(dim, out_dim)
+            
+        else:
+            self.downsample = None
+
+    def forward(self, x):
+        if self.downsample:
+            tokens = self.tokens.repeat(x.size(0), 1, 1)
+        x = self.layers(x)
+        ds = x
+        # print('linear', self.layers[0][1].fn.net[0].weight.grad)
+        
+        if self.downsample:
+            x = self.downsample(tokens, x)
+            # s = self.downsample(s)
+            # s = torch.softmax(s, dim=-1)
+            # x = torch.matmul(s.transpose(1, 2), x) # B, k, D 
+            x = self.dim_upsample(x)
+        return ds, x
 
 class TransformerEncoder(nn.Module):
     def __init__(self, dim, out_dim, nodes, depth, heads, dim_head, mlp_ratio, dropout = 0., attn_dropout=0., downsample=False):
@@ -367,7 +397,7 @@ class TransformerEncoder(nn.Module):
         local_window_size = 256
         causal = False
         nb_features = None
-        generalized_attention = True
+        generalized_attention = False
         kernel_fn = nn.ReLU()
         no_projection = False
         qkv_bias = True
@@ -393,7 +423,11 @@ class TransformerEncoder(nn.Module):
             #                                   generalized_attention = generalized_attention, kernel_fn = kernel_fn,
             #                                     dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
             #                                       attn_out_bias = attn_out_bias)), nn.Linear(dim, int(0.25*nodes)))
-            self.downsample = 1
+            self.downsample = CrossAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
+                                            local_window_size = local_window_size, nb_features = nb_features,
+                                              generalized_attention = generalized_attention, kernel_fn = kernel_fn,
+                                                dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
+                                                  attn_out_bias = attn_out_bias)
             self.dim_upsample = nn.Linear(dim, out_dim)
             # self.downsample = PatchMerging(input_resolution, dim, dim)
             # self.downsample = TopKPooling(dim, 0.25)
@@ -403,7 +437,7 @@ class TransformerEncoder(nn.Module):
         # print(x.size())
         if self.downsample:
             tokens = self.tokens.repeat(x.size(0), 1, 1)
-            x = torch.cat((tokens, x), dim=1)
+            # x = torch.cat((tokens, x), dim=1)
         s = x
         
         for attn, ff in self.layers:
@@ -413,7 +447,7 @@ class TransformerEncoder(nn.Module):
         # print('linear', self.layers[0][1].fn.net[0].weight.grad)
         
         if self.downsample:
-            x = x[:, :tokens.size(1)]
+            x = self.downsample(tokens, context=x)
             # s = self.downsample(s)
             # s = torch.softmax(s, dim=-1)
             # x = torch.matmul(s.transpose(1, 2), x) # B, k, D 
@@ -657,14 +691,18 @@ class ViPEnc(nn.Module):
         
         self.transformer_enc = nn.ModuleList([])
         nodes = image_size*image_size
-        for idx, depth in enumerate(depths):
+        for idx, depth in enumerate(depths):  
+            nodes = int(nodes*0.25)     
             if idx == len(depths)-1:
-                self.transformer_enc.append(TransformerEncoder(dims[idx], None, nodes, depth, heads[idx], dims[idx]//heads[idx], mlp_ratio,
-                                                        emb_dropout, dropout, downsample=False))
-            else:
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], nodes, depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
+            elif idx < 2:
                 self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], nodes, depth, heads[idx], dims[idx]//heads[idx], mlp_ratio,
                                                         emb_dropout, dropout, downsample=True))
-            nodes = int(nodes*0.25)
+            else:
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], nodes, depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
+            
             
         # self.transformer_enc_1 = TransformerEncoder(dim, (image_size, image_size), depth, heads, dim_head, mlp_dim,
         #                                              emb_dropout, dropout, downsample=True)
