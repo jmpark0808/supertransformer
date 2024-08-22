@@ -47,6 +47,7 @@ from Wrappers.Image_SOD_SWINU import Image_SWINU_Wrapper
 from Wrappers.SP_MBUNET import SP_MBUNET_Wrapper
 from Wrappers.SP_MBNET import SP_MBNET_Wrapper
 from Wrappers.Image_SOD_MBVITU import Image_MBVITU_Wrapper
+from Wrappers.Image_SOD_PERFU import Image_PERFUSLIC_Wrapper
 from Wrappers.SP_PERFU import SP_PERFU_Wrapper
 from Wrappers.SP_MBVITU import SP_MBVITU_Wrapper
 from Wrappers.SP_PERF import SP_PERF_Wrapper
@@ -118,6 +119,7 @@ MODEL_DIRECTORY = {
     'SP_SWIN_Kernel': SP_SWIN_Kernel_Wrapper,
     'SP_SWIN_PyG': SP_SWIN_PyG_Wrapper,
     'IM_SWINU': Image_SWINU_Wrapper,
+    'IM_PERFUSLIC': Image_PERFUSLIC_Wrapper,
     'IM_MBVIT': Image_MBVITU_Wrapper,
     'SP_MBUNET': SP_MBUNET_Wrapper,
     'SP_MBNET': SP_MBNET_Wrapper,

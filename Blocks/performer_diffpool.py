@@ -9,6 +9,8 @@ from contextlib import contextmanager
 from Blocks.swin_common import PatchMerging, PatchExpand
 from Blocks.TransformerBlocks import Transformer as TFM
 from Blocks.TransformerBlocks import CrossAttention as CA
+from Blocks.DiffSLIC import DiffSLIC
+from torch_kmeans import SoftKMeans
 # from Blocks.GraphPooling import TopKPooling
 def exists(val):
     return val is not None
@@ -313,6 +315,15 @@ class PreNorm(nn.Module):
         self.fn = fn
     def forward(self, x, **kwargs):
         return self.fn(self.norm(x), **kwargs)
+    
+class PreNormCA(nn.Module):
+    def __init__(self, dim, fn):
+        super().__init__()
+        self.normq = nn.LayerNorm(dim)
+        self.normkv = nn.LayerNorm(dim)
+        self.fn = fn
+    def forward(self, q, kv):
+        return self.fn(self.normq(q), context = self.normkv(kv))
 
 class FeedForward(nn.Module):
     def __init__(self, dim, hidden_dim, dropout = 0.):
@@ -362,13 +373,15 @@ class TFMEncoder(nn.Module):
     def __init__(self, dim, out_dim, nodes, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., downsample=False):
         super().__init__()
         self.layers = TFM(dim=dim, depth=depth, heads=heads, dim_head=dim_head, mlp_dim=mlp_dim, dropout=dropout, attn_dropout=attn_dropout)
+        # if downsample:
+        #     self.tokens = nn.Parameter(torch.randn(1, nodes, dim))
+        # else:
+        #     self.tokens = None
+        self.nodes = nodes
         if downsample:
-            self.tokens = nn.Parameter(torch.randn(1, nodes, dim))
-        else:
-            self.tokens = None
-
-        if downsample:
-            self.downsample = CA(dim=dim, heads=heads, dim_head=dim_head, dropout=dropout, attn_dropout=attn_dropout)
+            # self.downsample = CA(dim=dim, heads=heads, dim_head=dim_head, dropout=dropout, attn_dropout=attn_dropout)
+            # self.downsample = DiffSLIC(nodes, n_iter=5, tau=0.01, candidate_radius=1, stable=True)
+            self.downsample = SoftKMeans()
             self.dim_upsample = nn.Linear(dim, out_dim)
             
         else:
@@ -382,12 +395,53 @@ class TFMEncoder(nn.Module):
         # print('linear', self.layers[0][1].fn.net[0].weight.grad)
         
         if self.downsample:
-            x = self.downsample(tokens, x)
+            # x = x.reshape(x.size(0), int(x.size(1)**0.5), int(x.size(1)**0.5), x.size(2)).permute(0, 3, 1, 2)
+            # x, _, _ = self.downsample(x)
+            # x = x.reshape(x.size(0), x.size(1), -1).permute(0, 2, 1)
+
+
+            # x = self.downsample(tokens, x)
+            result = self.downsample(x, k=self.nodes).soft_assignment
+            x = torch.matmul(result.permute(0, 2, 1), x)
+
+
             # s = self.downsample(s)
             # s = torch.softmax(s, dim=-1)
             # x = torch.matmul(s.transpose(1, 2), x) # B, k, D 
             x = self.dim_upsample(x)
         return ds, x
+    
+
+class TFMDecoder(nn.Module):
+    def __init__(self, q_dim, kv_dim, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0.):
+        super().__init__()
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                PreNormCA(q_dim, CA(dim=q_dim, heads=heads, dim_head=dim_head, dropout=dropout, attn_dropout=attn_dropout)),
+                PreNorm(q_dim, FeedForward(q_dim, mlp_dim, dropout = dropout))
+            ]))
+        
+        if q_dim != kv_dim:
+            self.dim_lower = nn.Linear(kv_dim, q_dim)
+        else:
+            self.dim_lower = nn.Identity()
+        # if downsample:
+        #     self.tokens = nn.Parameter(torch.randn(1, nodes, dim))
+        # else:
+        #     self.tokens = None
+
+        
+
+    def forward(self, q, kv):
+        kv = self.dim_lower(kv)
+
+        for attn, ff in self.layers:
+            q = attn(q, kv) + q
+            q = ff(q) + q
+
+        
+        return q
 
 class TransformerEncoder(nn.Module):
     def __init__(self, dim, out_dim, nodes, depth, heads, dim_head, mlp_ratio, dropout = 0., attn_dropout=0., downsample=False):
@@ -423,11 +477,14 @@ class TransformerEncoder(nn.Module):
             #                                   generalized_attention = generalized_attention, kernel_fn = kernel_fn,
             #                                     dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
             #                                       attn_out_bias = attn_out_bias)), nn.Linear(dim, int(0.25*nodes)))
-            self.downsample = CrossAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
-                                            local_window_size = local_window_size, nb_features = nb_features,
-                                              generalized_attention = generalized_attention, kernel_fn = kernel_fn,
-                                                dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
-                                                  attn_out_bias = attn_out_bias)
+            # self.downsample = CrossAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
+            #                                 local_window_size = local_window_size, nb_features = nb_features,
+            #                                   generalized_attention = generalized_attention, kernel_fn = kernel_fn,
+            #                                     dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
+            #                                       attn_out_bias = attn_out_bias)
+            
+
+            self.downsample = SoftKMeans()
             self.dim_upsample = nn.Linear(dim, out_dim)
             # self.downsample = PatchMerging(input_resolution, dim, dim)
             # self.downsample = TopKPooling(dim, 0.25)
@@ -435,8 +492,8 @@ class TransformerEncoder(nn.Module):
             self.downsample = None
     def forward(self, x):
         # print(x.size())
-        if self.downsample:
-            tokens = self.tokens.repeat(x.size(0), 1, 1)
+        # if self.downsample:
+        #     tokens = self.tokens.repeat(x.size(0), 1, 1)
             # x = torch.cat((tokens, x), dim=1)
         s = x
         
@@ -447,10 +504,18 @@ class TransformerEncoder(nn.Module):
         # print('linear', self.layers[0][1].fn.net[0].weight.grad)
         
         if self.downsample:
-            x = self.downsample(tokens, context=x)
+            # x = x.reshape(x.size(0), int(x.size(1)**0.5), int(x.size(1)**0.5), x.size(2)).permute(0, 3, 1, 2)
+            # x, _, _ = self.downsample(x)
+            # x = x.reshape(x.size(0), x.size(1), -1).permute(0, 2, 1)
+
+            result = self.downsample(x, k=self.nodes).soft_assignment # B, 1024, 256
+
+            x = torch.matmul(result.permute(0, 2, 1), x)
+
             # s = self.downsample(s)
             # s = torch.softmax(s, dim=-1)
             # x = torch.matmul(s.transpose(1, 2), x) # B, k, D 
+            # x = self.downsample(tokens, context = x)
             x = self.dim_upsample(x)
             # out_adj = torch.matmul(torch.matmul(s.transpose(1, 2), adj), s)
 
@@ -467,14 +532,14 @@ class TransformerEncoder(nn.Module):
     
 
 class TransformerDecoder(nn.Module):
-    def __init__(self, dim, input_resolution, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., upsample=False):
+    def __init__(self, dim, out_dim, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0.):
         super().__init__()
         self.layers = nn.ModuleList([])
         local_attn_heads = 0
         local_window_size = 256
         causal = False
         nb_features = None
-        generalized_attention = True
+        generalized_attention = False
         kernel_fn = nn.ReLU()
         # attn_dropout = 0.
         no_projection = False
@@ -482,7 +547,7 @@ class TransformerDecoder(nn.Module):
         attn_out_bias = True
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
-                PreNorm(dim, CrossAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
+                PreNormCA(dim, CrossAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
                                              local_window_size = local_window_size, nb_features = nb_features,
                                                generalized_attention = generalized_attention, kernel_fn = kernel_fn,
                                                dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
@@ -490,16 +555,14 @@ class TransformerDecoder(nn.Module):
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
 
-        if upsample:
-            self.upsample = PatchExpand(input_resolution, dim, dim_scale=2)
-        else:
-            self.upsample = None
-    def forward(self, x, context):
+        self.dim_lower = nn.Linear(out_dim, dim)
+
         
-        if self.upsample:
-            x = self.upsample(x)
+    def forward(self, x, context):
+        context = self.dim_lower(context)
+        
         for attn, ff in self.layers:
-            x = attn(x, context=context) + x
+            x = attn(x, context) + x
             x = ff(x) + x
         return x
 
@@ -582,90 +645,8 @@ class ViP(nn.Module):
 
 
 class ViPU(nn.Module):
-    def __init__(self, *, image_size, patch_size, dim, depth, heads, mlp_dim, 
-                  channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
-        super().__init__()
-        image_height, image_width = pair(image_size)
-        patch_height, patch_width = pair(patch_size)
-
-        assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
-
-        num_patches = (image_height // patch_height) * (image_width // patch_width)
-        patch_dim = channels
-     
-
-        self.to_patch_embedding = nn.Sequential(
-            # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
-            nn.LayerNorm(patch_dim),
-            nn.Linear(patch_dim, dim),
-            nn.LayerNorm(dim),
-        )
-
-        # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
-        self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
-        self.dropout = nn.Dropout(emb_dropout)
-        self.locations = nn.Sequential(nn.Linear(2, dim), nn.LayerNorm(dim))
-
-        self.transformer_enc_1 = TransformerEncoder(dim, (image_size, image_size), depth, heads, dim_head, mlp_dim,
-                                                     emb_dropout, dropout, downsample=True)
-        self.transformer_enc_2 = TransformerEncoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim,
-                                                     emb_dropout, dropout, downsample=True)
-        self.transformer_enc_3 = torch.nn.TransformerEncoder(torch.nn.TransformerEncoderLayer(dim, heads, mlp_dim, dropout,
-                                                                                               batch_first=True, norm_first=True),
-                                                             num_layers=depth*3)
-        # self.transformer_enc_3 = TransformerEncoder(dim, (image_size//4, image_size//4), depth*3, heads, dim_head, mlp_dim,
-        #                                              emb_dropout, dropout, downsample=False)
-        
-        self.transformer_dec_1 = TransformerDecoder(dim, (image_size//4, image_size//4), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, False)
-        self.transformer_dec_2 = TransformerDecoder(dim, (image_size//4, image_size//4), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, False)
-        # self.transformer_dec_3 = TransformerDecoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, True)
-
-
-        
-
-        self.mlp_head = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, 1)
-        )
-
-
-
-    def forward(self, x):
-        centroids = x[:, :, :2]
-        fft = x[:, :, 8:-10]
-        lbp = x[:, :,  -10:]
-        color = x[:, :, 2:8]
-        x = torch.cat((color, lbp, fft), dim=2)
-        
-        locations = self.locations(centroids)
-
-
-        x = self.to_patch_embedding(x)
-        b, n, _ = x.shape
-
-        x += locations
-  
-        x = self.dropout(x)
-
-        x1, x = self.transformer_enc_1(x)
-        x2, x = self.transformer_enc_2(x)
-        x = self.transformer_enc_3(x)
-
-
-        x = self.transformer_dec_1(x2, x)
-        x = self.transformer_dec_2(x1, x)
-        
-
-        # x = self.transformer_dec(x, x)
-
-        return self.mlp_head(x)
-    
-
-    
-
-class ViPEnc(nn.Module):
     def __init__(self, *, image_size, patch_size, dims, depths, heads, mlp_ratio, 
-                  channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0.):
+                  channels = 3, dropout = 0., emb_dropout = 0.):
         super().__init__()
         image_height, image_width = pair(image_size)
         patch_height, patch_width = pair(patch_size)
@@ -704,15 +685,106 @@ class ViPEnc(nn.Module):
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
             
             
-        # self.transformer_enc_1 = TransformerEncoder(dim, (image_size, image_size), depth, heads, dim_head, mlp_dim,
-        #                                              emb_dropout, dropout, downsample=True)
-        # self.transformer_enc_2 = TransformerEncoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim,
-        #                                              emb_dropout, dropout, downsample=True)
-        # self.transformer_enc_3 = TFM(dim, depth*3, heads, dim_head, mlp_dim, emb_dropout, dropout)
-        # self.transformer_enc_3 = torch.nn.TransformerEncoder(torch.nn.TransformerEncoderLayer(dim, heads, mlp_dim, dropout,
-        #                                                                                        batch_first=True, norm_first=True),
-        #                                                      num_layers=depth*3)
+
+        self.transformer_dec = nn.ModuleList([])
+        depths.reverse()
+        dims.reverse()
+        heads.reverse()
+        for idx, depth in enumerate(depths):
+            if idx < len(depths)-2:
+                self.transformer_dec.append(TFMDecoder(dims[idx], dims[max(idx-1, 0)],  depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout))
+            else:
+                self.transformer_dec.append(TransformerDecoder(dims[idx], dims[max(idx-1, 0)], depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout))
+                
+
         
+
+        self.sod_head = nn.Sequential(
+            nn.LayerNorm(dims[-1]),
+            nn.Linear(dims[-1], 1)
+        )
+
+
+
+    def forward(self, x):
+        centroids = x[:, :, :2]
+        fft = x[:, :, 8:-10]
+        lbp = x[:, :,  -10:]
+        color = x[:, :, 2:8]
+        x = torch.cat((color, lbp), dim=2)
+        
+        locations = torch.cat((centroids, fft), dim=2)
+        locations = self.locations(locations)
+
+
+        x = self.to_patch_embedding(x)
+        b, n, _ = x.shape
+
+        x += locations
+  
+        x = self.dropout(x)
+
+        fts = []
+        for layer in self.transformer_enc:
+            ds, x = layer(x)
+            fts.append(ds)
+        
+        fts.reverse()
+        for idx, layer in enumerate(self.transformer_dec):
+            x = layer(fts[idx], x)
+            
+
+        
+        
+        
+        return self.sod_head(x)
+    
+
+    
+
+class ViPEnc(nn.Module):
+    def __init__(self, *, image_size, patch_size, dims, depths, heads, mlp_ratio, 
+                  channels = 3, dropout = 0., emb_dropout = 0.):
+        super().__init__()
+        image_height, image_width = pair(image_size)
+        patch_height, patch_width = pair(patch_size)
+
+        assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
+
+        num_patches = (image_height // patch_height) * (image_width // patch_width)
+        patch_dim = channels
+     
+
+        self.to_patch_embedding = nn.Sequential(
+            # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
+            nn.LayerNorm(patch_dim),
+            nn.Linear(patch_dim, dims[0]),
+            nn.LayerNorm(dims[0]),
+        )
+
+        # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
+        # self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+        self.dropout = nn.Dropout(emb_dropout)
+        self.locations = nn.Sequential(nn.Linear(22, dims[0]), nn.LayerNorm(dims[0]))
+
+        
+        self.transformer_enc = nn.ModuleList([])
+        nodes = image_size*image_size
+        for idx, depth in enumerate(depths):  
+            nodes = int(nodes*0.25)     
+            if idx == len(depths)-1:
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], nodes, depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
+            elif idx < 2:
+                self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], nodes, depth, heads[idx], dims[idx]//heads[idx], mlp_ratio,
+                                                        emb_dropout, dropout, downsample=True))
+            else:
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], nodes, depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
+            
+            
 
         
 
