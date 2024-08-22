@@ -76,7 +76,7 @@ class RandomFlip(object):
             img, mask = sample['image'], sample['mask']
             img = self.flip(img)
             mask = self.flip(mask)
-            return {'image': img, 'mask': mask}
+            return {'image': img, 'mask': mask, 'file_name': sample['file_name']}
         else:
             return sample
 
@@ -96,7 +96,7 @@ class RandomAffine(object):
         random_scale = 1+np.random.random()*2*self.scale-self.scale
         img = transforms.functional.affine(img, random_rotate, [random_translate_x, random_translate_y], random_scale, 0)
         mask = transforms.functional.affine(mask, random_rotate, [random_translate_x, random_translate_y], random_scale, 0)
-        return {'image': img, 'mask': mask}
+        return {'image': img, 'mask': mask, 'file_name': sample['file_name']}
 
 class RandomColorJitter(object):
     def __init__(self, brightness, contrast, saturation, hue) -> None:
@@ -620,7 +620,8 @@ class DUTSDataset(data.Dataset):
         resolution = int(num_seg**0.5)
         
         if data_augmentation:
-            self.transform = transforms.Compose([ResizeDownsample(size), ToTensorRaw(True)])
+            self.transform = transforms.Compose([RandomFlip(0.5),
+                          RandomAffine(15, 0.1, 0.1), ResizeDownsample(size),ToTensorRaw(True)])
         else:
             self.transform = transforms.Compose([ResizeDownsample(size), ToTensorRaw(False)])
         # self.centroids = torch.zeros(resolution, resolution, 2).float()
