@@ -1,139 +1,8 @@
-import torch
-
-
-from typing import Callable, Optional, Tuple
-
-from torch import Tensor
-import random
-from torch_geometric.data import Batch, Data
-
-from torch_geometric.nn.pool.pool import pool_batch, pool_edge, pool_pos
-from torch_geometric.utils import add_self_loops, scatter
-
-def consecutive_cluster(src):
-    unique, inv = torch.unique(src, sorted=True, return_inverse=True)
-    perm = torch.arange(inv.size(0), dtype=inv.dtype, device=inv.device)
-    perm = inv.new_empty(unique.size(0)).scatter_(0, inv, perm)
-    return inv, perm
-
-
-
-def _max_pool_x(
-    cluster: Tensor,
-    x: Tensor,
-    size: Optional[int] = None,
-) -> Tensor:
-    
-    return scatter(x, cluster, dim=0, dim_size=size, reduce='max')
-
-def select(x: Tensor,
-           perm: Tensor) -> Tensor:
-    
-    return x[perm]
-
-def max_pool_x(
-    cluster: Tensor,
-    x: Tensor,
-    batch: Tensor,
-    batch_size: Optional[int] = None,
-    size: Optional[int] = None,
-) -> Tuple[Tensor, Optional[Tensor]]:
-    r"""Max-Pools node features according to the clustering defined in
-    :attr:`cluster`.
-
-    Args:
-        cluster (torch.Tensor): The cluster vector
-            :math:`\mathbf{c} \in \{ 0, \ldots, N - 1 \}^N`, which assigns each
-            node to a specific cluster.
-        x (Tensor): The node feature matrix.
-        batch (torch.Tensor): The batch vector
-            :math:`\mathbf{b} \in {\{ 0, \ldots, B-1\}}^N`, which assigns each
-            node to a specific example.
-        batch_size (int, optional): The number of examples :math:`B`.
-            Automatically calculated if not given. (default: :obj:`None`)
-        size (int, optional): The maximum number of clusters in a single
-            example. This property is useful to obtain a batch-wise dense
-            representation, *e.g.* for applying FC layers, but should only be
-            used if the size of the maximum number of clusters per example is
-            known in advance. (default: :obj:`None`)
-
-    :rtype: (:class:`torch.Tensor`, :class:`torch.Tensor`) if :attr:`size` is
-        :obj:`None`, else :class:`torch.Tensor`
-    """
-    if size is not None:
-        if batch_size is None:
-            batch_size = int(batch.max().item()) + 1
-        return _max_pool_x(cluster, x, batch_size * size), None
-
-    cluster, perm = consecutive_cluster(cluster)
-    x = _max_pool_x(cluster, x)
-    batch = pool_batch(perm, batch)
-
-    return x, batch
-
-
-def max_pool(
-    cluster: Tensor,
-    data: Data,
-    transform: Optional[Callable] = None,
-) -> Data:
-    r"""Pools and coarsens a graph given by the
-    :class:`torch_geometric.data.Data` object according to the clustering
-    defined in :attr:`cluster`.
-    All nodes within the same cluster will be represented as one node.
-    Final node features are defined by the *maximum* features of all nodes
-    within the same cluster, node positions are averaged and edge indices are
-    defined to be the union of the edge indices of all nodes within the same
-    cluster.
-
-    Args:
-        cluster (torch.Tensor): The cluster vector
-            :math:`\mathbf{c} \in \{ 0, \ldots, N - 1 \}^N`, which assigns each
-            node to a specific cluster.
-        data (Data): Graph data object.
-        transform (callable, optional): A function/transform that takes in the
-            coarsened and pooled :obj:`torch_geometric.data.Data` object and
-            returns a transformed version. (default: :obj:`None`)
-
-    :rtype: :class:`torch_geometric.data.Data`
-    """
-    cluster, perm = consecutive_cluster(cluster)
-    x = None if data.x is None else select(data.x, perm)
-    index, attr = pool_edge(cluster, data.edge_index, data.edge_attr)
-    batch = None if data.batch is None else pool_batch(perm, data.batch)
-    pos = None if data.pos is None else pool_pos(cluster, data.pos)
-
-    data = Batch(batch=batch, x=x, edge_index=index, edge_attr=attr, pos=pos)
-
-    if transform is not None:
-        data = transform(data)
-
-    return data, perm
-
-
-def max_pool_neighbor_x(
-    data: Data,
-    flow: Optional[str] = 'source_to_target',
-) -> Data:
-    r"""Max pools neighboring node features, where each feature in
-    :obj:`data.x` is replaced by the feature value with the maximum value from
-    the central node and its neighbors.
-    """
-    x, edge_index = data.x, data.edge_index
-
-    edge_index, _ = add_self_loops(edge_index, num_nodes=data.num_nodes)
-
-    row, col = edge_index
-    row, col = (row, col) if flow == 'source_to_target' else (col, row)
-
-    data.x = scatter(x[row], col, dim=0, dim_size=data.num_nodes, reduce='max')
-    return data
-
-
 import math
 import torch.nn.functional as F
 import torch.nn as nn
-
+import torch
+from typing import Callable, Optional, Tuple
 
 def update_clst_feats(elem_feats: torch.Tensor,
                       clst_feats: torch.Tensor,
@@ -162,20 +31,22 @@ def update_clst_feats(elem_feats: torch.Tensor,
                                      (batch, stride_h * stride_w * (2*candidate_radius + 1)**2, height_c, width_c)
                                      a similarity matrix having real values
     """
-    b, c, h, w = clst_feats.shape
-    neighbor_range = candidate_radius * 2 + 1
-    kernel_size = (stride[0]*neighbor_range, stride[1]*neighbor_range)
-    padding = (stride[0]*candidate_radius, stride[1]*candidate_radius)
-    n_candidate_pixels = kernel_size[0] * kernel_size[1]
-    unfold_elem_feats = F.unfold(elem_feats, kernel_size, padding=padding, stride=stride)
-    unfold_elem_feats = unfold_elem_feats.reshape(b, c, n_candidate_pixels, h, w)
-    similarities = torch.einsum('bcphw,bchw->bphw', (unfold_elem_feats, clst_feats))
+    b, c, h, w = clst_feats.shape # initial centers
+    neighbor_range = candidate_radius * 2 + 1 # 3
+    kernel_size = (stride[0]*neighbor_range, stride[1]*neighbor_range) #(30, 30)
+    padding = (stride[0]*candidate_radius, stride[1]*candidate_radius) #(10, 10)
+    n_candidate_pixels = kernel_size[0] * kernel_size[1] # 900
+    
+    unfold_elem_feats = F.unfold(elem_feats, kernel_size, padding=padding, stride=stride) # 2700 x 1024
+    unfold_elem_feats = unfold_elem_feats.reshape(b, c, n_candidate_pixels, h, w) # 1 x 5 x 900 x 32 x 32
+    
+    similarities = torch.einsum('bcphw,bchw->bphw', (unfold_elem_feats, clst_feats)) # 1 x 900 x 32 x 32
     similarities = torch.where(similarities==0, -torch.inf, similarities)
     if stable:
         similarities = similarities - similarities.max(1, keepdim=True).values.detach()
-    soft_assignemnt = torch.softmax(similarities / tau, dim=1)
-    new_clst_feats = torch.einsum('bphw,bcphw->bchw', (soft_assignemnt, unfold_elem_feats))
-    return new_clst_feats, soft_assignemnt, similarities
+    soft_assignment = torch.softmax(similarities / tau, dim=1)
+    new_clst_feats = torch.einsum('bphw,bcphw->bchw', (soft_assignment, unfold_elem_feats))
+    return new_clst_feats, soft_assignment
 
 def compute_elem_to_center_assignment(clst_feats: torch.Tensor,
                                       elem_feats: torch.Tensor,
@@ -202,24 +73,31 @@ def compute_elem_to_center_assignment(clst_feats: torch.Tensor,
                                      (batch, (2*candidate_radius + 1)**2, height, width)
                                      a similarity matrix having real values
     """
-    batch_size, channels, height, width = elem_feats.shape
-    n_spixels = clst_feats.shape[2] * clst_feats.shape[3]
-    neighbor_range = candidate_radius * 2 + 1
+    batch_size, channels, height, width = elem_feats.shape # original data
+    n_spixels = clst_feats.shape[2] * clst_feats.shape[3] # 1024
+    neighbor_range = candidate_radius * 2 + 1 # 3
     candidate_clusters = F.unfold(clst_feats, kernel_size=neighbor_range, padding=candidate_radius)
-    candidate_clusters = candidate_clusters.reshape(batch_size, channels, neighbor_range**2, n_spixels)
+    candidate_clusters = candidate_clusters.reshape(batch_size, channels, neighbor_range**2, n_spixels) # 1 x 3 x 9 x 1024
     unfold_elem_feats = F.unfold(elem_feats, kernel_size=stride, stride=stride)
-    unfold_elem_feats = unfold_elem_feats.reshape(batch_size, channels, stride[0] * stride[1], n_spixels)
+    unfold_elem_feats = unfold_elem_feats.reshape(batch_size, channels, stride[0] * stride[1], n_spixels) # 1 x 3 x 100 x 1024
     similarities = torch.einsum('bkcn,bkpn->bcpn', (candidate_clusters, unfold_elem_feats))
-    similarities = similarities.contiguous().reshape(batch_size * neighbor_range**2, -1, n_spixels)
+    similarities = similarities.contiguous().reshape(batch_size * neighbor_range**2, -1, n_spixels) # 9 x 100 x 1024
     similarities = F.fold(similarities, (height, width), kernel_size=stride, stride=stride)
-    similarities = similarities.reshape(batch_size, neighbor_range**2, height, width)
+    similarities = similarities.reshape(batch_size, neighbor_range**2, height, width) # 1 x 9 x 320 x 320
     # masking zero padding regions with -inf
     # by using the fact that the inner product is zero.
     similarities = torch.where(similarities==0, -torch.inf, similarities)
     if stable:
         similarities = similarities - similarities.max(1, keepdim=True).values.detach()
-    soft_assignment = (similarities / tau).softmax(1)
-    return soft_assignment, similarities
+    soft_assignment = (similarities / tau).softmax(1) # 1 x 9 x 320 x 320
+    superpixel_indices = torch.arange(1, n_spixels+1).reshape(1, 1, clst_feats.shape[2], clst_feats.shape[3]).repeat(batch_size, 1, 1, 1).float()
+    superpixel_indices = F.unfold(superpixel_indices, kernel_size=neighbor_range, padding=candidate_radius) 
+    superpixel_indices = superpixel_indices.reshape(batch_size, neighbor_range**2, clst_feats.shape[2], clst_feats.shape[3]) # 1 x 9 x 32 x 32
+    superpixel_indices = torch.repeat_interleave(torch.repeat_interleave(superpixel_indices, stride[0], dim=2), stride[1], dim=3) # 1 x 9 x 320 x 320
+    soft_assignment_argmax = torch.argmax(soft_assignment, dim=1, keepdim=True) # 1 x 1, 320 x 320
+    get_hard_assignment = torch.gather(superpixel_indices, 1, soft_assignment_argmax)
+   
+    return soft_assignment, similarities, get_hard_assignment
 
 class DiffSLIC(nn.Module):
     r"""Differentiable SLIC
@@ -247,6 +125,7 @@ class DiffSLIC(nn.Module):
         self.candidate_radius = candidate_radius
         self.normalize = normalize
         self.stable = stable
+        
 
     def forward(self, x: torch.Tensor,
                 clst_feats: Optional[torch.Tensor]=None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -268,6 +147,13 @@ class DiffSLIC(nn.Module):
                                        if n_iter is 0, s2p_assign is None
         """
         height, width = x.shape[-2:]
+        # xs = torch.arange(0, width).unsqueeze(0).float()/width
+        # ys = torch.arange(0, height).unsqueeze(1).float()/height
+        # xs = xs.repeat(height, 1)
+        # ys = ys.repeat(1, width)
+        # coord = torch.stack((xs, ys), 0).unsqueeze(0).repeat(x.size(0), 1, 1, 1)
+        
+        # x = torch.cat((x, coord), dim=1)
         # initialize cluster features
         if clst_feats is None:
             height_s = int(math.sqrt(self.n_spixels * height / width))
@@ -286,51 +172,28 @@ class DiffSLIC(nn.Module):
         # padding an image feature so that its height and width are divisible by stride values
         pad_x = (width_s - width % width_s) % width_s
         pad_y = (height_s - height % height_s) % height_s
+
+        
         x = F.pad(x, (0, pad_x, 0, pad_y))
+
+
         # update cluster features
         s2p_assign = None
         for _ in range(self.n_iter):
-            clst_feats, s2p_assign, _ = update_clst_feats(x, clst_feats, stride, self.tau, self.candidate_radius)
+            clst_feats, s2p_assign = update_clst_feats(x, clst_feats, stride, self.tau, self.candidate_radius)
             if self.normalize:
                 clst_feats = clst_feats / clst_feats.norm(dim=1, keepdim=True)
         # compute a pixel-to-superpixel assignment
-        p2s_assign, _ = compute_elem_to_center_assignment(clst_feats, x, stride, self.tau, self.candidate_radius)
+        p2s_assign, _ , get_hard_assignment= compute_elem_to_center_assignment(clst_feats, x, stride, self.tau, self.candidate_radius)
         # remove the padding region
         if pad_y > 0:
             p2s_assign = p2s_assign[..., :-pad_y, :]
         if pad_x > 0:
             p2s_assign = p2s_assign[..., :-pad_x]
-        return clst_feats, p2s_assign, s2p_assign
+        return clst_feats, p2s_assign, s2p_assign, get_hard_assignment
 
     def extra_repr(self):
         return f'n_spixels={self.n_spixels}, \n ' \
                f'n_iter={self.n_iter}, \n ' \
                f'tau={self.tau}, \n ' \
                f'candidate_radius={self.candidate_radius}, \n' 
-
-
-
-
-
-
-# def TokenPooling(f, K):
-    # f = B, N, D
-    # First randomly initialize centers
-f = torch.randn(10, 256, 32, 32)
-K = 256
-slic_fn = DiffSLIC(n_spixels=K, n_iter=5, tau=0.01, candidate_radius=1, stable=True)
-
-# result = model(f)
-# print(result.labels)
-
-# rgb_img = torch.arange(30000).reshape(1, 3, 100, 100)
-features, spix2pix_assign, pix2spix_assign = slic_fn(f)
-print(features.size())
-# iterations = 10
-# indices = torch.randint(0, f.size(1), (f.size(0), K))
-# centers = torch.gather(f, 1, indices.unsqueeze(-1).repeat(1, 1, f.size(-1)))
-# for _ in range(iterations):
-#     print(torch.norm(f.unsqueeze(2) - centers.unsqueeze(1), p=2, dim=3).size())
-#     assert(0)
-
-    

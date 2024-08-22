@@ -111,10 +111,10 @@ class CrossAttention(nn.Module):
             nn.Dropout(dropout)
         ) if project_out else nn.Identity()
 
-    def forward(self, q, kv):
+    def forward(self, q, context):
         q = self.to_q(q)
-        k = self.to_k(kv)
-        v = self.to_v(kv)
+        k = self.to_k(context)
+        v = self.to_v(context)
 
         
         

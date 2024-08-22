@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 
-from Blocks.performer2 import ViPU
+from Blocks.performer2 import ViPUSLIC
 # from Blocks.performer import PerformerU
 
 import torch.nn.functional as F
@@ -13,7 +13,7 @@ from util.util import get_input_dim
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 from dataset.mixup import MixupSaliency
 
-class SP_PERFU_Wrapper(pl.LightningModule):
+class Image_PERFUSLIC_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -41,6 +41,8 @@ class SP_PERFU_Wrapper(pl.LightningModule):
         self.heads = kwargs.get('heads')
         self.dims = kwargs.get('dims')
         self.depths = kwargs.get('depths')
+        self.size = kwargs.get('size')
+        self.compactness = kwargs.get('compactness')
         input_dim = get_input_dim(kwargs)
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
@@ -48,9 +50,9 @@ class SP_PERFU_Wrapper(pl.LightningModule):
         # self.supert = ViP(image_size=res, patch_size=1, dim=self.tfm_hp[2], heads=self.tfm_hp[0], depth=self.tfm_hp[1],
         #                    mlp_dim=self.tfm_hp[2]*1, channels=input_dim, dim_head=self.tfm_hp[2]//self.tfm_hp[0], dropout=self.dropout_edge,
         #                     emb_dropout=self.dropout, task='sod')
-        self.supert = ViPU(image_size=res, patch_size=1, dims=self.dims, heads=self.heads, depths=self.depths,
-                           mlp_ratio=4, channels=3, dropout=self.dropout_edge,
-                            emb_dropout=self.dropout )
+        self.supert = ViPUSLIC(image_size=res, patch_size=1, dims=self.dims, heads=self.heads, depths=self.depths,
+                           mlp_ratio=4, channels=4, dropout=self.dropout_edge,
+                            emb_dropout=self.dropout, num_seg = self.num_seg, compactness = self.compactness)
         # self.supert = PerformerU(input_dim=input_dim, embed_dim=self.tfm_hp[2], heads=self.tfm_hp[0], depth=self.tfm_hp[1],
         #                          attn_dropout=self.dropout_edge, dropout=self.dropout, mlp_ratio=4)
        
@@ -58,7 +60,7 @@ class SP_PERFU_Wrapper(pl.LightningModule):
         kwargs['parameters'] = parameter_count(self.supert)['']
         # print(parameter_count(self.supert))
         # assert(0)
-        inp = torch.randn([1, res*res, input_dim+2])
+        inp = torch.randn([1, 3, self.size, self.size])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
 
@@ -131,9 +133,9 @@ class SP_PERFU_Wrapper(pl.LightningModule):
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-        pred = self.supert(input)
+        pred, area, assignment, segments = self.supert(input)
         pred = pred.reshape(pred.size(0), -1)
-        return pred
+        return pred, area, assignment, segments
 
     def on_train_epoch_start(self):
         self.train_fscores = 0
@@ -159,16 +161,19 @@ class SP_PERFU_Wrapper(pl.LightningModule):
         mask = batch['mask']
 
 
-        res = int(self.num_seg**0.5)
-        features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
+        
+        # features = features.reshape(features.size(0), self.size, self.size, -1).permute(0, 3, 1, 2)
+        # seq_mask = seq_mask.reshape(seq_mask.size(0), self.size, self.size)
         features, seq_mask = self.mixup(features, seq_mask)
-        features = features.permute(0, 2, 3, 1).reshape(features.size(0), res*res, -1)
-        seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
+        # seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
 
         # forward pass
         
-        pred = self.forward(segments)
+        pred, area, assignment, segments = self.forward(features)
+
+
+        seq_mask = torch.einsum('bij,bjk->bik', assignment.permute(0, 2, 1), seq_mask.reshape(seq_mask.size(0), 1, -1).permute(0, 2, 1))/area
+        seq_mask = seq_mask.clone().detach()
 
         loss = self.loss(pred, seq_mask)
         
@@ -176,19 +181,17 @@ class SP_PERFU_Wrapper(pl.LightningModule):
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
         batch_size = mask.shape[0]
         img_size = mask.shape[2]
-        if torch.sum(segments) != 0 :
+        
 
-            segments = segments.reshape([batch_size, -1]) # batch, img_size^2
+        segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
-            samples = []
-            for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-                plt_image = masked[labels-1].reshape([img_size, img_size])
-                samples.append(plt_image)
+        samples = []
+        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+            plt_image = masked[labels-1].reshape([img_size, img_size])
+            samples.append(plt_image)
 
-            samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
-        else:
-            samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
-            samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
+        samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
+        
             
         
         prec, recall = torch.zeros(samples.shape[0], 1), torch.zeros(samples.shape[0], 1)
@@ -205,7 +208,7 @@ class SP_PERFU_Wrapper(pl.LightningModule):
         f_score = f_score.sum(dim=0)
         self.train_fscores += f_score
         self.num_samples += features.size(0)
-        self.log('loss', loss.item())
+        self.log('loss', loss.item(), prog_bar=True)
         self.iteration += 1
         if self.current_epoch >= self.warmup_epochs:
             self.scheduler.step()
@@ -221,29 +224,24 @@ class SP_PERFU_Wrapper(pl.LightningModule):
         segments = batch['segments']
         mask = batch['mask']
 
-        res = int(self.num_seg**0.5)
-        # features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        pred = self.forward(features)
-        res = int(self.num_seg**0.5)
+        
+        
+        pred, area, assignment, segments = self.forward(features)
+      
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
         batch_size = mask.shape[0]
         img_size = mask.shape[2]
+
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
-        if torch.sum(segments) != 0 :
+        samples = []
+        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+            plt_image = masked[labels-1].reshape([img_size, img_size])
+            samples.append(plt_image)
 
-            segments = segments.reshape([batch_size, -1]) # batch, img_size^2
-
-            samples = []
-            for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-                plt_image = masked[labels-1].reshape([img_size, img_size])
-                samples.append(plt_image)
-
-            samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
-        else:
-            samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
-            samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
+        samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
+        
         
         mae = torch.mean(torch.abs(samples - mask))
         if dataloader_idx == 0:
@@ -336,12 +334,13 @@ class SP_PERFU_Wrapper(pl.LightningModule):
 
 
         # forward pass
-        res = int(self.num_seg**0.5)
+       
         # features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        pred = self.forward(features)
+        pred, area, assignment, segments = self.forward(features)
+   
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
-        seq_mask_numpy = seq_mask.detach().cpu().numpy()
+        
         batch_size = mask.shape[0]
         img_size = mask.shape[2]
         if torch.sum(segments) != 0 :
