@@ -50,8 +50,8 @@ class Image_PERFUSLIC_Wrapper(pl.LightningModule):
         # self.supert = ViP(image_size=res, patch_size=1, dim=self.tfm_hp[2], heads=self.tfm_hp[0], depth=self.tfm_hp[1],
         #                    mlp_dim=self.tfm_hp[2]*1, channels=input_dim, dim_head=self.tfm_hp[2]//self.tfm_hp[0], dropout=self.dropout_edge,
         #                     emb_dropout=self.dropout, task='sod')
-        self.supert = ViPUSLIC(image_size=res, patch_size=1, dims=self.dims, heads=self.heads, depths=self.depths,
-                           mlp_ratio=4, channels=4, dropout=self.dropout_edge,
+        self.supert = ViPUSLIC(image_size=self.size, patch_size=res, dims=self.dims, heads=self.heads, depths=self.depths,
+                           mlp_ratio=4, channels=3, dropout=self.dropout_edge,
                             emb_dropout=self.dropout, num_seg = self.num_seg, compactness = self.compactness)
         # self.supert = PerformerU(input_dim=input_dim, embed_dim=self.tfm_hp[2], heads=self.tfm_hp[0], depth=self.tfm_hp[1],
         #                          attn_dropout=self.dropout_edge, dropout=self.dropout, mlp_ratio=4)
@@ -60,7 +60,7 @@ class Image_PERFUSLIC_Wrapper(pl.LightningModule):
         kwargs['parameters'] = parameter_count(self.supert)['']
         # print(parameter_count(self.supert))
         # assert(0)
-        inp = torch.randn([1, 3, self.size, self.size])
+        inp = (torch.randn([1, 3, self.size, self.size]), torch.rand([1, 1, self.size, self.size]))
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
 
@@ -126,16 +126,16 @@ class Image_PERFUSLIC_Wrapper(pl.LightningModule):
             for pg in optimizer.param_groups:
                 pg["lr"] = lr_scale * self.lr
 
-    def forward(self, input):
+    def forward(self, input, mask):
         """
         Forward pass through model
         :param x: Input features
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-        pred, area, assignment, segments = self.supert(input)
+        pred, seq_mask, segments = self.supert(input, mask)
         pred = pred.reshape(pred.size(0), -1)
-        return pred, area, assignment, segments
+        return pred, seq_mask, segments
 
     def on_train_epoch_start(self):
         self.train_fscores = 0
@@ -155,6 +155,7 @@ class Image_PERFUSLIC_Wrapper(pl.LightningModule):
         logging resources:
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
+        tensorboard = self.logger.experiment
         features = batch['features']
         seq_mask = batch['seq_mask']
         segments = batch['segments']
@@ -164,15 +165,13 @@ class Image_PERFUSLIC_Wrapper(pl.LightningModule):
         
         # features = features.reshape(features.size(0), self.size, self.size, -1).permute(0, 3, 1, 2)
         # seq_mask = seq_mask.reshape(seq_mask.size(0), self.size, self.size)
-        features, seq_mask = self.mixup(features, seq_mask)
+        features, mask = self.mixup(features, mask)
         # seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
 
         # forward pass
         
-        pred, area, assignment, segments = self.forward(features)
+        pred, seq_mask, segments = self.forward(features, mask)
 
-
-        seq_mask = torch.einsum('bij,bjk->bik', assignment.permute(0, 2, 1), seq_mask.reshape(seq_mask.size(0), 1, -1).permute(0, 2, 1))/area
         seq_mask = seq_mask.clone().detach()
 
         loss = self.loss(pred, seq_mask)
@@ -192,7 +191,9 @@ class Image_PERFUSLIC_Wrapper(pl.LightningModule):
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
         
-            
+        if batch_idx == 0:
+            tensorboard.add_images('Pred', samples, self.current_epoch)
+            tensorboard.add_images('Image', features, self.current_epoch)
         
         prec, recall = torch.zeros(samples.shape[0], 1), torch.zeros(samples.shape[0], 1)
         pred = samples.reshape(samples.shape[0], -1)
@@ -226,7 +227,7 @@ class Image_PERFUSLIC_Wrapper(pl.LightningModule):
 
         
         
-        pred, area, assignment, segments = self.forward(features)
+        pred, _, segments = self.forward(features, mask)
       
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
@@ -336,7 +337,7 @@ class Image_PERFUSLIC_Wrapper(pl.LightningModule):
         # forward pass
        
         # features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        pred, area, assignment, segments = self.forward(features)
+        pred, _, segments = self.forward(features, mask)
    
 
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1

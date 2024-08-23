@@ -92,43 +92,174 @@ from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 # plt.show()
 
 
-from dataset.superpixel import SPDataModule, SPDataset
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-import os
-train_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TR'
-test_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TE'
-batch_size = 16
-num_workers = 20
-num_seg = 1024
-res = 224
-dataloader = 'SP'
-compactness = 10
-coeff = 10
-ignore_phase = False
+# from dataset.superpixel import SPDataModule, SPDataset
+# from torch.utils.data import DataLoader
+# from tqdm import tqdm
+# import os
+# train_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TR'
+# test_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TE'
+# batch_size = 16
+# num_workers = 20
+# num_seg = 1024
+# res = 224
+# dataloader = 'SP'
+# compactness = 10
+# coeff = 10
+# ignore_phase = False
 
-image_list = np.array(sorted([os.path.join('{}/Image'.format(train_dir), f) for f in os.listdir('{}/Image'.format(train_dir))]))
-mask_list = np.array(sorted([os.path.join('{}/Mask'.format(train_dir), f) for f in os.listdir('{}/Mask'.format(train_dir))]))
-
-
-indices = np.array(list(range(len(image_list))))
-np.random.shuffle(indices)
-
-val_image_list = image_list[indices[int(len(image_list)*0.85):]]
-val_mask_list = mask_list[indices[int(len(mask_list)*0.85):]]
-
-tr_image_list = image_list[indices[:int(len(image_list)*0.85)]]
-tr_mask_list = mask_list[indices[:int(len(mask_list)*0.85)]]
-
-test_image_list = sorted([os.path.join('{}/Image'.format(test_dir), f) for f in os.listdir('{}/Image'.format(test_dir))])
-test_mask_list = sorted([os.path.join('{}/Mask'.format(test_dir), f) for f in os.listdir('{}/Mask'.format(test_dir))])
+# image_list = np.array(sorted([os.path.join('{}/Image'.format(train_dir), f) for f in os.listdir('{}/Image'.format(train_dir))]))
+# mask_list = np.array(sorted([os.path.join('{}/Mask'.format(train_dir), f) for f in os.listdir('{}/Mask'.format(train_dir))]))
 
 
-dataset = SPDataset(tr_image_list, tr_mask_list, num_seg, res, compactness, True, dataloader, coeff, ignore_phase)
+# indices = np.array(list(range(len(image_list))))
+# np.random.shuffle(indices)
+
+# val_image_list = image_list[indices[int(len(image_list)*0.85):]]
+# val_mask_list = mask_list[indices[int(len(mask_list)*0.85):]]
+
+# tr_image_list = image_list[indices[:int(len(image_list)*0.85)]]
+# tr_mask_list = mask_list[indices[:int(len(mask_list)*0.85)]]
+
+# test_image_list = sorted([os.path.join('{}/Image'.format(test_dir), f) for f in os.listdir('{}/Image'.format(test_dir))])
+# test_mask_list = sorted([os.path.join('{}/Mask'.format(test_dir), f) for f in os.listdir('{}/Mask'.format(test_dir))])
+
+
+# dataset = SPDataset(tr_image_list, tr_mask_list, num_seg, res, compactness, True, dataloader, coeff, ignore_phase)
         
-loader = DataLoader(
-                dataset, batch_size=batch_size, 
-                num_workers=num_workers, shuffle=True, pin_memory=True, drop_last=True)
+# loader = DataLoader(
+#                 dataset, batch_size=batch_size, 
+#                 num_workers=num_workers, shuffle=True, pin_memory=True, drop_last=True)
 
-for batch in tqdm(loader):
-    pass
+# for batch in tqdm(loader):
+#     pass
+
+
+
+import torch
+import time
+from tqdm import tqdm
+
+num_seg = 1024
+img_size = 224
+seg = torch.arange(0, num_seg).unsqueeze(1).repeat(1, img_size*img_size//num_seg).reshape(1, 1, img_size, img_size).repeat(16, 1, 1, 1).long().cuda()
+img = torch.rand(16, 3, 224, 224).cuda()
+mask = torch.rand(16, 1, 224, 224).cuda()
+h, w = img.shape[-2:]
+xs = torch.arange(0, w, device=img.device).unsqueeze(0).float()
+ys = torch.arange(0, h, device=img.device).unsqueeze(1).float()
+xs = xs.repeat(h, 1)
+ys = ys.repeat(1, w)
+coord = torch.stack((xs, ys), 0).unsqueeze(0).repeat(img.size(0), 1, 1, 1)
+all_times = []
+for _ in tqdm(range(1)):
+    start = time.time()
+    label_onehot = F.one_hot(seg.reshape(seg.size(0), -1), num_seg).float()
+    area = label_onehot.sum(1).unsqueeze(-1)
+    area_input = area.detach().clone()
+
+    As = label_onehot.permute(0, 2, 1)
+    Bs = img.reshape(seg.size(0), 3, -1).permute(0, 2, 1)
+
+    
+
+    Cs = coord.reshape(img.size(0), 2, -1).permute(0, 2, 1)
+    area[area==0] = torch.inf
+    colour = torch.einsum('bij,bjk->bik', As, Bs)/area
+    centroids = torch.einsum('bij,bjk->bik', As, Cs)/area
+    
+
+    end = time.time()
+    all_times.append(end-start)
+
+print(np.array(all_times).mean())
+
+colour_method_1 = colour.detach().clone()
+centroids_method_1 = centroids.detach().clone()
+
+from torch_sparse import SparseTensor
+from torch_geometric.utils import scatter
+
+
+def batch_of_segs_to_sparse(seg, img, mask):
+    # seg (bs, 1, H, W)
+    # img (bs, 3, H, W)
+    # coord (bs, 2, H, W)
+    b, _, h, w = img.size()
+    xs = torch.arange(0, img_size, device=seg.device).unsqueeze(0).float()
+    ys = torch.arange(0, img_size, device=seg.device).unsqueeze(1).float()
+    xs = xs.repeat(img_size, 1)
+    ys = ys.repeat(1, img_size)
+    coord = torch.stack((xs, ys), 0).unsqueeze(0)
+    coord = coord.repeat(b, 1, 1, 1)
+
+    shift = torch.arange(0, b, device=seg.device).repeat_interleave(h*w)*num_seg
+    
+    seg = seg.reshape(-1)+shift
+    img = img.permute(0, 2, 3, 1).reshape(-1, 3)
+    mask = mask.reshape(-1)+shift
+    area = torch.ones_like(seg)
+    
+    coord = coord.permute(0, 2, 3, 1).reshape(-1, 2)
+    # seg = SparseTensor(row=seg, col=torch.arange(0, seg.size(0), device='cuda'))
+    # edge_index = torch.stack((torch.arange(0, seg.size(0), device='cuda'), seg), dim=0)
+    
+    
+
+    colour = scatter(img, seg, reduce='sum',  dim_size=num_seg*b)
+    centroid = scatter(coord, seg, reduce='mean', dim_size=num_seg*b)
+    area = scatter(area, seg, reduce='sum', dim_size=num_seg*b)
+    seq_mask = scatter(mask, seg, reduce='mean', dim_size=num_seg*b)
+    # colour = seg.matmul(img) # BS*H*W x 3
+    # centroid = seg.matmul(coord) # BS*H*W x 2
+    
+    
+    colour = colour.reshape(b, num_seg, 3)
+    centroid = centroid.reshape(b, num_seg, 2)
+    area = area.reshape(b, num_seg)
+    seq_mask = seq_mask.reshape(b, num_seg)
+    return colour, centroid, area, seq_mask
+
+
+
+
+
+all_times = []
+for _ in tqdm(range(1)):
+    start = time.time()
+
+    colour, centroids, _, _= batch_of_segs_to_sparse(seg, img, mask)
+
+
+    end = time.time()
+    all_times.append(end-start)
+
+
+print(np.array(all_times).mean())
+
+print(torch.norm((colour-colour_method_1).reshape(-1), p=2), torch.norm((centroids-centroids_method_1).reshape(-1), p=2))
+
+# import matplotlib.pyplot as plt
+
+# plt.plot(centroids[0, :, 0].detach().cpu().numpy())
+# plt.show()
+
+
+
+# from fast_slic.avx2 import SlicAvx2
+# import numpy as np
+# from skimage.measure import regionprops_table
+# import matplotlib.pyplot as plt
+# from skimage.segmentation import mark_boundaries
+# img_np = (np.ones([320, 320, 3])*255).astype(np.uint8)
+# slic = SlicAvx2(num_components=1024, compactness=10, min_size_factor=0.)
+# segments = slic.iterate(img_np)
+
+# regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid'))#, polarize])
+# centers_y = regions['centroid-0']
+# centers_x = regions['centroid-1']
+# plt.imshow(mark_boundaries(img_np, segments))
+# plt.scatter(centers_x, centers_y, c='blue', s=30)
+# for ind, (x, y) in enumerate(zip(centers_x, centers_y)):
+#     plt.text(x, y, str(regions['label'][ind]))
+# plt.show()
+

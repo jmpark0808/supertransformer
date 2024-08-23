@@ -63,7 +63,7 @@ class RandomCrop(object):
         img = img.crop((left, top, left + new_w, top + new_h))
         mask = mask.crop((left, top, left + new_w, top + new_h))
 
-        return {'image': img, 'mask': mask}
+        return {'image': img, 'mask': mask, 'file_name': sample['file_name']}
 
 
 class RandomFlip(object):
@@ -125,22 +125,22 @@ class ToTensorSP(object):
     def __call__(self, sample):
         img, mask = sample['image'], sample['mask']
         img_np = np.array(img)
-        img_size = img_np.shape[1]
-        mask_np = np.array(mask)/255.
+        
 
 
         slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness, min_size_factor=0.)
         segments = slic.iterate(img_np)
 
-        segments = torch.tensor(segments).long()
+        
+        # segments = torch.tensor(segments).long()
 
-        features = np.zeros([self.num_seg, 4])
-        seq_mask = np.zeros([self.num_seg])
-        for i in range(self.num_seg):
-            where = np.argwhere(segments==i)
-            area = where.shape[0]
-            mean_colour = img_np[where[:, 0], where[:, 1], :].mean(0)
-            centroid = self.coords[where[:, 0], where[:, 1], :].mean(0)
+        # features = np.zeros([self.num_seg, 4])
+        # seq_mask = np.zeros([self.num_seg])
+        # for i in range(self.num_seg):
+        #     where = np.argwhere(segments==i)
+        #     area = where.shape[0]
+        #     mean_colour = img_np[where[:, 0], where[:, 1], :].mean(0)
+        #     centroid = self.coords[where[:, 0], where[:, 1], :].mean(0)
 
 
         # label_onehot = F.one_hot(segments, self.num_seg).float()
@@ -157,8 +157,13 @@ class ToTensorSP(object):
         # vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
         # bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
 
-        # regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
-        #                                                                              'coords'))#, polarize])
+        # regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid'))#, polarize])
+        # centers_y = regions['centroid-0']
+        # centers_x = regions['centroid-1']
+        # plt.scatter(centers_x, centers_y, c='blue', s=30)
+        # for ind, (x, y) in enumerate(zip(centers_x, centers_y)):
+        #     plt.text(x, y, str(regions['label'][ind]))
+        # plt.show()
                     
         # seq_len = len(regions['label'])
         # features = np.zeros([self.num_seg, 5])
@@ -216,9 +221,9 @@ class ToTensorSP(object):
         
         # edge_features = np.stack((spatial_distances_x, spatial_distances_y, squareform(histogram_r_sq), squareform(histogram_g_sq), squareform(histogram_b_sq)), axis=2)
 
-        # features = torch.zeros([100])
-        # seq_mask = torch.zeros([100])
-        features, seq_mask, segments, mask = torch.tensor(features).float(), torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask)
+        # features = torch.zeros([1])
+        seq_mask = torch.zeros([1])
+        features, seq_mask, segments, mask = self.tensor(img), seq_mask, torch.tensor(segments), self.tensor(mask)
         
         return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask}
 
@@ -592,9 +597,9 @@ class SPDataset(data.Dataset):
         file_name = self.image_list[item].split('/')[-1].split('.')[0]+'.npy'
         file_path = os.path.join(str(Path(self.image_list[item]).parents[1]),'VAL', file_name )
 
-        if self.data_augmentation is False and os.path.exists(file_path):
-            sample = np.load(file_path, allow_pickle=True).item()
-            return sample
+        # if self.data_augmentation is False and os.path.exists(file_path):
+        #     sample = np.load(file_path, allow_pickle=True).item()
+        #     return sample
 
         img_name = self.image_list[item]
         mask_name = self.mask_list[item]
@@ -602,7 +607,7 @@ class SPDataset(data.Dataset):
         mask = Image.open(mask_name)
         img = img.convert('RGB')
         mask = mask.convert('L')
-        sample = {'image': img, 'mask': mask}
+        sample = {'image': img, 'mask': mask, 'file_name': self.image_list[item]}
 
         sample = self.transform(sample)
         sample['file_name'] = self.image_list[item]

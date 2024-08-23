@@ -8,9 +8,13 @@ from functools import partial
 from contextlib import contextmanager
 from Blocks.swin_common import PatchMerging, PatchExpandLowerDim, BasicLayerUpsampleMA
 from Blocks.performer_diffpool import TFMDecoder
+from Blocks.performer_diffpool import PerformerEncoderToken, TransformerEncoderToken
 from Blocks.performer_diffpool import TransformerDecoder as PerformerDecoder
 from Blocks.TransformerBlocks import Transformer as TFM
 from Blocks.diffslic_og import DiffSLIC, spixel_upsampling
+
+from torch_geometric.utils import scatter
+
 # from Blocks.GraphPooling import TopKPooling
 def exists(val):
     return val is not None
@@ -464,8 +468,6 @@ class TFMEncoder(nn.Module):
         self.layers = TFM(dim=dim, depth=depth, heads=heads, dim_head=dim_head, mlp_dim=mlp_dim, dropout=dropout, attn_dropout=attn_dropout)
         if downsample:
             self.downsample = PatchMerging(input_resolution, dim, out_dim)
-        elif dim != out_dim:
-            self.downsample = nn.Linear(dim, out_dim)
         else:
             self.downsample = None
     def forward(self, x):
@@ -501,8 +503,6 @@ class TransformerEncoder(nn.Module):
             ]))
         if downsample:
             self.downsample = PatchMerging(input_resolution, dim, out_dim)
-        elif dim != out_dim:
-            self.downsample = nn.Linear(dim, out_dim)
         else:
             self.downsample = None
     def forward(self, x):
@@ -761,7 +761,7 @@ class ViPU(nn.Module):
         assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
 
         num_patches = (image_height // patch_height) * (image_width // patch_width)
-        patch_dim = channels
+        patch_dim = 3
      
         self.img_size = image_size
         self.to_patch_embedding = nn.Sequential(
@@ -783,10 +783,10 @@ class ViPU(nn.Module):
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
             elif idx < 2:
                 self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
-                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
             else:
                 self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
-                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
             resolutions.append(image_size // (2 ** idx))
         # self.transformer_dec_1 = TransformerDecoder(dims[1], dims[2], (image_size//4, image_size//4), depths[1], heads[1], dims[1]//heads[1], int(mlp_ratio*dims[1]), emb_dropout, dropout, False)
         # self.transformer_dec_2 = TransformerDecoder(dims[0], dims[1], (image_size//2, image_size//2), depths[0], heads[0], dims[0]//heads[0], int(mlp_ratio*dims[0]), emb_dropout, dropout, False)
@@ -829,12 +829,13 @@ class ViPU(nn.Module):
 
 
     def forward(self, x):
-        centroids = x[:, :, :2]
+        centroids = x[:, :, :2].float()
         # fft = x[:, :, 8:-10]
         # lbp = x[:, :,  -10:]
         # color = x[:, :, 2:8]
         # x = torch.cat((color, lbp), dim=2)
-        x = x[:, :, 2:]
+        
+        x = x[:, :, 2:5]
 
         # locations = torch.cat((centroids, fft), dim=2)
         locations = centroids
@@ -893,9 +894,6 @@ class ViPUSLIC(nn.Module):
         image_height, image_width = pair(image_size)
         patch_height, patch_width = pair(patch_size)
 
-        assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
-
-        num_patches = (image_height // patch_height) * (image_width // patch_width)
         patch_dim = channels
      
         self.img_size = image_size
@@ -917,15 +915,15 @@ class ViPUSLIC(nn.Module):
         resolutions = []
         for idx, depth in enumerate(depths):
             if idx == len(depths)-1:
-                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size//(2**idx), image_size//(2**idx)), depth,
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (patch_size//(2**idx), patch_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
             elif idx < 2:
-                self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
+                self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (patch_size//(2**idx), patch_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
             else:
-                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (patch_size//(2**idx), patch_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
-            resolutions.append(image_size // (2 ** idx))
+            resolutions.append(patch_size // (2 ** idx))
        
         self.transformer_dec = nn.ModuleList([])
         depths.reverse()
@@ -943,10 +941,49 @@ class ViPUSLIC(nn.Module):
  
         self.sod_head = nn.Linear(dims[-1], 1)
 
+    def batch_to_sparse(self, seg, img, mask):
+        # seg (bs, 1, H, W)
+        # img (bs, 3, H, W)
+        # mask (bs, 1, H, W)
 
-    def forward(self, x):
+        b, _, h, w = img.size()
+        xs = torch.arange(0, self.img_size, device=seg.device).unsqueeze(0).float()
+        ys = torch.arange(0, self.img_size, device=seg.device).unsqueeze(1).float()
+        xs = xs.repeat(self.img_size, 1)
+        ys = ys.repeat(1, self.img_size)
+        coord = torch.stack((xs, ys), 0).unsqueeze(0)
+        coord = coord.repeat(b, 1, 1, 1)
+
+        shift = torch.arange(0, b, device=seg.device).repeat_interleave(h*w)*self.num_seg
+        
+        seg = seg.reshape(-1)+shift
+        img = img.permute(0, 2, 3, 1).reshape(-1, 3)
+        mask = mask.reshape(-1)
+        area = torch.ones_like(seg)
+        
+        coord = coord.permute(0, 2, 3, 1).reshape(-1, 2)
+        # seg = SparseTensor(row=seg, col=torch.arange(0, seg.size(0), device='cuda'))
+        # edge_index = torch.stack((torch.arange(0, seg.size(0), device='cuda'), seg), dim=0)
+        
+        
+        colour = scatter(img, seg, reduce='sum', dim_size=self.num_seg*b)
+        centroid = scatter(coord, seg, reduce='mean', dim_size=self.num_seg*b)
+        area = scatter(area, seg, reduce='sum', dim_size=self.num_seg*b)
+        seq_mask = scatter(mask, seg, reduce='mean', dim_size=self.num_seg*b)
+        # colour = seg.matmul(img) # BS*H*W x 3
+        # centroid = seg.matmul(coord) # BS*H*W x 2
+        
+        
+        colour = colour.reshape(b, self.num_seg, 3)
+        centroid = centroid.reshape(b, self.num_seg, 2)
+        area = area.reshape(b, self.num_seg)
+        seq_mask = seq_mask.reshape(b, self.num_seg)
+        return colour, centroid, area, seq_mask
+
+
+    def forward(self, img, mask):
         with torch.no_grad():
-            x = x*2 - 1
+            x = img*2 - 1
             h, w = x.shape[-2:]
             coords = torch.stack(torch.meshgrid(torch.linspace(-1, 1, h, dtype=torch.float, device=x.device),
                                             torch.linspace(-1, 1, w, dtype=torch.float, device=x.device)), -1).unsqueeze(0)
@@ -967,41 +1004,43 @@ class ViPUSLIC(nn.Module):
             hard_assign = F.one_hot(assign.argmax(1), (2 * 1 + 1)**2).permute(0, 3, 1, 2).contiguous().float()
             
             label = torch.arange(h_s * w_s, dtype=torch.float, device=x.device).reshape(1, 1, h_s, w_s).repeat(x.size(0), 1, 1, 1)
-            
-            
             label = spixel_upsampling(label, hard_assign, candidate_radius=1).long()
-            label_onehot = F.one_hot(label.reshape(x.size(0), -1), self.num_seg).float()
-            area = label_onehot.sum(1).unsqueeze(-1)
-            area_input = area.detach().clone()
+
+            colour, centroids, area, seq_mask = self.batch_to_sparse(label, img, mask)
+            # label_onehot = F.one_hot(label.reshape(x.size(0), -1), self.num_seg).float()
+            # area = label_onehot.sum(1).unsqueeze(-1)
+            # area_input = area.detach().clone()
     
-            As = label_onehot.permute(0, 2, 1)
-            Bs = ((x+1)/2.).reshape(x.size(0), 3, -1).permute(0, 2, 1)
+            # As = label_onehot.permute(0, 2, 1)
+            # Bs = ((x+1)/2.).reshape(x.size(0), 3, -1).permute(0, 2, 1)
             
 
-            xs = torch.arange(0, w, device=x.device).unsqueeze(0).float()
-            ys = torch.arange(0, h, device=x.device).unsqueeze(1).float()
-            xs = xs.repeat(h, 1)
-            ys = ys.repeat(1, w)
-            coord = torch.stack((xs, ys), 0).unsqueeze(0).repeat(x.size(0), 1, 1, 1)
+            # xs = torch.arange(0, w, device=x.device).unsqueeze(0).float()
+            # ys = torch.arange(0, h, device=x.device).unsqueeze(1).float()
+            # xs = xs.repeat(h, 1)
+            # ys = ys.repeat(1, w)
+            # coord = torch.stack((xs, ys), 0).unsqueeze(0).repeat(x.size(0), 1, 1, 1)
 
-            Cs = coord.reshape(x.size(0), 2, -1).permute(0, 2, 1)
-            area[area==0] = torch.inf
-            colour = torch.clip(torch.einsum('bij,bjk->bik', As, Bs)/area, 0, 1)
-            centroids = torch.einsum('bij,bjk->bik', As, Cs)/area
+            # Cs = coord.reshape(x.size(0), 2, -1).permute(0, 2, 1)
+            # area[area==0] = torch.inf
+            # colour = torch.clip(torch.einsum('bij,bjk->bik', As, Bs)/area, 0, 1)
+            # centroids = torch.einsum('bij,bjk->bik', As, Cs)/area
 
 
-        x = torch.cat((colour, area_input), dim=2)
-        x = x.clone().detach()
-        
-        prex = x
-        centroids = centroids.clone().detach()
+        # x = torch.cat((colour, area_input), dim=2)
+        # x = x.clone().detach()
+        if self.training:
+            x = colour.clone().detach().requires_grad_(True)
+            centroids = centroids.clone().detach().requires_grad_(True)
+        else:
+            x = colour.clone().detach().requires_grad_(False)
+            centroids = centroids.clone().detach().requires_grad_(False)
+
+
         locations = self.locations(centroids)
 
         x = self.to_patch_embedding(x)
-        if torch.isnan(x).any():
-            ind = torch.argwhere(torch.isnan(x))
-            print(prex[ind[0, 0], ind[0, 1]], x[ind[0, 0], ind[0, 1]])
-            assert(0)
+ 
         
         b, n, _ = x.shape
 
@@ -1040,10 +1079,157 @@ class ViPUSLIC(nn.Module):
         
         x = self.sod_head(x)
         # x = self.transformer_dec(x, x)
-        return x, area, label_onehot, label
+        return x, seq_mask, label
         # return self.mlp_head(x)
     
 
+
+class SegViPUSLIC(nn.Module):
+    def __init__(self, *, image_size, patch_size, dims, depths, heads, mlp_ratio, 
+                  channels = 3, dropout = 0., emb_dropout = 0., num_seg, compactness):
+        super().__init__()
+        image_height, image_width = pair(image_size)
+        patch_height, patch_width = pair(patch_size)
+
+        patch_dim = channels
+     
+        self.img_size = image_size
+        self.compactness = compactness
+        self.num_seg = num_seg
+        # self.to_slic = DiffSLIC(num_seg, n_iter=5, tau=0.01, candidate_radius=1, stable=True)
+        self.to_patch_embedding = nn.Sequential(
+            # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
+            nn.LayerNorm(patch_dim),
+            nn.Linear(patch_dim, dims[0]),
+            nn.LayerNorm(dims[0])
+        )
+
+        # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
+        # self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
+        self.dropout = nn.Dropout(emb_dropout)
+        self.locations = nn.Sequential(nn.Linear(2, dims[0]), nn.LayerNorm(dims[0]))
+        self.transformer_enc = nn.ModuleList([])
+        resolutions = []
+        nodes = self.num_seg
+        for idx, depth in enumerate(depths):
+            nodes = int(nodes*0.25)
+            if idx == len(depths)-1:
+                self.transformer_enc.append(TransformerEncoderToken(dims[idx], dims[idx], nodes, depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
+            elif idx < 2:
+                self.transformer_enc.append(PerformerEncoderToken(dims[idx], dims[idx+1], nodes, depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
+            else:
+                self.transformer_enc.append(TransformerEncoderToken(dims[idx], dims[idx+1], nodes, depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
+            resolutions.append(patch_size // (2 ** idx))
+       
+        self.transformer_dec = nn.ModuleList([])
+        depths.reverse()
+        dims.reverse()
+        heads.reverse()
+        for idx, depth in enumerate(depths):
+            if idx < len(depths)-2:
+                self.transformer_dec.append(TFMDecoder(dims[idx], dims[max(idx-1, 0)],  depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout))
+            else:
+                self.transformer_dec.append(PerformerDecoder(dims[idx], dims[max(idx-1, 0)], depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout))
+                
+        
+        
+        
+        self.sod_head = nn.Linear(dims[-1], 1)
+
+
+    def batch_to_sparse(self, seg, img, mask):
+        # seg (bs, 1, H, W)
+        # img (bs, 3, H, W)
+        # mask (bs, 1, H, W)
+
+        b, _, h, w = img.size()
+        xs = torch.arange(0, self.img_size, device=seg.device).unsqueeze(0).float()
+        ys = torch.arange(0, self.img_size, device=seg.device).unsqueeze(1).float()
+        xs = xs.repeat(self.img_size, 1)
+        ys = ys.repeat(1, self.img_size)
+        coord = torch.stack((xs, ys), 0).unsqueeze(0)
+        coord = coord.repeat(b, 1, 1, 1)
+
+        shift = torch.arange(0, b, device=seg.device).repeat_interleave(h*w)*self.num_seg
+        
+        seg = seg.reshape(-1)+shift
+        img = img.permute(0, 2, 3, 1).reshape(-1, 3)
+        mask = mask.reshape(-1)
+        area = torch.ones_like(seg)
+        
+        coord = coord.permute(0, 2, 3, 1).reshape(-1, 2)
+        # seg = SparseTensor(row=seg, col=torch.arange(0, seg.size(0), device='cuda'))
+        # edge_index = torch.stack((torch.arange(0, seg.size(0), device='cuda'), seg), dim=0)
+        
+        
+        colour = scatter(img, seg, reduce='sum')
+        centroid = scatter(coord, seg, reduce='mean')
+        area = scatter(area, seg, reduce='sum')
+        seq_mask = scatter(mask, seg, reduce='mean')
+        # colour = seg.matmul(img) # BS*H*W x 3
+        # centroid = seg.matmul(coord) # BS*H*W x 2
+        
+        
+        colour = colour.reshape(b, self.num_seg, 3)
+        centroid = centroid.reshape(b, self.num_seg, 2)
+        area = area.reshape(b, self.num_seg)
+        seq_mask = seq_mask.reshape(b, self.num_seg)
+        return colour, centroid, area, seq_mask
+
+
+    def forward(self, seg, img, mask):
+        with torch.no_grad():
+            
+            seg = seg.long()
+            
+            colour, centroids, area, seq_mask = self.batch_to_sparse(seg, img, mask)
+
+        # import  matplotlib.pyplot as plt
+        # from skimage.segmentation import mark_boundaries
+        # fig, ax = plt.subplots(1, 2)
+        # # plt.imshow(mark_boundaries(img[0].permute(1, 2, 0).detach().numpy(), result.labels.reshape(1, 224, 224).detach().numpy().squeeze()))
+        # ax[0].imshow(colour[0].reshape(1024, 3).detach().cpu().numpy()[seg[0].detach().cpu().numpy().reshape(-1), :].reshape(224, 224, 3))
+        # ax[0].scatter(centroids[0][:, 0].detach().cpu().numpy(), centroids[0][:, 1].detach().cpu().numpy(), c='red', s=10)
+        # ax[1].imshow(seq_mask[0].reshape(1024, 1).detach().cpu().numpy()[seg[0].detach().cpu().numpy().reshape(-1), :].reshape(224, 224, 1), cmap='gray')
+        # plt.show()
+
+        
+        x = colour.clone().detach().requires_grad_(True)
+        
+        centroids = centroids.clone().detach().requires_grad_(True)
+        locations = self.locations(centroids)
+        
+        x = self.to_patch_embedding(x)
+        
+        
+        b, n, _ = x.shape
+
+        x += locations
+  
+        x = self.dropout(x)
+
+        fts = []
+        for idx, layer in enumerate(self.transformer_enc):
+
+            ds, x = layer(x)
+            fts.append(ds)
+            
+       
+        fts.reverse()
+        for idx, layer in enumerate(self.transformer_dec):
+            x = layer(fts[idx], x)
+       
+        x = self.sod_head(x)
+        # x = self.transformer_dec(x, x)
+        
+        return x, seq_mask
+        # return self.mlp_head(x)
+    
     
 
 class ViPEnc(nn.Module):

@@ -13,6 +13,7 @@ from torchvision.transforms import ToTensor
 import torch
 from Blocks.diffslic_og import DiffSLIC, spixel_upsampling
 import torch.nn.functional as F
+from torch_geometric.utils import scatter
 
 dataset_images = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Image'
 masks = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Mask'
@@ -40,8 +41,12 @@ for compact in tqdm(compactness):
             msk = Image.open(mask)
             img = img.convert('RGB').resize((300, 300))
             msk = msk.convert('L').resize((300, 300))
+            img_np = np.array(img)
+            
             img = tt(img)
+            mask = tt(msk)
             msk = np.array(msk)
+            
             
             # msk[msk>125] = 255
             # msk[msk<=125] = 0
@@ -87,38 +92,45 @@ for compact in tqdm(compactness):
                 hard_assign = F.one_hot(assign.argmax(1), (2 * 1 + 1)**2).permute(0, 3, 1, 2).contiguous().float()
                 
                 label = torch.arange(h_s * w_s, dtype=torch.float).reshape(1, 1, h_s, w_s).cuda()
-                label = spixel_upsampling(label, hard_assign, candidate_radius=1)
-                label_onehot = F.one_hot(label.long().reshape(1, -1), num_seg).float()
-                area = label_onehot.sum(1)
-        
+                label = spixel_upsampling(label, hard_assign, candidate_radius=1).long()
+
+                # seg (bs, 1, H, W)
+                # img (bs, 3, H, W)
+                # mask (bs, 1, H, W)
+
+                _, h, w = mask.size()
+                b = 1
+       
+
+                shift = torch.arange(0, b, device=label.device).repeat_interleave(h*w)*num_seg
                 
-
-        
-                As = label_onehot.permute(0, 2, 1)
-                Bs = ((img+1)/2.).reshape(1, 3, -1).permute(0, 2, 1).cuda()
+                seg_ = label.reshape(-1)+shift
+                mask = mask.reshape(-1)
+    
                 
+  
+                seq_mask = scatter(mask.cuda(), seg_, reduce='mean', dim_size=num_seg*b)
+                # colour = seg.matmul(img) # BS*H*W x 3
+                # centroid = seg.matmul(coord) # BS*H*W x 2
+                
+                
+                
+                seq_mask = seq_mask.reshape(b, num_seg)
+                
+            segments = label.detach().cpu().numpy().squeeze()
 
-                xs = torch.arange(0, w).unsqueeze(0).float()
-                ys = torch.arange(0, h).unsqueeze(1).float()
-                xs = xs.repeat(h, 1)
-                ys = ys.repeat(1, w)
-                coord = torch.stack((xs, ys), 0).unsqueeze(0).repeat(img.size(0), 1, 1, 1).cuda()
+            
+            regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid'))#, polarize])
+            centers_y = regions['centroid-0']
+            centers_x = regions['centroid-1']
+            plt.imshow(mark_boundaries(img_np, segments))
+            plt.scatter(centers_x, centers_y, c='blue', s=30)
+            for ind, (x, y) in enumerate(zip(centers_x, centers_y)):
+                plt.text(x, y, str(regions['label'][ind]))
+            plt.show()
 
-                Cs = coord.reshape(1, 2, -1).permute(0, 2, 1)
-                colour = torch.clip(torch.einsum('bij,bjk->bik', As, Bs)/area.unsqueeze(-1), 0, 1)
-
-                centroids = torch.einsum('bij,bjk->bik', As, Cs)/area.unsqueeze(-1)
-
-            segments = label[0, 0].long().detach().cpu().numpy()
-            seq_mask = np.zeros([num_seg])
-
-
-
-            for i in range(num_seg):
-                coord = np.argwhere(segments == i)
-                seq_mask[i] = np.sum(msk[coord[:, 0], coord[:, 1]])/len(coord[:, 0])
-
-            plt_image = seq_mask[segments].reshape([img.shape[2], img.shape[3]])
+            
+            plt_image = seq_mask.detach().cpu().numpy().reshape(-1)[segments.reshape(-1)].reshape([img.shape[2], img.shape[3]])
             plt_image = np.ravel(plt_image)
                 
 
