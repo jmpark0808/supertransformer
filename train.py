@@ -53,6 +53,7 @@ from Wrappers.SP_MBVITU import SP_MBVITU_Wrapper
 from Wrappers.SP_PERF import SP_PERF_Wrapper
 from Wrappers.SP_PERFEncDec import SP_PERFEncDec_Wrapper
 from Wrappers.SP_SWINUP import SP_SWINUP_Wrapper
+from Wrappers.Seg_SOD_PERFU import Seg_PERFUSLIC_Wrapper
 # from Wrappers.SP_MAMBA import SP_MAMBA_Wrapper
 
 
@@ -126,7 +127,8 @@ MODEL_DIRECTORY = {
     'SP_PERFU': SP_PERFU_Wrapper,
     'SP_PERF': SP_PERF_Wrapper,
     'SP_PERFEncDec': SP_PERFEncDec_Wrapper,
-    'SP_MBVITU': SP_MBVITU_Wrapper
+    'SP_MBVITU': SP_MBVITU_Wrapper,
+    'SEG_PERFUSLIC': Seg_PERFUSLIC_Wrapper
 }
 DATALOADER_DIRECTORY = {
     'SP': SPDataModule,

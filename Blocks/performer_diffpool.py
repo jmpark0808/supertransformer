@@ -9,6 +9,8 @@ from contextlib import contextmanager
 from Blocks.swin_common import PatchMerging, PatchExpand
 from Blocks.TransformerBlocks import Transformer as TFM
 from Blocks.TransformerBlocks import CrossAttention as CA
+from Blocks.TransformerBlocks import Attention as Att
+from Blocks.TransformerBlocks import FeedForward as FF
 from Blocks.DiffSLIC import DiffSLIC
 from torch_kmeans import SoftKMeans
 # from Blocks.GraphPooling import TopKPooling
@@ -369,47 +371,52 @@ class Transformer(nn.Module):
             x = ff(x) + x
         return x
     
-class TFMEncoder(nn.Module):
+class TransformerEncoderToken(nn.Module):
     def __init__(self, dim, out_dim, nodes, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., downsample=False):
         super().__init__()
-        self.layers = TFM(dim=dim, depth=depth, heads=heads, dim_head=dim_head, mlp_dim=mlp_dim, dropout=dropout, attn_dropout=attn_dropout)
-        # if downsample:
-        #     self.tokens = nn.Parameter(torch.randn(1, nodes, dim))
-        # else:
-        #     self.tokens = None
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                PreNorm(dim, Att(dim, heads = heads, dim_head = dim_head, dropout = dropout, attn_dropout= attn_dropout)),
+                PreNorm(dim, FF(dim, mlp_dim, dropout = dropout))
+            ]))
+        if downsample:
+            self.tokens = nn.Parameter(torch.randn(1, nodes, dim))
+        else:
+            self.tokens = None
         self.nodes = nodes
         if downsample:
-            # self.downsample = CA(dim=dim, heads=heads, dim_head=dim_head, dropout=dropout, attn_dropout=attn_dropout)
-            # self.downsample = DiffSLIC(nodes, n_iter=5, tau=0.01, candidate_radius=1, stable=True)
-            self.downsample = SoftKMeans()
+            self.downsample_layers = nn.ModuleList([])
+            for _ in range(depth):
+                self.downsample_layers.append(nn.ModuleList([
+                        PreNorm(dim,  CA(dim=dim, heads=heads, dim_head=dim_head, dropout=dropout, attn_dropout=attn_dropout)),
+                        PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+                    ]))
+            
             self.dim_upsample = nn.Linear(dim, out_dim)
             
         else:
-            self.downsample = None
+            self.downsample_layers = [None for _ in range(depth)] 
+            self.dim_upsample = None
 
     def forward(self, x):
-        if self.downsample:
-            tokens = self.tokens.repeat(x.size(0), 1, 1)
-        x = self.layers(x)
-        ds = x
-        # print('linear', self.layers[0][1].fn.net[0].weight.grad)
         
-        if self.downsample:
-            # x = x.reshape(x.size(0), int(x.size(1)**0.5), int(x.size(1)**0.5), x.size(2)).permute(0, 3, 1, 2)
-            # x, _, _ = self.downsample(x)
-            # x = x.reshape(x.size(0), x.size(1), -1).permute(0, 2, 1)
+        tokens = self.tokens
 
+        for (attn, ff), ds_layer in zip(self.layers, self.downsample_layers):
+            x = attn(x) + x
+            x = ff(x) + x
+            if ds_layer is not None:
+                tokens = ds_layer[0](tokens, context=x) + tokens
+                tokens = ds_layer[1](tokens)+tokens
+        
 
-            # x = self.downsample(tokens, x)
-            result = self.downsample(x, k=self.nodes).soft_assignment
-            x = torch.matmul(result.permute(0, 2, 1), x)
-
-
-            # s = self.downsample(s)
-            # s = torch.softmax(s, dim=-1)
-            # x = torch.matmul(s.transpose(1, 2), x) # B, k, D 
-            x = self.dim_upsample(x)
-        return ds, x
+        
+        if self.dim_upsample is not None:
+            tokens = self.dim_upsample(tokens)
+        else:
+            tokens = x
+        return x, tokens
     
 
 class TFMDecoder(nn.Module):
@@ -443,10 +450,11 @@ class TFMDecoder(nn.Module):
         
         return q
 
-class TransformerEncoder(nn.Module):
-    def __init__(self, dim, out_dim, nodes, depth, heads, dim_head, mlp_ratio, dropout = 0., attn_dropout=0., downsample=False):
+class PerformerEncoderToken(nn.Module):
+    def __init__(self, dim, out_dim, nodes, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., downsample=False):
         super().__init__()
         self.layers = nn.ModuleList([])
+        
         local_attn_heads = 0
         local_window_size = 256
         causal = False
@@ -469,66 +477,49 @@ class TransformerEncoder(nn.Module):
                                               generalized_attention = generalized_attention, kernel_fn = kernel_fn,
                                                 dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
                                                   attn_out_bias = attn_out_bias)),
-                PreNorm(dim, FeedForward(dim, int(dim*mlp_ratio), dropout = dropout))
+                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
-        if downsample:
-            # self.downsample = nn.Sequential(PreNorm(dim, SelfAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
-            #                                 local_window_size = local_window_size, nb_features = nb_features,
-            #                                   generalized_attention = generalized_attention, kernel_fn = kernel_fn,
-            #                                     dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
-            #                                       attn_out_bias = attn_out_bias)), nn.Linear(dim, int(0.25*nodes)))
-            # self.downsample = CrossAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
-            #                                 local_window_size = local_window_size, nb_features = nb_features,
-            #                                   generalized_attention = generalized_attention, kernel_fn = kernel_fn,
-            #                                     dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
-            #                                       attn_out_bias = attn_out_bias)
-            
 
-            self.downsample = SoftKMeans()
+        
+        if downsample:
+
+            self.downsample_layers = nn.ModuleList([])
+            for _ in range(depth):
+                self.downsample_layers.append(nn.ModuleList([
+                        PreNorm(dim, CrossAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
+                                                    local_window_size = local_window_size, nb_features = nb_features,
+                                                    generalized_attention = generalized_attention, kernel_fn = kernel_fn,
+                                                        dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
+                                                        attn_out_bias = attn_out_bias)),
+                        PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+                    ]))
+
+
             self.dim_upsample = nn.Linear(dim, out_dim)
-            # self.downsample = PatchMerging(input_resolution, dim, dim)
-            # self.downsample = TopKPooling(dim, 0.25)
+
         else:
-            self.downsample = None
+            self.downsample_layer = [None for _ in range(depth)] 
+            self.dim_upsample = None
     def forward(self, x):
         # print(x.size())
-        # if self.downsample:
-        #     tokens = self.tokens.repeat(x.size(0), 1, 1)
-            # x = torch.cat((tokens, x), dim=1)
-        s = x
         
-        for attn, ff in self.layers:
+        tokens = self.tokens
+        
+        
+        for (attn, ff), ds_layer in zip(self.layers, self.downsample_layers):
             x = attn(x) + x
             x = ff(x) + x
-        ds = x
-        # print('linear', self.layers[0][1].fn.net[0].weight.grad)
-        
-        if self.downsample:
-            # x = x.reshape(x.size(0), int(x.size(1)**0.5), int(x.size(1)**0.5), x.size(2)).permute(0, 3, 1, 2)
-            # x, _, _ = self.downsample(x)
-            # x = x.reshape(x.size(0), x.size(1), -1).permute(0, 2, 1)
+            if ds_layer is not None:
+                tokens = ds_layer[0](tokens, context=x) + tokens
+                tokens = ds_layer[1](tokens)+tokens
 
-            result = self.downsample(x, k=self.nodes).soft_assignment # B, 1024, 256
-
-            x = torch.matmul(result.permute(0, 2, 1), x)
-
-            # s = self.downsample(s)
-            # s = torch.softmax(s, dim=-1)
-            # x = torch.matmul(s.transpose(1, 2), x) # B, k, D 
-            # x = self.downsample(tokens, context = x)
-            x = self.dim_upsample(x)
-            # out_adj = torch.matmul(torch.matmul(s.transpose(1, 2), adj), s)
-
-            # link_loss = adj - torch.matmul(s, s.transpose(1, 2))
-            # link_loss = torch.norm(link_loss, p=2)
-            # if normalize is True:
-            #     link_loss = link_loss / adj.numel()
-
-            # ent_loss = (-s * torch.log(s + 1e-15)).sum(dim=-1).mean()
-            # print('downsample', self.downsample.select.weight.grad)
-            # x, perm, score = self.downsample(x)
+     
+        if self.dim_upsample is not None:
+            tokens = self.dim_upsample(tokens)
+        else:
+            tokens = x
             
-        return ds, x
+        return x, tokens
     
 
 class TransformerDecoder(nn.Module):
