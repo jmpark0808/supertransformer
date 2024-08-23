@@ -1167,10 +1167,10 @@ class SegViPUSLIC(nn.Module):
         # edge_index = torch.stack((torch.arange(0, seg.size(0), device='cuda'), seg), dim=0)
         
         
-        colour = scatter(img, seg, reduce='sum')
-        centroid = scatter(coord, seg, reduce='mean')
-        area = scatter(area, seg, reduce='sum')
-        seq_mask = scatter(mask, seg, reduce='mean')
+        colour = scatter(img, seg, reduce='sum', dim_size=self.num_seg*b)
+        centroid = scatter(coord, seg, reduce='mean', dim_size=self.num_seg*b)
+        area = scatter(area, seg, reduce='sum', dim_size=self.num_seg*b)
+        seq_mask = scatter(mask, seg, reduce='mean', dim_size=self.num_seg*b)
         # colour = seg.matmul(img) # BS*H*W x 3
         # centroid = seg.matmul(coord) # BS*H*W x 2
         

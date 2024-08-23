@@ -12,7 +12,7 @@ from Blocks.TransformerBlocks import CrossAttention as CA
 from Blocks.TransformerBlocks import Attention as Att
 from Blocks.TransformerBlocks import FeedForward as FF
 from Blocks.DiffSLIC import DiffSLIC
-from torch_kmeans import SoftKMeans
+
 # from Blocks.GraphPooling import TopKPooling
 def exists(val):
     return val is not None
