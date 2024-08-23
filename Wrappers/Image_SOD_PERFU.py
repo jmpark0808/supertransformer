@@ -186,7 +186,7 @@ class Image_PERFUSLIC_Wrapper(pl.LightningModule):
 
         samples = []
         for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
+            plt_image = masked[labels].reshape([img_size, img_size])
             samples.append(plt_image)
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
@@ -238,7 +238,7 @@ class Image_PERFUSLIC_Wrapper(pl.LightningModule):
 
         samples = []
         for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
+            plt_image = masked[labels].reshape([img_size, img_size])
             samples.append(plt_image)
 
         samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
@@ -350,7 +350,7 @@ class Image_PERFUSLIC_Wrapper(pl.LightningModule):
 
             samples = []
             for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-                plt_image = masked[labels-1].reshape([img_size, img_size])
+                plt_image = masked[labels].reshape([img_size, img_size])
                 samples.append(plt_image)
 
             samples = torch.tensor(np.expand_dims(np.array(samples), 1))
