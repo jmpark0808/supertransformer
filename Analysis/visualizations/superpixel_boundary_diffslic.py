@@ -120,14 +120,14 @@ for compact in tqdm(compactness):
             segments = label.detach().cpu().numpy().squeeze()
 
             
-            regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid'))#, polarize])
-            centers_y = regions['centroid-0']
-            centers_x = regions['centroid-1']
-            plt.imshow(mark_boundaries(img_np, segments))
-            plt.scatter(centers_x, centers_y, c='blue', s=30)
-            for ind, (x, y) in enumerate(zip(centers_x, centers_y)):
-                plt.text(x, y, str(regions['label'][ind]))
-            plt.show()
+            # regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid'))#, polarize])
+            # centers_y = regions['centroid-0']
+            # centers_x = regions['centroid-1']
+            # plt.imshow(mark_boundaries(img_np, segments))
+            # plt.scatter(centers_x, centers_y, c='blue', s=30)
+            # for ind, (x, y) in enumerate(zip(centers_x, centers_y)):
+            #     plt.text(x, y, str(regions['label'][ind]))
+            # plt.show()
 
             
             plt_image = seq_mask.detach().cpu().numpy().reshape(-1)[segments.reshape(-1)].reshape([img.shape[2], img.shape[3]])
