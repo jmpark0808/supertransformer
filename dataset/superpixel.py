@@ -128,8 +128,8 @@ class ToTensorSP(object):
         
 
 
-        slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness, min_size_factor=0.)
-        segments = slic.iterate(img_np)
+        # slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness, min_size_factor=0.)
+        # segments = slic.iterate(img_np)
 
         
         # segments = torch.tensor(segments).long()
@@ -144,12 +144,12 @@ class ToTensorSP(object):
 
 
         # label_onehot = F.one_hot(segments, self.num_seg).float()
-        # segments = slic(img_np, n_segments=self.num_seg,
-        #     compactness=self.compactness,
-        #     max_num_iter=10,
-        #     convert2lab=True,
-        #     enforce_connectivity=False,
-        #     slic_zero=False)
+        segments = slic(img_np, n_segments=self.num_seg,
+            compactness=self.compactness,
+            max_num_iter=10,
+            convert2lab=True,
+            enforce_connectivity=False,
+            slic_zero=False)-1
    
         # vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
         # vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])

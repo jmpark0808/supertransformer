@@ -1114,13 +1114,13 @@ class SegViPUSLIC(nn.Module):
         for idx, depth in enumerate(depths):
             nodes = int(nodes*0.25)
             if idx == len(depths)-1:
-                self.transformer_enc.append(TransformerEncoderToken(dims[idx], dims[idx], nodes, depth,
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (patch_size//(2**idx), patch_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
             elif idx < 2:
-                self.transformer_enc.append(PerformerEncoderToken(dims[idx], dims[idx+1], nodes, depth,
+                self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (patch_size//(2**idx), patch_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
             else:
-                self.transformer_enc.append(TransformerEncoderToken(dims[idx], dims[idx+1], nodes, depth,
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (patch_size//(2**idx), patch_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
             resolutions.append(patch_size // (2 ** idx))
        
