@@ -31,6 +31,7 @@ plt.figure(figsize=(10,10))
 for compact in tqdm(compactness):
     all_ious = []
     for seg in segment_numbers:
+        print(compact, seg)
         IoUs = []
         for file in tqdm(os.listdir(dataset_images)[:num_images]):
             name = file.split('.jpg')[0]
