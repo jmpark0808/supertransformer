@@ -761,7 +761,7 @@ class ViPU(nn.Module):
         assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
 
         num_patches = (image_height // patch_height) * (image_width // patch_width)
-        patch_dim = 3
+        patch_dim = channels
      
         self.img_size = image_size
         self.to_patch_embedding = nn.Sequential(
@@ -835,7 +835,7 @@ class ViPU(nn.Module):
         # color = x[:, :, 2:8]
         # x = torch.cat((color, lbp), dim=2)
         
-        x = x[:, :, 2:5]
+        x = x[:, :, 2:]
 
         # locations = torch.cat((centroids, fft), dim=2)
         locations = centroids
