@@ -23,6 +23,7 @@ from dataset.randaugment import RandAugment
 import torch.nn.functional as F
 
 
+
 class Resize(object):
     def __init__(self, size):
         self.size = size
@@ -150,6 +151,8 @@ class ToTensorSP(object):
             convert2lab=True,
             enforce_connectivity=False,
             slic_zero=False)-1
+
+        # segments = cuda_slic(img_np, n_segments=self.num_seg, compactness=self.compactness, convert2lab=False, enforce_connectivity=False, )
    
         # vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
         # vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
