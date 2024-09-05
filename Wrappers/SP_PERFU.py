@@ -41,6 +41,19 @@ class SP_PERFU_Wrapper(pl.LightningModule):
         self.heads = kwargs.get('heads')
         self.dims = kwargs.get('dims')
         self.depths = kwargs.get('depths')
+        self.coeff = kwargs.get('coeff')
+        self.size = kwargs.get('size')
+        resample_points = int(((self.size**2)//self.num_seg)**0.5)*4
+        self.resample_points = resample_points
+        
+        if self.coeff == -1: # use all coefficients
+            kwargs['coeff'] = resample_points-1
+            self.coeff = resample_points-1
+        else:
+            assert resample_points-1 >= self.coeff
+
+
+
         input_dim = get_input_dim(kwargs)
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
@@ -130,7 +143,23 @@ class SP_PERFU_Wrapper(pl.LightningModule):
         :param x: Input features
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
-        """        
+        """
+        first = input[:, :, :8]
+        second_amp = input[:, :, 8:8+self.resample_points]
+        second_phase = input[:, :, 8+self.resample_points:-10]
+        if self.coeff%2!=0: # coeff is odd
+            second_amp_front = second_amp[:, :, 1:2+(self.coeff//2)]
+            second_amp_back = second_amp[:, :, -(self.coeff//2):]
+            second_phase_front = second_phase[:, :, 1:2+(self.coeff//2)]
+            second_phase_back = second_phase[:, :, -(self.coeff//2):]
+        else:
+            second_amp_front = second_amp[:, :, 1:1+self.coeff//2]
+            second_amp_back = second_amp[:, :, -self.coeff//2:]
+            second_phase_front = second_phase[:, :, 1:1+self.coeff//2]
+            second_phase_back = second_phase[:, :, -self.coeff//2:]
+        third = input[:, :, -10:]
+        input = torch.cat((first, second_amp_front, second_amp_back, second_phase_front, second_phase_back, third), dim=2)
+        
         pred = self.supert(input)
         pred = pred.reshape(pred.size(0), -1)
         return pred
