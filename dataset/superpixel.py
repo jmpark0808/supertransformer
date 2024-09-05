@@ -229,6 +229,38 @@ class ToTensorSP(object):
         features, seq_mask, segments, mask = self.tensor(img), seq_mask, torch.tensor(segments), self.tensor(mask)
         
         return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask}
+    
+
+
+class ToTensorSPDummy(object):
+    def __init__(self, num_seg, compactness, size, ec, sz):
+        self.tensor = transforms.ToTensor()
+        self.num_seg = num_seg
+        self.compactness = compactness
+        xs = torch.arange(0, size).unsqueeze(0).float()
+        ys = torch.arange(0, size).unsqueeze(1).float()
+        xs = xs.repeat(size, 1)
+        ys = ys.repeat(1, size)
+        self.coords = torch.stack((xs, ys), 2)
+        self.ec = ec
+        self.sz = sz
+
+    def __call__(self, sample):
+        img, mask = sample['image'], sample['mask']
+        img_np = np.array(img)
+        
+        segments = slic(img_np, n_segments=self.num_seg,
+            compactness=self.compactness,
+            max_num_iter=10,
+            convert2lab=True,
+            enforce_connectivity=self.ec,
+            slic_zero=self.sz)-1
+
+        
+        seq_mask = torch.zeros([1])
+        features, seq_mask, segments, mask = self.tensor(img), seq_mask, torch.tensor(segments), self.tensor(mask)
+        
+        return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask}
 
 class ToTensorSPLAP(object):
     def __init__(self, num_seg, compactness):
@@ -591,6 +623,48 @@ class SPDataset(data.Dataset):
         self.data_augmentation = data_augmentation
         if self.data_augmentation is False:
             os.makedirs(os.path.join(str(Path(self.image_list[0]).parents[1]),'VAL'), exist_ok=True)
+
+
+    def __len__(self):
+        return len(self.image_list)
+
+    def __getitem__(self, item):
+        file_name = self.image_list[item].split('/')[-1].split('.')[0]+'.npy'
+        file_path = os.path.join(str(Path(self.image_list[item]).parents[1]),'VAL', file_name )
+
+        # if self.data_augmentation is False and os.path.exists(file_path):
+        #     sample = np.load(file_path, allow_pickle=True).item()
+        #     return sample
+
+        img_name = self.image_list[item]
+        mask_name = self.mask_list[item]
+        img = Image.open(img_name)
+        mask = Image.open(mask_name)
+        img = img.convert('RGB')
+        mask = mask.convert('L')
+        sample = {'image': img, 'mask': mask, 'file_name': self.image_list[item]}
+
+        sample = self.transform(sample)
+        sample['file_name'] = self.image_list[item]
+        sample['mask'] = (sample['mask']>0.5).float()
+        # if not os.path.exists(file_path):
+        #     np.save(file_path, sample)   
+        
+        return sample
+    
+class SPDatasetDummy(data.Dataset):
+    def __init__(self, image_list, mask_list, num_seg, size, compactness, ec, sz):
+        self.image_list = image_list
+        self.mask_list = mask_list
+        
+       
+        totensor = ToTensorSPDummy(num_seg, compactness, size, ec, sz)
+        
+
+        
+        self.transform = transforms.Compose([Resize(size), totensor])
+
+        
 
 
     def __len__(self):

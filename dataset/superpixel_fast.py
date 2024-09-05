@@ -115,7 +115,7 @@ class ToTensorSPFFT(object):
         self.compactness = compactness
         self.ignore_phase = ignore_phase
         resample_points = int(((size**2)//num_seg)**0.5)*4
-     
+        self.resample_points = resample_points
         
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
@@ -130,9 +130,9 @@ class ToTensorSPFFT(object):
             contour_complex.imag = contour_array[:, 1]
             fourier_result = np.fft.fft(contour_complex)
 
-            fourier_result_front = fourier_result[1:1+coeff//2]
-            fourier_result_back = fourier_result[-coeff//2:]
-            fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
+            # fourier_result_front = fourier_result[1:1+coeff//2]
+            # fourier_result_back = fourier_result[-coeff//2:]
+            # fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
 
             amp = abs(fourier_result)
             phase = np.arctan2(fourier_result.imag, fourier_result.real)
@@ -192,14 +192,10 @@ class ToTensorSPFFT(object):
         seq_len = len(regions['label'])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
-        features = np.zeros([self.num_seg, 8+(self.coeff)*2+10])
-        if self.ignore_phase:
-            features = np.zeros([self.num_seg, 8+self.coeff])
-            for i in range(self.coeff):
-                features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
-        else:
-            for i in range(self.coeff*2):
-                features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
+        features = np.zeros([self.num_seg, 8+(self.resample_points)*2+10])
+        
+        for i in range(self.resample_points*2):
+            features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
  
         features[label-1, 0] = regions['centroid-0']
@@ -213,7 +209,7 @@ class ToTensorSPFFT(object):
         features[label-1, 7] = regions['image_stdev-2']/255.
 
         for ind in range(8+2):
-            features[label-1, ind+8+(self.coeff)*2] = regions_lbp[f'lbp-{ind}']
+            features[label-1, ind+8+(self.resample_points)*2] = regions_lbp[f'lbp-{ind}']
         
         
         for ind, coord in zip(regions['label'], regions['coords']):
@@ -367,7 +363,7 @@ class SPDataset(data.Dataset):
         self.size = size
         self.coeff = coeff
         self.data_augmentation = data_augmentation
-       
+        self.resample_points = int(((size**2)//num_seg)**0.5)*4
             
 
     def __len__(self):
@@ -398,8 +394,8 @@ class SPDataset(data.Dataset):
         
         
         if self.data_augmentation:
-            features, seq_mask = horizontal_flip(features, self.coeff, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
-            features = rotate(features, self.coeff, 15, 0.5, (self.size, self.size))
+            features, seq_mask = horizontal_flip(features, self.resample_points, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
+            features = rotate(features, self.resample_points, 15, 0.5, (self.size, self.size))
             
 
         features = torch.tensor(features).float()
