@@ -10,8 +10,10 @@ from PIL import Image
 from tqdm import tqdm
 import pickle
 
-dataset_images = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Image'
-masks = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Mask'
+# dataset_images = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Image'
+# masks = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Mask'
+dataset_images = '/mnt/hdd/Datasets/EORSSD/TR/Image'
+masks = '/mnt/hdd/Datasets/EORSSD/TR/Mask'
 segment_numbers = [1024, 1024, 1024]
 compactness = [10, 10, 10]
 ec = [True, False, False]
@@ -25,11 +27,11 @@ from torch.utils.data import DataLoader
 import torch
 import os
 from torch_geometric.utils import scatter
-train_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TR'
-test_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TE'
+train_dir = '/mnt/dragon/Datasets/EORSSD/TR/'
+
 batch_size = 1
 num_workers = 20
-size = 320
+size = 224
 
 dataloader = 'SP'
 
@@ -110,7 +112,7 @@ plt.ylabel('Intersection Accuracy', fontsize=fs)
 # plt.xscale('log')
 plt.xticks(list(range(len(all_ious))), x_label, fontsize=fs, rotation=45)
 plt.yticks(fontsize=fs)
-plt.ylim((0.95, 1.0))
+plt.ylim((np.min(all_ious)-0.05, np.max(all_ious)+0.05))
 plt.tight_layout()
 plt.show()
 # plt.savefig(f'Slic_zero.jpg')
