@@ -15,9 +15,9 @@ from torch_geometric.utils import scatter
 
 dataset_images = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Image'
 masks = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Mask'
-segment_numbers = [32, 56] #10, 15, 20, 25, 30, 40, 50, 100, 200, 300
+segment_numbers = [10, 15, 20, 25, 30, 40, 50, 100, 200]# , 300
 # segment_numbers = [100, 200, 300, 400, 500, 600, 800, 1000, 1500, 3000, 10000, 45000, 90000]
-compactness = [0.1, 1, 10, 50]
+compactness = [10]
 d= {}
 d['segment_numbers'] = segment_numbers
 num_images = 3000
@@ -28,8 +28,8 @@ from dataset.superpixel import SPDataset
 from torch.utils.data import DataLoader
 
 import os
-train_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TR'
-test_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TE'
+train_dir = '/mnt/dragon/Datasets/EORSSD/TR/'
+
 batch_size = 1
 num_workers = 20
 
@@ -46,8 +46,8 @@ mask_list = np.array(sorted([os.path.join('{}/Mask'.format(train_dir), f) for f 
 indices = np.array(list(range(len(image_list))))
 np.random.shuffle(indices)
 
-tr_image_list = image_list[indices[:int(len(image_list)*0.85)]]
-tr_mask_list = mask_list[indices[:int(len(mask_list)*0.85)]]
+tr_image_list = image_list
+tr_mask_list = mask_list
 
 
 
@@ -67,7 +67,7 @@ for compact in tqdm(compactness):
     for seg in segment_numbers:
         IoUs = []
         maes = []
-        dataset = SPDataset(tr_image_list, tr_mask_list, seg*seg, 448, compact, False, dataloader, coeff, ignore_phase)
+        dataset = SPDataset(tr_image_list, tr_mask_list, seg*seg, 224, compact, False, dataloader, coeff, ignore_phase)
         dl = DataLoader(dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
         # for file in tqdm(os.listdir(dataset_images)[:num_images]):
         for batch in tqdm(dl):
@@ -146,12 +146,12 @@ for compact in tqdm(compactness):
     
                 
 
-                seq_mask = scatter(mask, seg_, reduce='mean', dim_size=num_seg)
+                seq_mask = scatter(mask, seg_, reduce='mean')
             
             
             
             
-            seq_mask = seq_mask.reshape(num_seg)
+            seq_mask = seq_mask.reshape(-1)
             
     
         
@@ -174,7 +174,7 @@ for compact in tqdm(compactness):
 
         all_ious.append(np.mean(IoUs))
         all_maes.append(np.mean(maes))
-        print(np.mean(maes))
+  
     d[compact] = [all_ious, all_maes]
     ax[0].plot(np.power(np.array(segment_numbers), 2), all_ious, label=f'{compact}')
     ax[0].scatter(np.power(np.array(segment_numbers), 2), all_ious)
@@ -202,6 +202,7 @@ plt.yticks(fontsize=fs)
 plt.legend(loc="lower right", fontsize=fs, title='Compactness', title_fontsize=fs)
 for vertical in np.power(np.array(segment_numbers), 2):
     plt.axvline(x=vertical, linestyle='--')
-plt.savefig(f'compactness.jpg')
+# plt.savefig(f'compactness.jpg')
+plt.show()
     
 
