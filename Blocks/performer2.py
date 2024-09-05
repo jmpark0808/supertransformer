@@ -807,16 +807,19 @@ class ViPU(nn.Module):
         #                        use_checkpoint=False)
         #     self.upsample_layers.append(layer)
         self.transformer_dec = nn.ModuleList([])
-        depths.reverse()
-        dims.reverse()
-        heads.reverse()
-        for idx, depth in enumerate(depths):
-            if idx < len(depths)-2:
-                self.transformer_dec.append(TFMDecoder(dims[idx], dims[max(idx-1, 0)],  depth,
-                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout))
+        depths_reverse = depths[::-1][1:]
+        dims_reverse = dims[::-1]
+        heads_reverse = heads[::-1]
+       
+        for idx, depth in enumerate(depths_reverse):
+            if idx < len(depths_reverse)-2:
+                self.transformer_dec.append(TFMDecoder(dims_reverse[idx+1], dims_reverse[idx],  depth,
+                                    heads_reverse[idx+1], dims_reverse[idx+1]//heads_reverse[idx+1],
+                                      int(mlp_ratio*dims_reverse[idx+1]),emb_dropout, dropout))
             else:
-                self.transformer_dec.append(PerformerDecoder(dims[idx], dims[max(idx-1, 0)], depth,
-                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout))
+                self.transformer_dec.append(PerformerDecoder(dims_reverse[idx+1], dims_reverse[idx], depth,
+                                    heads_reverse[idx+1], dims_reverse[idx+1]//heads_reverse[idx+1],
+                                      int(mlp_ratio*dims_reverse[idx+1]),emb_dropout, dropout))
                 
 
         # self.mlp_head = nn.Sequential(
@@ -825,7 +828,7 @@ class ViPU(nn.Module):
         # )
         # self.upsample = nn.Upsample(size=image_size)
         # self.sod_head = nn.Linear(sum(dims), 1)
-        self.sod_head = nn.Linear(dims[-1], 1)
+        self.sod_head = nn.Linear(dims_reverse[-1], 1)
 
 
     def forward(self, x):
@@ -859,7 +862,7 @@ class ViPU(nn.Module):
             
         fts.reverse()
         for idx, layer in enumerate(self.transformer_dec):
-            x = layer(fts[idx], x)
+            x = layer(fts[idx+1], x)
         # up_ft = []
         # for idx, layer in enumerate(self.upsample_layers):
         #     x = layer(ft[len(ft)-idx-1], ft)
