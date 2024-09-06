@@ -1,12 +1,12 @@
-from typing import Callable, Optional, Union
-from einops import rearrange
-import torch
-from torch import Tensor
-import torch.nn.functional as F
-import time
-from Blocks.performer2 import ViP, ViPEnc
-import numpy as np
-from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
+# from typing import Callable, Optional, Union
+# from einops import rearrange
+# import torch
+# from torch import Tensor
+# import torch.nn.functional as F
+# import time
+# from Blocks.performer2 import ViP, ViPEnc
+# import numpy as np
+# from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 # model = ViP(image_size=32, patch_size=1, dim=32, depth=6, heads=2, mlp_dim=32*4, channels=16, dim_head=16).cuda()
 # model.eval()
 
@@ -93,69 +93,69 @@ from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 
 #-------------------------------------------------------------------
 
-from dataset.superpixel import SPDataModule, SPDataset, DUTSDataset
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-from Blocks.swinunet_mix_ape import SwinUTransformer
-from Blocks.performer2 import ViPU
-import os
-import time
-train_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TR'
-test_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TE'
-batch_size = 1
-num_workers = 20
-num_seg = 1024
-res = 224
-dataloader = 'SPFFT'
-compactness = 10
-coeff = 10
-ignore_phase = False
+# from dataset.superpixel import SPDataModule, SPDataset, DUTSDataset
+# from torch.utils.data import DataLoader
+# from tqdm import tqdm
+# from Blocks.swinunet_mix_ape import SwinUTransformer
+# from Blocks.performer2 import ViPU
+# import os
+# import time
+# train_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TR'
+# test_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TE'
+# batch_size = 1
+# num_workers = 20
+# num_seg = 1024
+# res = 224
+# dataloader = 'SPFFT'
+# compactness = 10
+# coeff = 10
+# ignore_phase = False
 
-image_list = np.array(sorted([os.path.join('{}/Image'.format(train_dir), f) for f in os.listdir('{}/Image'.format(train_dir))]))
-mask_list = np.array(sorted([os.path.join('{}/Mask'.format(train_dir), f) for f in os.listdir('{}/Mask'.format(train_dir))]))
-
-
-indices = np.array(list(range(len(image_list))))
-np.random.shuffle(indices)
-
-val_image_list = image_list[indices[int(len(image_list)*0.85):]]
-val_mask_list = mask_list[indices[int(len(mask_list)*0.85):]]
-
-tr_image_list = image_list[indices[:int(len(image_list)*0.85)]][:1000]
-tr_mask_list = mask_list[indices[:int(len(mask_list)*0.85)]][:1000]
-
-test_image_list = sorted([os.path.join('{}/Image'.format(test_dir), f) for f in os.listdir('{}/Image'.format(test_dir))])
-test_mask_list = sorted([os.path.join('{}/Mask'.format(test_dir), f) for f in os.listdir('{}/Mask'.format(test_dir))])
+# image_list = np.array(sorted([os.path.join('{}/Image'.format(train_dir), f) for f in os.listdir('{}/Image'.format(train_dir))]))
+# mask_list = np.array(sorted([os.path.join('{}/Mask'.format(train_dir), f) for f in os.listdir('{}/Mask'.format(train_dir))]))
 
 
-dataset = SPDataset(tr_image_list, tr_mask_list, num_seg, res, compactness, True, dataloader, coeff, ignore_phase)
-# dataset = DUTSDataset(tr_image_list, tr_mask_list, num_seg, res, True)
+# indices = np.array(list(range(len(image_list))))
+# np.random.shuffle(indices)
+
+# val_image_list = image_list[indices[int(len(image_list)*0.85):]]
+# val_mask_list = mask_list[indices[int(len(mask_list)*0.85):]]
+
+# tr_image_list = image_list[indices[:int(len(image_list)*0.85)]][:1000]
+# tr_mask_list = mask_list[indices[:int(len(mask_list)*0.85)]][:1000]
+
+# test_image_list = sorted([os.path.join('{}/Image'.format(test_dir), f) for f in os.listdir('{}/Image'.format(test_dir))])
+# test_mask_list = sorted([os.path.join('{}/Mask'.format(test_dir), f) for f in os.listdir('{}/Mask'.format(test_dir))])
+
+
+# dataset = SPDataset(tr_image_list, tr_mask_list, num_seg, res, compactness, True, dataloader, coeff, ignore_phase)
+# # dataset = DUTSDataset(tr_image_list, tr_mask_list, num_seg, res, True)
         
-loader = DataLoader(
-                dataset, batch_size=batch_size, 
-                num_workers=num_workers, shuffle=True, pin_memory=True, drop_last=True)
+# loader = DataLoader(
+#                 dataset, batch_size=batch_size, 
+#                 num_workers=num_workers, shuffle=True, pin_memory=True, drop_last=True)
 
-# model = SwinUTransformer(img_size=32, in_chans=28, patch_size=1, window_size=8,
-#                                        embed_dim=[32, 64, 128], depths=[2, 2, 6],
-#                                          num_heads=[2, 4, 8], mlp_ratio=4).cuda()
-model = ViPU(image_size=32, patch_size=1, dims=[32, 64, 128], depths=[2, 2, 6], heads=[2, 4, 8], mlp_ratio=4, channels=36).cuda()
-model.eval()
+# # model = SwinUTransformer(img_size=32, in_chans=28, patch_size=1, window_size=8,
+# #                                        embed_dim=[32, 64, 128], depths=[2, 2, 6],
+# #                                          num_heads=[2, 4, 8], mlp_ratio=4).cuda()
+# model = ViPU(image_size=32, patch_size=1, dims=[32, 64, 128], depths=[2, 2, 6], heads=[2, 4, 8], mlp_ratio=4, channels=36).cuda()
+# model.eval()
 
-all_times = []
-inp = torch.randn(1, 1024, 38).cuda()
-with torch.no_grad():
-    curr_time = time.time()
-    for _ in range(1000):
+# all_times = []
+# inp = torch.randn(1, 1024, 38).cuda()
+# with torch.no_grad():
+#     curr_time = time.time()
+#     for _ in range(1000):
 
-    # for batch in tqdm(loader):
-        start = time.time()
-        model(inp)
+#     # for batch in tqdm(loader):
+#         start = time.time()
+#         model(inp)
         
-        curr_time = time.time()
-        all_times.append(curr_time-start)
+#         curr_time = time.time()
+#         all_times.append(curr_time-start)
 
-print(np.mean(all_times)*1000)
-assert(0)
+# print(np.mean(all_times)*1000)
+# assert(0)
         
 
 # ---------------------------------------------------------------------------------------
@@ -288,3 +288,16 @@ assert(0)
 #     plt.text(x, y, str(regions['label'][ind]))
 # plt.show()
 
+#--------------------------------------------------------------------------------------
+
+import numpy as np
+import matplotlib.pyplot as plt
+tr_images = np.load('/mnt/dragon/Datasets/HKU-IS/archive (2)/train_images.npy')
+tr_masks = np.load('/mnt/dragon/Datasets/HKU-IS/archive (2)/train_masks.npy')
+te_images = np.load('/mnt/dragon/Datasets/HKU-IS/archive (2)/test_images.npy')
+te_masks = np.load('/mnt/dragon/Datasets/HKU-IS/archive (2)/test_masks.npy')
+
+print(tr_images.shape)
+
+plt.imshow(tr_images[0].reshape(256, 256, 3))
+plt.show()
