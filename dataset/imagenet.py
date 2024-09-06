@@ -92,6 +92,7 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
         self.ignore_phase = ignore_phase
 
         resample_points = int(((size**2)//num_seg)**0.5)*4
+        self.resample_points = resample_points
         
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
@@ -199,15 +200,11 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
 
         seq_len = len(regions['label'])
         label = regions['label']
-        features = np.zeros([self.num_seg, 8+(self.coeff)*2+10])
+        features = np.zeros([self.num_seg, 8+(self.resample_points)*2+10])
     
-        if self.ignore_phase:
-            features = np.zeros([self.num_seg, 8+self.coeff])
-            for i in range(self.coeff):
-                features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
-        else:
-            for i in range(self.coeff*2):
-                features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
+        
+        for i in range(self.resample_points*2):
+            features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
         
         features[label-1, 0] = regions['centroid-0']
@@ -220,11 +217,11 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
         features[label-1, 7] = regions['image_stdev-2']/255.
 
         for ind in range(8+2):
-            features[label-1, ind+8+(self.coeff)*2] = regions_lbp[f'lbp-{ind}']
+            features[label-1, ind+8+(self.resample_points)*2] = regions_lbp[f'lbp-{ind}']
         
 
         
-        np.save(sp_file_path, features.astype(np.float16))
+        np.save(sp_file_path, features)#.astype(np.float16))
         np.save(sp_file_path_target, np.array([target]))
 
         return torch.empty(0)
