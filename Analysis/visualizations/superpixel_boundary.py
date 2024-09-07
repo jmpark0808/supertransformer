@@ -15,7 +15,7 @@ from torch_geometric.utils import scatter
 
 dataset_images = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Image'
 masks = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Mask'
-segment_numbers = [10, 15, 20, 25, 30, 40, 50, 100, 200]# , 300
+segment_numbers = [32, 56, 112]# , 300
 # segment_numbers = [100, 200, 300, 400, 500, 600, 800, 1000, 1500, 3000, 10000, 45000, 90000]
 compactness = [10]
 d= {}

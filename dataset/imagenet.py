@@ -107,9 +107,9 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
             contour_complex.imag = contour_array[:, 1]
             fourier_result = np.fft.fft(contour_complex)
 
-            fourier_result_front = fourier_result[1:1+coeff//2]
-            fourier_result_back = fourier_result[-coeff//2:]
-            fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
+            # fourier_result_front = fourier_result[1:1+coeff//2]
+            # fourier_result_back = fourier_result[-coeff//2:]
+            # fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
 
             amp = abs(fourier_result)
             phase = np.arctan2(fourier_result.imag, fourier_result.real)

@@ -292,10 +292,10 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-tr_images = np.load('/mnt/dragon/Datasets/PASCAL/archive (3)/pascals_train_images.npy')
-tr_masks = np.load('/mnt/dragon/Datasets/PASCAL/archive (3)/pascals_train_masks.npy')
-te_images = np.load('/mnt/dragon/Datasets/PASCAL/archive (3)/pascals_test_images.npy')
-te_masks = np.load('/mnt/dragon/Datasets/PASCAL/archive (3)/pascals_test_masks.npy')
+tr_images = np.load('/mnt/dragon/Datasets/PASCAL/archive (1)/images.npy')
+tr_masks = np.load('/mnt/dragon/Datasets/PASCAL/archive (1)/masks.npy')
+# te_images = np.load('/mnt/dragon/Datasets/PASCAL/archive (1)/pascals_test_images.npy')
+# te_masks = np.load('/mnt/dragon/Datasets/PASCAL/archive (1)/pascals_test_masks.npy')
 
 export_image_dir = '/mnt/dragon/Datasets/PASCAL/Image'
 export_mask_dir = '/mnt/dragon/Datasets/PASCAL/Mask'
@@ -303,11 +303,13 @@ export_mask_dir = '/mnt/dragon/Datasets/PASCAL/Mask'
 
 tr_images = tr_images.reshape(-1, 256, 256, 3)
 tr_masks = tr_masks.reshape(-1, 256, 256)
-te_images = te_images.reshape(-1, 256, 256, 3)
-te_masks = te_masks.reshape(-1, 256, 256)
+# te_images = te_images.reshape(-1, 256, 256, 3)
+# te_masks = te_masks.reshape(-1, 256, 256)
 
-all_images = np.concatenate((tr_images, te_images), axis=0)
-all_masks = np.concatenate((tr_masks, te_masks), axis=0)
+# all_images = np.concatenate((tr_images, te_images), axis=0)
+# all_masks = np.concatenate((tr_masks, te_masks), axis=0)
+all_images = tr_images
+all_masks = tr_masks
 
 import cv2
 import os

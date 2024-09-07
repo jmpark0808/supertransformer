@@ -45,9 +45,10 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
         else:
             assert resample_points-1 >= self.coeff
         input_dim = get_input_dim(kwargs)
+
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
-        self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
+        self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=2, window_size=self.window_size,
                                        embed_dim=self.dims, depths=self.depths,
                                          num_heads=self.heads, mlp_ratio=4)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
