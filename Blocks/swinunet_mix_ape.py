@@ -63,7 +63,11 @@ class SwinUTransformer(nn.Module):
         self.linear_embed = nn.Sequential(nn.Linear(in_chans, embed_dim[0]), nn.LayerNorm(embed_dim[0]))
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=embed_dim[0], embed_dim=embed_dim[0],
+            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim[0],
+            norm_layer=norm_layer if self.patch_norm else None)
+        
+        self.pos_embed = PatchEmbed(
+            img_size=img_size, patch_size=patch_size, in_chans=2, embed_dim=embed_dim[0],
             norm_layer=norm_layer if self.patch_norm else None)
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -145,13 +149,23 @@ class SwinUTransformer(nn.Module):
         return {'relative_position_bias_table'}
 
     def forward_features(self, x, pos):
-        x = x.permute(0, 2, 3, 1)
-        x = self.linear_embed(x) # 56 x 56 
-        x = x + pos 
-        x = self.pos_drop(x)
-        x = x.permute(0, 3, 1, 2)
-        ft = [x.reshape(x.size(0), x.size(1),-1).permute(0, 2, 1)]
+        locations = pos.permute(0, 2, 3, 1)
+        locations = self.locations(locations)
+        
+
+        x_ = x.permute(0, 2, 3, 1)
+        x_ = self.linear_embed(x_) # 56 x 56 
+
+        x_ = x_ + locations 
+        x_ = self.pos_drop(x_)
+        x_ = x_.permute(0, 3, 1, 2)
+        ft = [x_.reshape(x_.size(0), x_.size(1),-1).permute(0, 2, 1)]
+
         x = self.patch_embed(x) # 28 x 28
+        pos = self.pos_embed(pos)
+
+        x = x + pos
+
         
         
         # x = x + pos
@@ -190,10 +204,8 @@ class SwinUTransformer(nn.Module):
         lbp = x[:, -10:, :, :]
         color = x[:, 2:8, :, :]
         x = torch.cat((color, lbp, fft), dim=1)
-        locations = centroids.permute(0, 2, 3, 1)
-        locations = self.locations(locations)
-        # locations = locations.reshape(locations.size(0), -1, locations.size(3))
-        x = self.forward_features(x, locations)
+        
+        x = self.forward_features(x, centroids)
         x = self.sod_head(x)
 
         return x
