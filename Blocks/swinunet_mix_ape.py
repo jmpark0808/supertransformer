@@ -59,15 +59,9 @@ class SwinUTransformer(nn.Module):
         self.patch_norm = patch_norm
         self.mlp_ratio = mlp_ratio
 
-
-        self.linear_embed = nn.Sequential(nn.Linear(in_chans, embed_dim[0]), nn.LayerNorm(embed_dim[0]))
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim[0],
-            norm_layer=norm_layer if self.patch_norm else None)
-        
-        self.pos_embed = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=2, embed_dim=embed_dim[0],
             norm_layer=norm_layer if self.patch_norm else None)
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -110,13 +104,13 @@ class SwinUTransformer(nn.Module):
         embed_dims.reverse()
             
             
-        num_heads = [num_heads[0]]+num_heads
+
         self.upsample_layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
             layer = BasicLayerUpsampleMA(dim=embed_dims[i_layer],
-                                       total_dim=sum(embed_dims),
+                                       total_dim=sum(embed_dim),
                                input_resolution=resolutions,
-                               num_heads=num_heads[self.num_layers-i_layer],
+                               num_heads=num_heads[self.num_layers-i_layer-1],
                                mlp_ratio=self.mlp_ratio,
                                qkv_bias=qkv_bias, 
                                qk_scale=qk_scale, 
@@ -126,8 +120,8 @@ class SwinUTransformer(nn.Module):
             self.upsample_layers.append(layer)
 
         self.upsample = nn.Upsample(size=img_size[0])
-        self.sod_head = nn.Linear(sum(embed_dims), 1)
-        # self.locations = nn.Sequential(*[nn.Linear(2, embed_dim[0]), nn.LayerNorm(embed_dim[0])])
+        self.sod_head = nn.Linear(sum(embed_dim), 1)
+        self.locations = nn.Sequential(*[nn.Linear(2, embed_dim[0]), nn.ReLU(), nn.Linear(embed_dim[0], embed_dim[0])])
         
         self.apply(self._init_weights)
 
@@ -149,26 +143,11 @@ class SwinUTransformer(nn.Module):
         return {'relative_position_bias_table'}
 
     def forward_features(self, x, pos):
-        # locations = pos.permute(0, 2, 3, 1)
-        # locations = self.locations(locations)
+        x = self.patch_embed(x)
         
-
-        # x_ = x.permute(0, 2, 3, 1)
-        # x_ = self.linear_embed(x_) # 56 x 56 
-
-        # x_ = x_ + locations 
-        # x_ = self.pos_drop(x_)
-        # x_ = x_.permute(0, 3, 1, 2)
-        # ft = [x_.reshape(x_.size(0), x_.size(1),-1).permute(0, 2, 1)]
-
-        x = self.patch_embed(x) # 28 x 28
-        pos = self.pos_embed(pos)
-
+        x = self.pos_drop(x)
+        print(x.size(), pos.size())
         x = x + pos
-
-        
-        
-        # x = x + pos
 
         ft = []
         
@@ -204,8 +183,10 @@ class SwinUTransformer(nn.Module):
         lbp = x[:, -10:, :, :]
         color = x[:, 2:8, :, :]
         x = torch.cat((color, lbp, fft), dim=1)
-        
-        x = self.forward_features(x, centroids)
+        locations = centroids.permute(0, 2, 3, 1)
+        locations = self.locations(locations)
+        locations = locations.reshape(locations.size(0), -1, locations.size(3))
+        x = self.forward_features(x, locations)
         x = self.sod_head(x)
 
         return x
