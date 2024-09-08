@@ -86,8 +86,8 @@ class SwinUTransformer(nn.Module):
 
         # build layers
         self.layers = nn.ModuleList()
-        resolutions = [img_size[0]]
-        embed_dims = [embed_dim[0]]
+        resolutions = []
+        embed_dims = []
         for i_layer in range(self.num_layers):
             layer = BasicLayer(dim=embed_dim[i_layer],
                                    out_dim=embed_dim[i_layer+1] if i_layer < self.num_layers-1 else None,
@@ -112,7 +112,7 @@ class SwinUTransformer(nn.Module):
             
         num_heads = [num_heads[0]]+num_heads
         self.upsample_layers = nn.ModuleList()
-        for i_layer in range(self.num_layers+1):
+        for i_layer in range(self.num_layers):
             layer = BasicLayerUpsampleMA(dim=embed_dims[i_layer],
                                        total_dim=sum(embed_dims),
                                input_resolution=resolutions,
@@ -127,7 +127,7 @@ class SwinUTransformer(nn.Module):
 
         self.upsample = nn.Upsample(size=img_size[0])
         self.sod_head = nn.Linear(sum(embed_dims), 1)
-        self.locations = nn.Sequential(*[nn.Linear(2, embed_dim[0]), nn.LayerNorm(embed_dim[0])])
+        # self.locations = nn.Sequential(*[nn.Linear(2, embed_dim[0]), nn.LayerNorm(embed_dim[0])])
         
         self.apply(self._init_weights)
 
@@ -149,17 +149,17 @@ class SwinUTransformer(nn.Module):
         return {'relative_position_bias_table'}
 
     def forward_features(self, x, pos):
-        locations = pos.permute(0, 2, 3, 1)
-        locations = self.locations(locations)
+        # locations = pos.permute(0, 2, 3, 1)
+        # locations = self.locations(locations)
         
 
-        x_ = x.permute(0, 2, 3, 1)
-        x_ = self.linear_embed(x_) # 56 x 56 
+        # x_ = x.permute(0, 2, 3, 1)
+        # x_ = self.linear_embed(x_) # 56 x 56 
 
-        x_ = x_ + locations 
-        x_ = self.pos_drop(x_)
-        x_ = x_.permute(0, 3, 1, 2)
-        ft = [x_.reshape(x_.size(0), x_.size(1),-1).permute(0, 2, 1)]
+        # x_ = x_ + locations 
+        # x_ = self.pos_drop(x_)
+        # x_ = x_.permute(0, 3, 1, 2)
+        # ft = [x_.reshape(x_.size(0), x_.size(1),-1).permute(0, 2, 1)]
 
         x = self.patch_embed(x) # 28 x 28
         pos = self.pos_embed(pos)
@@ -170,7 +170,7 @@ class SwinUTransformer(nn.Module):
         
         # x = x + pos
 
-        
+        ft = []
         
         for layer in self.layers:
             ds, x = layer(x)
