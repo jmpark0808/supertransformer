@@ -2,7 +2,7 @@ import os
 import matplotlib.pyplot as plt
 import cv2
 from skimage import io
-# from skimage.segmentation import mark_boundaries, slic
+from skimage.segmentation import mark_boundaries, slic
 from skimage.measure import regionprops_table
 import numpy as np
 from PIL import Image
@@ -28,7 +28,7 @@ from dataset.superpixel import SPDataset
 from torch.utils.data import DataLoader
 
 import os
-train_dir = '/mnt/dragon/Datasets/EORSSD/TR/'
+train_dir = '/mnt/dragon/Datasets/EORSSD/TE/'
 
 batch_size = 1
 num_workers = 20
@@ -137,6 +137,10 @@ for compact in tqdm(compactness):
 
             segments = batch['segments']
             msk = batch['mask'].detach().numpy()
+
+            # ax[0].imshow(batch['features'].squeeze().permute(1, 2, 0).detach().cpu().numpy())
+            # ax[1].imshow(mark_boundaries(batch['features'].squeeze().permute(1, 2, 0).detach().cpu().numpy(), segments.squeeze().detach().cpu().numpy()))
+            # plt.show()
 
             with torch.no_grad():
 

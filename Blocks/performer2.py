@@ -273,7 +273,7 @@ class Attention(nn.Module):
         self.to_q = nn.Linear(dim, inner_dim, bias=qkv_bias)
         self.to_k = nn.Linear(dim, inner_dim, bias=qkv_bias)
         self.to_v = nn.Linear(dim, inner_dim, bias=qkv_bias)
-        # self.to_out = nn.Linear(inner_dim, dim, bias = attn_out_bias)
+        self.to_out = nn.Linear(inner_dim, dim, bias = attn_out_bias)
         self.dropout = nn.Dropout(dropout)
         
 
@@ -313,7 +313,7 @@ class Attention(nn.Module):
         out = torch.cat(attn_outs, dim = 1)
         out = rearrange(out, 'b h n d -> b n (h d)')
 #         print("Attention", out.size())
-        # out =  self.to_out(out)
+        out =  self.to_out(out)
         out = self.dropout(out)
         return out
 
@@ -359,20 +359,20 @@ class FeedForward(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., num_tokens=1):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0.):
         super().__init__()
         self.layers = nn.ModuleList([])
         local_attn_heads = 0
         local_window_size = 256
         causal = False
         nb_features = None
-        generalized_attention = True
+        generalized_attention = False
         kernel_fn = nn.ReLU()
         # attn_dropout = 0.
         no_projection = False
         qkv_bias = True
         attn_out_bias = True
-        self.num_tokens = num_tokens
+        
         self.heads = heads
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
@@ -380,20 +380,16 @@ class Transformer(nn.Module):
                                             local_window_size = local_window_size, nb_features = nb_features,
                                               generalized_attention = generalized_attention, kernel_fn = kernel_fn,
                                                 dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
-                                                  attn_out_bias = attn_out_bias, tokens=num_tokens)),
-                PreNorm(dim//heads, FeedForward(dim//heads, dim, heads, dropout = dropout))
+                                                  attn_out_bias = attn_out_bias)),
+                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
     def forward(self, x):
         # x = (B, N, D)
         B, N, _ = x.shape
-        # x = x.reshape(B, N, self.num_tokens, -1).permute(0, 2, 1, 3)
-        # x = x.reshape(B*self.num_tokens, N, -1)
         for attn, ff in self.layers:
             x = attn(x) + x
-            x_ = rearrange(x, 'b n (h d) -> (b h) n d', h = self.heads)
-            # x = rearrange(x, '(b t) n d -> b n (t d)', t = self.num_tokens)
-            x = ff(x_) + x
-            # x = rearrange(x, 'b h n d -> b n (h d)')
+            x = ff(x) + x
+
 
         return x
     
@@ -589,7 +585,7 @@ class TransformerDec(nn.Module):
 
 class ViP(nn.Module):
     def __init__(self, *, image_size, patch_size, dim, depth, heads,
-                  mlp_dim, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0., task='cls'):
+                  mlp_dim, coeff, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0., task='cls'):
         super().__init__()
         image_height, image_width = pair(image_size)
         patch_height, patch_width = pair(patch_size)
@@ -600,23 +596,23 @@ class ViP(nn.Module):
         num_patches = (image_height // patch_height) * (image_width // patch_width)
         patch_dim = channels
         assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
-        self.num_tokens = 256//dim
+      
 
         self.to_patch_embedding = nn.Sequential(
             # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
             nn.LayerNorm(patch_dim),
-            nn.Linear(patch_dim, dim*self.num_tokens),
-            nn.LayerNorm(dim*self.num_tokens),
+            nn.Linear(patch_dim, dim),
+            nn.LayerNorm(dim),
         )
 
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
         
         # self.cls_token = nn.Parameter(torch.randn(1, self.num_tokens, dim))
         self.dropout = nn.Dropout(emb_dropout)
-        self.locations = nn.Sequential(nn.Linear(22, dim*self.num_tokens), nn.LayerNorm(dim*self.num_tokens))
+        self.locations = nn.Sequential(nn.Linear(2+coeff*2, dim), nn.LayerNorm(dim))
 
         
-        self.transformer = Transformer(dim*self.num_tokens, depth, heads*self.num_tokens, dim_head, mlp_dim, emb_dropout, dropout, self.num_tokens)
+        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer4 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
@@ -630,8 +626,8 @@ class ViP(nn.Module):
         else:
             num_classes = 1000 
         self.mlp_head = nn.Sequential(
-            nn.LayerNorm(dim*self.num_tokens),
-            nn.Linear(dim*self.num_tokens, num_classes)
+            nn.LayerNorm(dim),
+            nn.Linear(dim, num_classes)
         )
 
 
