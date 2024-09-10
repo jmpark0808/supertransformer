@@ -366,7 +366,7 @@ class Transformer(nn.Module):
         local_window_size = 256
         causal = False
         nb_features = None
-        generalized_attention = False
+        generalized_attention = True
         kernel_fn = nn.ReLU()
         # attn_dropout = 0.
         no_projection = False
