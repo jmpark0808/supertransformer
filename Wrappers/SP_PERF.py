@@ -68,8 +68,8 @@ class SP_PERF_Wrapper(pl.LightningModule):
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
 
-        print(kwargs['parameters'], kwargs['flops'])
-        assert(0)
+        # print(kwargs['parameters'], kwargs['flops'])
+        # assert(0)
         self.mixup = MixupSaliency(
             cutmix_alpha=1.0, cutmix_minmax=None,
             prob=1.0,  mode='batch',
