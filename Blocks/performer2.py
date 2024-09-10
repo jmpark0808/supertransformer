@@ -776,13 +776,13 @@ class ViPU(nn.Module):
         for idx, depth in enumerate(depths):
             if idx == len(depths)-1:
                 self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size//(2**idx), image_size//(2**idx)), depth,
-                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
+                                    heads[idx], 16, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
             elif idx < 2:
                 self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
-                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
+                                    heads[idx], 16, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
             else:
                 self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
-                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
+                                    heads[idx], 16, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
             resolutions.append(image_size // (2 ** idx))
         # self.transformer_dec_1 = TransformerDecoder(dims[1], dims[2], (image_size//4, image_size//4), depths[1], heads[1], dims[1]//heads[1], int(mlp_ratio*dims[1]), emb_dropout, dropout, False)
         # self.transformer_dec_2 = TransformerDecoder(dims[0], dims[1], (image_size//2, image_size//2), depths[0], heads[0], dims[0]//heads[0], int(mlp_ratio*dims[0]), emb_dropout, dropout, False)
@@ -810,11 +810,11 @@ class ViPU(nn.Module):
         for idx, depth in enumerate(depths_reverse):
             if idx < len(depths_reverse)-2:
                 self.transformer_dec.append(TFMDecoder(dims_reverse[idx+1], dims_reverse[idx],  depth,
-                                    heads_reverse[idx+1], dims_reverse[idx+1]//heads_reverse[idx+1],
+                                    heads_reverse[idx+1], 16,
                                       int(mlp_ratio*dims_reverse[idx+1]),emb_dropout, dropout))
             else:
                 self.transformer_dec.append(PerformerDecoder(dims_reverse[idx+1], dims_reverse[idx], depth,
-                                    heads_reverse[idx+1], dims_reverse[idx+1]//heads_reverse[idx+1],
+                                    heads_reverse[idx+1], 16,
                                       int(mlp_ratio*dims_reverse[idx+1]),emb_dropout, dropout))
                 
 
