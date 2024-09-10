@@ -30,7 +30,7 @@ class SwinTransformer(nn.Module):
         fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
     """
 
-    def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000,
+    def __init__(self, img_size=224, coeff=1, patch_size=4, in_chans=3, num_classes=1000,
                  embed_dim=[96, 96*2, 96*4, 96*8], depths=[2, 2, 6, 2], num_heads=[3, 6, 12, 24],
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
@@ -49,7 +49,7 @@ class SwinTransformer(nn.Module):
         # split image into non-overlapping patches
 
         self.patch_embed = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim[0],
+            img_size=img_size, patch_size=patch_size, in_chans=in_chans-(coeff*2), embed_dim=embed_dim[0],
             norm_layer=norm_layer if self.patch_norm else None)
         num_patches = self.patch_embed.num_patches
         patches_resolution = self.patch_embed.patches_resolution
@@ -83,7 +83,7 @@ class SwinTransformer(nn.Module):
                                fused_window_process=fused_window_process)
             self.layers.append(layer)
 
-        self.locations = nn.Sequential(*[nn.Linear(2, embed_dim[0]), nn.ReLU(), nn.Linear(embed_dim[0], embed_dim[0])])
+        self.locations = nn.Sequential(*[nn.Linear(2+coeff*2, embed_dim[0]), nn.ReLU(), nn.Linear(embed_dim[0], embed_dim[0])])
         
         self.norm = norm_layer(self.num_features)
         self.avgpool = nn.AdaptiveAvgPool1d(1)
@@ -127,8 +127,8 @@ class SwinTransformer(nn.Module):
         fft = x[:, 8:-10, :, :]
         lbp = x[:, -10:, :, :]
         color = x[:, 2:8, :, :]
-        x = torch.cat((color, lbp, fft), dim=1)
-        locations = centroids.permute(0, 2, 3, 1)
+        x = torch.cat((color, lbp), dim=1)
+        locations = torch.cat((centroids, fft), dim=1).permute(0, 2, 3, 1)
         locations = self.locations(locations)
         locations = locations.reshape(locations.size(0), -1, locations.size(3))
         x = self.forward_features(x, locations)
