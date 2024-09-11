@@ -121,6 +121,7 @@ DATALOADER_DIRECTORY = {
 } 
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('--model', help='Model name to train', required=True, default=None)
     parser.add_argument('--eval', help='Whether to test model on the best iteration after training'
@@ -180,8 +181,6 @@ if __name__ == "__main__":
     parser.add_argument('--memory', help='Whether to put the data into memory'
                         , default=False, action="store_true")
     
-    
-
 
     import torch 
     torch.set_float32_matmul_precision('medium')
