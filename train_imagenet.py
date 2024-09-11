@@ -17,15 +17,31 @@ from Wrappers.SP_ImageNet_TFM import SP_ImageNet_TFM_Wrapper
 from Wrappers.SP_ImageNet_GAT_PyG import SP_ImageNet_GAT_PyG_Wrapper
 from Wrappers.SP_ImageNet_DGAT_PyG import SP_ImageNet_DGAT_PyG_Wrapper
 from Wrappers.SP_ImageNet_SWIN import SP_ImageNet_SWIN_Wrapper
-
+from Wrappers.image_CLS_swintransformer import ImageNet_SWIN_Wrapper
+from Wrappers.SP_ImageNet_SWIN_RPE import SP_ImageNet_OGSWIN_RPE_Wrapper
+from Wrappers.SP_ImageNet_SWIN_APE import SP_ImageNet_OGSWIN_APE_Wrapper
+from Wrappers.SP_ImageNet_MBUNET import SP_ImageNet_MBNET_Wrapper
+from Wrappers.SP_ImageNet_MBVIT import SP_ImageNet_MBVIT_Wrapper
+from Wrappers.image_CLS_mobilevit import ImageNet_MBVIT_Wrapper
+from Wrappers.Image_CLS_stopsigns import Image_Stopsigns_Wrapper
+from Wrappers.image_CLS_mobilenet import ImageNet_MBNET_Wrapper
+from Wrappers.SP_ImageNet_PERF import SP_ImageNet_PERF_Wrapper
+from Wrappers.SP_ImageNet_TFM import SP_ImageNet_TFM_Wrapper
+from Wrappers.SP_ImageNet_PERFENC import SP_ImageNet_PERFENC_Wrapper
+from Wrappers.SP_ImageNet_MAMBA import SP_ImageNet_MAMBA_Wrapper
 
 # Import dataset modules
 from dataset.imagenet import SPImageNetDataModule
 from dataset.imagenet_pyg import SPGImageNetDataModule
 from dataset.imagenet_aug import SPImageNetAugDataModule
 from dataset.imagenet_pyg_exp import SPGEImageNetDataModule
+from dataset.imagenet_images import ImageNetDataModule
+from dataset.imagenet_images_mb import ImageNetMBDataModule
+from dataset.imagenet_pyg_swin import SPGSImageNetDataModule
+from dataset.stopsigns import SPSpeedLimitsDataModule
+from dataset.stopsigns import SpeedLimitsDataModule
 
-
+import git
 
 
 # Metric logging
@@ -36,14 +52,30 @@ MODEL_DIRECTORY = {
     'SP_ImageNet': SP_ImageNet_TFM_Wrapper,
     'SP_ImageNet_GAT': SP_ImageNet_GAT_PyG_Wrapper,
     'SP_ImageNet_DGAT': SP_ImageNet_DGAT_PyG_Wrapper,
-    'SP_ImageNet_SWIN': SP_ImageNet_SWIN_Wrapper
+    'SP_ImageNet_SWIN': SP_ImageNet_SWIN_Wrapper,
+    'SP_ImageNet_OGSWIN_APE': SP_ImageNet_OGSWIN_APE_Wrapper,
+    'SP_ImageNet_OGSWIN_RPE': SP_ImageNet_OGSWIN_RPE_Wrapper,
+    'SWIN': ImageNet_SWIN_Wrapper,
+    'SP_ImageNet_MBNET': SP_ImageNet_MBNET_Wrapper,
+    'SP_ImageNet_MBVIT': SP_ImageNet_MBVIT_Wrapper,
+    'SP_ImageNet_PERF': SP_ImageNet_PERF_Wrapper,
+    'SP_ImageNet_PERFENC': SP_ImageNet_PERFENC_Wrapper,
+    'SP_ImageNet_MAMBA': SP_ImageNet_MAMBA_Wrapper,
+    'MBVIT': ImageNet_MBVIT_Wrapper,
+    'Topk': Image_Stopsigns_Wrapper,
+    'MBNET': ImageNet_MBNET_Wrapper
 
 }
 DATALOADER_DIRECTORY = {
     'ImageNet': SPImageNetDataModule,
     'ImageNet_PyG': SPGImageNetDataModule,
     'ImageNet_Aug': SPImageNetAugDataModule,
-    'INPE': SPGEImageNetDataModule
+    'INPE': SPGEImageNetDataModule,
+    'ImageNet_Images': ImageNetDataModule,
+    'ImageNet_MB': ImageNetMBDataModule,
+    'ImageNet_SWIN': SPGSImageNetDataModule,
+    'SPSpeedLimits': SPSpeedLimitsDataModule,
+    'SpeedLimits': SpeedLimitsDataModule,
 } 
 
 if __name__ == "__main__":
@@ -66,7 +98,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', help="batchsize, default = 1", default=1, type=int)
     parser.add_argument('--epoch', help='# of epochs. default = 20', default=20, type=int)
     parser.add_argument('--num_workers', help="# of dataloader cpu process", default=0, type=int)
-    parser.add_argument('--val_freq', help='How often to run validation set within a training epoch, i.e. 0.25 will run 4 validation runs in 1 training epoch', default=0.1, type=float)
+    parser.add_argument('--val_freq', help='How often to run validation set within a training epoch, i.e. 0.25 will run 4 validation runs in 1 training epoch', default=1.0, type=float)
     parser.add_argument('--es_patience', help='Max # of consecutive validation runs w/o improvment', default=5, type=int)
     parser.add_argument('--logdir', help='logdir for models and losses. default = .', default='./', type=str)
     parser.add_argument('--lr', help='learning_rate for pose. default = 0.0001', default=0.0001, type=float)
@@ -77,8 +109,8 @@ if __name__ == "__main__":
                         default=42, type=int)
     parser.add_argument('--clip_grad_norm', help='Clipping gradient norm, 0 means no clipping', type=float, default=0.)
     parser.add_argument('--tag', help='Tag for differentiating runs on CC', default='', type=str)
-    parser.add_argument('--tfmhp', default=[8, 16, 6, 128], 
-                    nargs=4, metavar=('Heads', 'Head Dim', 'Number of Layers', 'Embed dim'),
+    parser.add_argument('--tfmhp', default=[8, 6, 128], 
+                    nargs=3, metavar=('Heads', 'Number of Layers', 'Embed dim'),
                     type=int, help='Hyperparameters for Transformer')
     parser.add_argument('--coeff', help='Number of coefficients for fft', type=int, default=10)
     parser.add_argument('--compactness', help='Compactness for SLIC', type=float, default=10)
@@ -88,12 +120,28 @@ if __name__ == "__main__":
                     nargs="*", 
                     type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
     parser.add_argument('--window_size', help='Window size for SWIN Transformer', type=int, default=4)
+    parser.add_argument('--warmup_epochs', help='Number of epochs for warmup', type=int, default=4)
+    parser.add_argument('--debug', help='Whether or not to switch to debug mode, only runs on 100 samples'
+                        , default=False, action="store_true")
+    parser.add_argument('--heads', default=[3, 6, 12], 
+                    nargs="*", 
+                    type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
+    parser.add_argument('--dims', default=[96, 192, 384], 
+                    nargs="*", 
+                    type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
+    parser.add_argument('--depths', default=[2, 2, 6], 
+                    nargs="*", 
+                    type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
+
 
 
 
 
     args = parser.parse_args()
     dict_args = vars(args)
+    repo = git.Repo(search_parent_directories=True)
+    sha = repo.head.object.hexsha
+    dict_args['git'] = sha
     
     pl.seed_everything(dict_args['seed'])
     # Initialize model to train
@@ -106,9 +154,6 @@ if __name__ == "__main__":
     time.sleep(random_sec)
     now = datetime.datetime.now().strftime('%m%d-%H%M%S')
     weight_save_dir = os.path.join(dict_args["logdir"], os.path.join('models', 'state_dict', now+'_'+dict_args["tag"]))
- 
-
-    os.makedirs(weight_save_dir, exist_ok=True)
 
 
     # Callback: early stopping parameters
@@ -133,15 +178,16 @@ if __name__ == "__main__":
     lr_monitor = LearningRateMonitor(logging_interval='step')
     logger = TensorBoardLogger(save_dir=dict_args['logdir'], version=now+'_'+dict_args["tag"], name='lightning_logs', log_graph=True)
     trainer = pl.Trainer(
-        callbacks=[early_stopping_callback, checkpoint_callback, lr_monitor],
+        callbacks=[checkpoint_callback, lr_monitor],
         val_check_interval=dict_args['val_freq'],
-        deterministic=True,
+        deterministic=False,
         profiler='simple',
         logger=logger,
         max_epochs=dict_args["epoch"],
         log_every_n_steps=10,
         gradient_clip_val=dict_args['clip_grad_norm'],
         devices=-1,
+        precision="16-mixed"
     ) 
 
     # Trainer: train model

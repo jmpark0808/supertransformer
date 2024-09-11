@@ -1,0 +1,85 @@
+from typing import Callable, Optional, Tuple, Union
+
+import torch
+from torch import Tensor
+
+from torch_geometric.nn.pool.connect import FilterEdges
+from torch_geometric.nn.pool.select import SelectTopK
+from torch_geometric.typing import OptTensor
+
+
+class TopKPooling(torch.nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        ratio: Union[int, float] = 0.5,
+        min_score: Optional[float] = None,
+        multiplier: float = 1.,
+        nonlinearity: Union[str, Callable] = 'tanh',
+    ):
+        super().__init__()
+
+        self.in_channels = in_channels
+        self.ratio = ratio
+        self.min_score = min_score
+        self.multiplier = multiplier
+
+        self.select = SelectTopK(in_channels, ratio, min_score, nonlinearity)
+        
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        r"""Resets all learnable parameters of the module."""
+        self.select.reset_parameters()
+
+
+    def forward(
+        self,
+        x: Tensor
+    ) -> Tuple[Tensor, Tensor, OptTensor, OptTensor, Tensor, Tensor]:
+        r"""Forward pass.
+
+        Args:
+            x (torch.Tensor): The node feature matrix.
+            edge_index (torch.Tensor): The edge indices.
+            edge_attr (torch.Tensor, optional): The edge features.
+                (default: :obj:`None`)
+            batch (torch.Tensor, optional): The batch vector
+                :math:`\mathbf{b} \in {\{ 0, \ldots, B-1\}}^N`, which assigns
+                each node to a specific example. (default: :obj:`None`)
+            attn (torch.Tensor, optional): Optional node-level matrix to use
+                for computing attention scores instead of using the node
+                feature matrix :obj:`x`. (default: :obj:`None`)
+        """
+
+        B, L, D = x.size()
+
+        batch = torch.arange(0, B, device=x.device).unsqueeze(-1).repeat(1, L).view(-1)
+        
+        x = x.view(-1, D)
+        attn = x 
+        select_out = self.select(attn, batch)
+
+        perm = select_out.node_index
+        score = select_out.weight
+        assert score is not None
+
+        x = x[perm] * score.view(-1, 1)
+        x = self.multiplier * x if self.multiplier != 1 else x
+        x = x.view(B, -1, D)
+
+        return (x, perm, score)
+
+
+    def __repr__(self) -> str:
+        if self.min_score is None:
+            ratio = f'ratio={self.ratio}'
+        else:
+            ratio = f'min_score={self.min_score}'
+
+        return (f'{self.__class__.__name__}({self.in_channels}, {ratio}, '
+                f'multiplier={self.multiplier})')
+
+
+

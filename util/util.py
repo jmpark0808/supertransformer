@@ -152,10 +152,12 @@ def get_input_dim(args):
     d = args.get('dataloader')
     if d == 'SP' or d == 'SPLAP' or d == 'INPE':
         return 3
-    elif d == 'SPF':
-        return 13
+    elif d == 'SPF' or d == 'DUTS':
+        return 3
     elif d == 'SPFFFT' or d== 'SPGFFT' or d == 'ImageNet' or \
-        d == 'YD':
+        d == 'YD' or d == 'SPGSWIN' or d == 'YDG' \
+            or d == 'ImageNet_SWIN' or d == 'SpeedLimits' or \
+                d == 'SPSpeedLimits':
         if args.get('ignore_phase'):
             return 6+(args.get('coeff'))+10
         else:

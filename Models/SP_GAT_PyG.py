@@ -4,7 +4,7 @@ from Wrappers.PositionalEncoding import PositionalEncodingSuperPixel
 from Blocks.TransformerBlocks import *
 from dataset.constants import *
 from torch_geometric.nn.conv import GATv2Conv
-from torch_geometric.nn.norm import GraphNorm
+from torch_geometric.nn.norm import GraphNorm, LayerNorm
 from torch.nn import LayerNorm as TLayerNorm
 from torch_geometric.nn.pool import global_mean_pool
 from torch_geometric.nn.dense import DenseGATConv
@@ -86,43 +86,43 @@ class SP_GAT_IN(nn.Module):
     Pure Global aggregation using transformers
     Deterministic Positional Encoding 
     '''
-    def __init__(self, nfeat, nhid, dropout, nheads, ntfm, num_seg):
+    def __init__(self, nfeat, nhid, dropout, dropout_edge, nheads, ntfm, num_seg):
         """Dense version of GAT."""
         super(SP_GAT_IN, self).__init__()
-        self.linear1 = nn.Linear(nfeat, nhid*nheads)
-        self.elu = nn.ELU()
-        self.pos_linear = nn.Linear(2, nhid*nheads)
-        self.convs = nn.ModuleList([GATv2Conv(in_channels=nhid*nheads, out_channels=nhid,
-                                                                          heads=nheads, dropout=dropout, edge_dim=None,
-                                                                            concat=True) for _ in range(ntfm)])
+        self.linear1 = nn.Linear(nfeat, nhid)
+        self.ln1 = LayerNorm(nhid)
+        self.relu = nn.ReLU()
+        self.convs = nn.ModuleList([GATv2Conv(in_channels=nhid, out_channels=nhid,
+                                                                          heads=nheads, dropout=dropout_edge, edge_dim=2,
+                                                                            concat=False) for _ in range(ntfm)])
         
-        self.ln1s = nn.ModuleList([LayerNorm(nhid*nheads) for _ in range(ntfm)])
+        self.lns = nn.ModuleList([LayerNorm(nhid, mode='node') for _ in range(ntfm)])
         self.dropout = nn.Dropout(dropout)
-        self.classifier = nn.Linear(nhid*nheads, 1000)
+        self.classifier = nn.Linear(nhid, 1000)
         self.num_seg = num_seg
         
 
 
         
     def forward(self, data):
-        x, edge_index = data.x, data.adj_t
-        # edge_index = SparseTensor(row=edge_index[0], col=edge_index[1]).t()
+        x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+        
        
         batch_size = x.size(0)//self.num_seg
         batch_index = torch.arange(0, batch_size).repeat(self.num_seg).reshape(self.num_seg, -1).T.reshape(-1).cuda()
-        pos = x[:, :2]
         x = x[:, 2:]
 
         x = self.linear1(x)
-        x = self.elu(x)
+        x = self.ln1(x)
+        x = self.relu(x)
 
-        pos = self.pos_linear(pos)
-        x += pos
         
-        for conv, ln1 in zip(self.convs, self.ln1s):
-            x = ln1(x, batch_index)
-            x = conv(x, edge_index=edge_index, edge_attr=None)# adding edge features here
-            x = self.elu(x)
+        for conv, ln in zip(self.convs, self.lns):
+            h = x
+            x = ln(x, batch_index)
+            x = conv(x, edge_index=edge_index, edge_attr=edge_attr)# adding edge features here
+            x = self.relu(x)
+            x = h + x
 
       
         x = global_mean_pool(x, batch_index)

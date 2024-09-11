@@ -1,7 +1,7 @@
 import numpy as np
 import math
 
-def horizontal_flip(array, coeff, chance, size):
+def horizontal_flip(array, coeff, chance, size, resolution, seq_mask=None):
     if np.random.random() < chance:
         phase = array[:, 8+coeff:8+coeff+coeff]
         mask = phase > 0
@@ -14,7 +14,17 @@ def horizontal_flip(array, coeff, chance, size):
         mid_x = size/2.
         diff_x = xs-mid_x
         array[:, 1] = mid_x-diff_x
-    return array
+        array = array.reshape(resolution[0], resolution[1], -1)
+        array = np.fliplr(array)
+        array = array.reshape(resolution[0]*resolution[1], -1)
+        if seq_mask is not None:
+            seq_mask = seq_mask.reshape(resolution[0], resolution[1])
+            seq_mask= np.fliplr(seq_mask)
+            seq_mask= seq_mask.reshape(-1)
+    if seq_mask is not None:
+        return array, seq_mask
+    else:
+        return array
 
 def rotate_points(origin, point, angle):
     """
@@ -29,20 +39,20 @@ def rotate_points(origin, point, angle):
     qy = oy + math.sin(angle) * (px - ox) + math.cos(angle) * (py - oy)
     return qx, qy
 
-def rotate(array, coeff, degrees, chance):
+def rotate(array, coeff, degrees, chance, size):
     if np.random.random() < chance:
-        phase = array[:, -(coeff*2):]
+        phase = array[:, 8+coeff:8+2*coeff]
         random_degrees = np.random.randint(-degrees, degrees)
         radians = math.radians(random_degrees)
         new_phase = phase + radians
         ys = np.sin(new_phase)
         xs = np.cos(new_phase)
         phase = np.arctan2(ys, xs)
-        array[:, -(coeff*2):] = phase
+        array[:, 8+coeff:8+2*coeff] = phase
 
         ys = array[:, 0]
         xs = array[:, 1]
-        new_xs, new_ys = rotate_points([128, 128], [xs, ys], radians)
+        new_xs, new_ys = rotate_points([size[0]//2, size[1]//2], [xs, ys], radians)
         array[:, 0] = new_ys
         array[:, 1] = new_xs
 
