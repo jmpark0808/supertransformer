@@ -41,14 +41,14 @@ def rotate_points(origin, point, angle):
 
 def rotate(array, coeff, degrees, chance, size):
     if np.random.random() < chance:
-        phase = array[:, 6+coeff:6+2*coeff]
+        phase = array[:, 8+coeff:8+2*coeff]
         random_degrees = np.random.randint(-degrees, degrees)
         radians = math.radians(random_degrees)
         new_phase = phase + radians
         ys = np.sin(new_phase)
         xs = np.cos(new_phase)
         phase = np.arctan2(ys, xs)
-        array[:, 6+coeff:6+2*coeff] = phase
+        array[:, 8+coeff:8+2*coeff] = phase
 
         ys = array[:, 0]
         xs = array[:, 1]

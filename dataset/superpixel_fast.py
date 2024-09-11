@@ -402,7 +402,7 @@ class SPDataset(data.Dataset):
         if self.data_augmentation:
             randaug = RandAugment(5)
             res = int(self.num_seg**0.5)
-            color_space = features[:, 3:6].reshape(res, res, 3).permute(2, 0, 1)
+            color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
             color_space = (color_space*255).to(torch.uint8)
             color_space = randaug(color_space).float()
             color_space /= 255.
@@ -410,7 +410,7 @@ class SPDataset(data.Dataset):
             # plt.show()
             color_space = color_space.reshape(3, self.num_seg).permute(1, 0)
             
-            features[:, 3:6] = color_space
+            features[:, 2:5] = color_space
     
         return {'features': features, 'seq_mask': torch.tensor(seq_mask),
                  'segments': torch.tensor(segments), 'mask': mask, 
