@@ -79,7 +79,9 @@ for k in range(25):
         patches = []
         for i in range(25):
             for j in range(25):
-                patches.append(np.clip(cos(output[k, l], output[i, j]).detach().cpu().numpy(), 0, 1))
+                # patches.append(np.clip(cos(output[k, l], output[i, j]).detach().cpu().numpy(), 0, 1))
+                patches.append(torch.sqrt(torch.sum(torch.pow(output[k, l]-output[i, j], 2))).detach().cpu().numpy())
+                
 
 
         plt.imshow(np.array(patches).reshape(25, 25), cmap='hot')
@@ -88,7 +90,7 @@ for k in range(25):
         plt.savefig(f"/home/eddie/Downloads/gif_rope/{count}.png")
         plt.clf()
         count += 1
-#         ax[k, l].imshow(np.array(patches).reshape(25, 25), cmap='hot', vmin=0, vmax=1)
+#         ax[k, l].imshow(np.array(patches).reshape(25, 25), cmap='hot')
 #         ax[k, l].set_xticks([])
 #         ax[k, l].set_yticks([])
 #         if l == 0:
@@ -96,7 +98,7 @@ for k in range(25):
 #         if k == 24:
 #             ax[k, l].set_xlabel(f'{l+1}')
     
-# fig.suptitle('Rotary Positional Encoding Cosine Similarity')
+# fig.suptitle('Rotary Positional Encoding Euclidean Distance')
 # plt.show()
 
 

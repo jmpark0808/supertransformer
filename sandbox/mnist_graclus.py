@@ -25,8 +25,8 @@ path = osp.join(osp.dirname(osp.realpath(__file__)), '..', 'data', 'MNIST')
 transform = T.Cartesian(cat=False)
 train_dataset = MNISTSuperpixels(path, True, transform=transform)
 test_dataset = MNISTSuperpixels(path, False, transform=transform)
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=64)
+train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=1)
 d = train_dataset
 
 
@@ -45,21 +45,24 @@ class Net(torch.nn.Module):
         self.fc2 = torch.nn.Linear(128, d.num_classes)
 
     def forward(self, data):
+        print(data.edge_attr.size())
         data.x = F.elu(self.conv1(data.x, data.edge_index, data.edge_attr))
         
         weight = normalized_cut_2d(data.edge_index, data.pos)
         cluster = graclus(data.edge_index, weight, data.x.size(0))
+        
         data.edge_attr = None
-        print(data.batch.size())
+        print(data.edge_index.size())
+        
         data = max_pool(cluster, data, transform=transform)
-        print(data.batch.size())
-
+        
+        print(data.edge_index.size())
         data.x = F.elu(self.conv2(data.x, data.edge_index, data.edge_attr))
         weight = normalized_cut_2d(data.edge_index, data.pos)
         cluster = graclus(data.edge_index, weight, data.x.size(0))
-        print(print(data.edge_index.size()))
+        print(data.edge_attr)
         x, batch = max_pool_x(cluster, data.x, data.batch)
-        print(print(data.edge_index.size()))
+        
         assert(0)
 
         x = global_mean_pool(x, batch)

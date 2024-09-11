@@ -3,12 +3,12 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 from Models.SP_SWIN import SP_SWIN
-
+from dataset.mixup import MixupSaliency
 import torch.nn.functional as F
 import numpy as np
 from dataset.constants import *
 from util.util import get_input_dim
-
+from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 
 class SP_SWIN_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
@@ -29,20 +29,32 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         self.kernels = kwargs.get('kernels')
         self.window_size = kwargs.get('window_size')
         self.image_size = kwargs.get('size')
+        self.warmup_epochs = kwargs.get('warmup_epochs')
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
-        self.supert = SP_SWIN(input_dim, self.tfm_hp[1], self.tfm_hp[3], self.tfm_hp[0],self.tfm_hp[2],
-                               self.dropout, self.dropout_edge, self.kernels, self.window_size, self.image_size)
+        self.supert = SP_SWIN(input_dim, self.tfm_hp[2], self.tfm_hp[0], self.tfm_hp[1],
+                               self.dropout, self.dropout_edge, self.kernels, self.window_size, int(self.num_seg**0.5))
         self.iteration = 0
         self.test_iteration = 0
         self.num_thresholds = 10
-        # if self.pretrain:
-        #     checkpoint = torch.load(self.pretrain)
-        #     for key in list(checkpoint['state_dict'].keys()):
-        #         checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
-        #     checkpoint['state_dict'].pop('out.weight')
-        #     checkpoint['state_dict'].pop('out.bias')
-        #     self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
+        
+        kwargs['parameters'] = parameter_count(self.supert)['']
+        inp = torch.randn([1, self.num_seg, input_dim+2])
+        flops = FlopCountAnalysis(self.supert, inp)
+        kwargs['flops'] = flops.total()
+        print(kwargs['parameters'], kwargs['flops'])
+        assert(0)
+        # self.mixup = MixupSaliency(
+        #     cutmix_alpha=1.0, cutmix_minmax=None,
+        #     prob=1.0,  mode='batch',
+        #     )
+        if self.pretrain:
+            checkpoint = torch.load(self.pretrain)
+            for key in list(checkpoint['state_dict'].keys()):
+                checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
+            checkpoint['state_dict'].pop('out.weight')
+            checkpoint['state_dict'].pop('out.bias')
+            self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
         
         
         self.save_hyperparameters()
@@ -70,6 +82,19 @@ class SP_SWIN_Wrapper(pl.LightningModule):
             min_lr=1e-8,
             verbose=True)
         return optimizer
+    
+    def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure):
+        # update params
+        optimizer.step(closure=optimizer_closure)
+
+        
+        dataset= self.trainer.train_dataloader
+        # manually warm up lr without a scheduler
+        
+        if epoch < self.warmup_epochs:
+            lr_scale = min(1.0, float(self.trainer.global_step + 1) / (len(dataset)*self.warmup_epochs))
+            for pg in optimizer.param_groups:
+                pg["lr"] = lr_scale * self.lr
       
 
     def forward(self, input):
@@ -105,7 +130,7 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         features = batch['features']
         seq_mask = batch['seq_mask']
         segments = batch['segments']
-        mask = batch['mask'].cpu()
+        mask = batch['mask']
 
 
 
@@ -113,8 +138,12 @@ class SP_SWIN_Wrapper(pl.LightningModule):
 
         # features = features.cuda()
         # seq_mask = seq_mask.cuda()
-
-
+        res = int(self.num_seg**0.5)
+        # features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
+        # seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
+        # features, seq_mask = self.mixup(features, seq_mask)
+        # features = features.permute(0, 2, 3, 1).reshape(features.size(0), self.num_seg, -1)
+        # seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
 
 
         # forward pass
@@ -127,21 +156,29 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
         batch_size = mask.shape[0]
         img_size = mask.shape[2]
-        segments = segments.reshape([batch_size, -1]) # batch, img_size^2
+        if torch.sum(segments) != 0 :
 
-        samples = []
-        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
-            samples.append(plt_image)
+            segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
-        samples = torch.tensor(np.expand_dims(np.array(samples), 1))
+            samples = []
+            for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+                plt_image = masked[labels-1].reshape([img_size, img_size])
+                samples.append(plt_image)
+
+            samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
+        else:
+            samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
+            samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
+            
         
 
         prec, recall = torch.zeros(samples.shape[0], 1), torch.zeros(samples.shape[0], 1)
         pred = samples.reshape(samples.shape[0], -1)
         mask = mask.reshape(mask.shape[0], -1)
         
+        
         y_temp = (pred >= 0.5).float()
+
         tp = (y_temp * mask).sum(dim=-1)
         # avoid prec becomes 0
         prec[:, 0], recall[:, 0] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
@@ -165,7 +202,6 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         seq_mask = batch['seq_mask']
         segments = batch['segments']
         mask = batch['mask']
-
         
 
         # features = features.cuda()
@@ -173,23 +209,27 @@ class SP_SWIN_Wrapper(pl.LightningModule):
 
     
         # mask = mask.cuda()
-
-
+        
         # forward pass
         pred = self.forward(features)
-
+        res = int(self.num_seg**0.5)
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
         batch_size = mask.shape[0]
         img_size = mask.shape[2]
-        segments = segments.reshape([batch_size, -1]) # batch, img_size^2
+        if torch.sum(segments) != 0 :
 
-        samples = []
-        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
-            samples.append(plt_image)
+            segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
-        samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
+            samples = []
+            for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+                plt_image = masked[labels-1].reshape([img_size, img_size])
+                samples.append(plt_image)
+
+            samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
+        else:
+            samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
+            samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
         if batch_idx == 0 and dataloader_idx == 0:
             tensorboard.add_images('Validation Pred', samples, self.test_iteration)
             tensorboard.add_images('Validation GT', mask, self.test_iteration)
@@ -248,7 +288,9 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         pred = torch.cat(self.preds_test, 0)
         mask = torch.cat(self.masks_test, 0).round().float()
         self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
-        self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
+        if self.current_epoch >= self.warmup_epochs:
+            self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
+        
         self.validation_step_outputs.clear()
 
     def on_validation_start(self):
@@ -293,19 +335,24 @@ class SP_SWIN_Wrapper(pl.LightningModule):
 
         # forward pass
         pred = self.forward(features)
-
+        res = int(self.num_seg**0.5)
         pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
         batch_size = mask.shape[0]
         img_size = mask.shape[2]
-        segments = segments.reshape([batch_size, -1]) # batch, img_size^2
+        if torch.sum(segments) != 0 :
 
-        samples = []
-        for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-            plt_image = masked[labels-1].reshape([img_size, img_size])
-            samples.append(plt_image)
+            segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
-        samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
+            samples = []
+            for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+                plt_image = masked[labels-1].reshape([img_size, img_size])
+                samples.append(plt_image)
+
+            samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
+        else:
+            samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
+            samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
         # tensorboard.add_images('Test Pred', samples, self.test_iteration)
 
         # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
@@ -342,7 +389,7 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         pred = torch.cat(self.preds, 0).cuda()
         mask = torch.cat(self.masks, 0).cuda().round().float()
         self.log('Final Test MAE', torch.mean(torch.abs(pred-mask)))
-        self.scheduler.step(torch.mean(torch.stack(self.test_step_outputs)))
+        
                     
     
 

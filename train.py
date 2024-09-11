@@ -39,8 +39,21 @@ from Wrappers.SP_GATv3 import SP_GATv3_Wrapper
 from Wrappers.SP_GATv4 import SP_GATv4_Wrapper
 from Wrappers.SP_CTFM import SP_CTFM_Wrapper
 from Wrappers.SP_SWIN import SP_SWIN_Wrapper
-from Wrappers.SP_SWINU import SP_SWINU_Wrapper
+from Wrappers.SP_SWINUU import SP_SWINUU_Wrapper
+from Wrappers.SP_SWINUM import SP_SWINUM_Wrapper
 from Wrappers.SP_SWIN_Kernel import SP_SWIN_Kernel_Wrapper
+from Wrappers.SP_SWIN_PyG import SP_SWIN_PyG_Wrapper
+from Wrappers.Image_SOD_SWINU import Image_SWINU_Wrapper
+from Wrappers.SP_MBUNET import SP_MBUNET_Wrapper
+from Wrappers.SP_MBNET import SP_MBNET_Wrapper
+from Wrappers.Image_SOD_MBVITU import Image_MBVITU_Wrapper
+from Wrappers.Image_SOD_PERFU import Image_PERFUSLIC_Wrapper
+from Wrappers.SP_PERFU import SP_PERFU_Wrapper
+from Wrappers.SP_MBVITU import SP_MBVITU_Wrapper
+from Wrappers.SP_PERF import SP_PERF_Wrapper
+from Wrappers.SP_PERFEncDec import SP_PERFEncDec_Wrapper
+from Wrappers.SP_SWINUP import SP_SWINUP_Wrapper
+from Wrappers.Seg_SOD_PERFU import Seg_PERFUSLIC_Wrapper
 # from Wrappers.SP_MAMBA import SP_MAMBA_Wrapper
 
 
@@ -51,6 +64,8 @@ from dataset.superpixel_pyg_image import SPGIDataModule
 from dataset.superpixel_fast import SPFDataModule
 from dataset.superpixel_fast_cnn import SPFCDataModule
 from dataset.youtube_davis import YDDataModule
+from dataset.youtube_davis_swin_pyg import YDGDataModule
+from dataset.superpixel_pyg_swin import SPGSWINDataModule
 
 
 # Metric logging
@@ -98,9 +113,22 @@ MODEL_DIRECTORY = {
     'SP_GATv3': SP_GATv3_Wrapper,
     'SP_GATv4': SP_GATv4_Wrapper,
     'SP_SWIN': SP_SWIN_Wrapper,
-    'SP_SWINU': SP_SWINU_Wrapper,
+    'SP_SWINUU': SP_SWINUU_Wrapper,
+    'SP_SWINUM': SP_SWINUM_Wrapper,
+    'SP_SWINUP': SP_SWINUP_Wrapper,
     # 'SP_MAMBA': SP_MAMBA_Wrapper,
-    'SP_SWIN_Kernel': SP_SWIN_Kernel_Wrapper
+    'SP_SWIN_Kernel': SP_SWIN_Kernel_Wrapper,
+    'SP_SWIN_PyG': SP_SWIN_PyG_Wrapper,
+    'IM_SWINU': Image_SWINU_Wrapper,
+    'IM_PERFUSLIC': Image_PERFUSLIC_Wrapper,
+    'IM_MBVIT': Image_MBVITU_Wrapper,
+    'SP_MBUNET': SP_MBUNET_Wrapper,
+    'SP_MBNET': SP_MBNET_Wrapper,
+    'SP_PERFU': SP_PERFU_Wrapper,
+    'SP_PERF': SP_PERF_Wrapper,
+    'SP_PERFEncDec': SP_PERFEncDec_Wrapper,
+    'SP_MBVITU': SP_MBVITU_Wrapper,
+    'SEG_PERFUSLIC': Seg_PERFUSLIC_Wrapper
 }
 DATALOADER_DIRECTORY = {
     'SP': SPDataModule,
@@ -116,7 +144,9 @@ DATALOADER_DIRECTORY = {
     'SPF': SPFDataModule,
     'SPFFFT': SPFDataModule,
     'SPFC': SPFCDataModule,
-    'YD': YDDataModule
+    'YD': YDDataModule,
+    'YDG':  YDGDataModule,
+    'SPGSWIN': SPGSWINDataModule
 
 } 
 
@@ -144,7 +174,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', help="batchsize, default = 1", default=1, type=int)
     parser.add_argument('--epoch', help='# of epochs. default = 20', default=20, type=int)
     parser.add_argument('--num_workers', help="# of dataloader cpu process", default=0, type=int)
-    parser.add_argument('--val_freq', help='How often to run validation set within a training epoch, i.e. 0.25 will run 4 validation runs in 1 training epoch', default=0.1, type=float)
+    parser.add_argument('--val_freq', help='How often to run validation set within a training epoch, i.e. 0.25 will run 4 validation runs in 1 training epoch', default=1.0, type=float)
     parser.add_argument('--es_patience', help='Max # of consecutive validation runs w/o improvment', default=5, type=int)
     parser.add_argument('--logdir', help='logdir for models and losses. default = .', default='./', type=str)
     parser.add_argument('--lr', help='learning_rate for pose. default = 0.0001', default=0.0001, type=float)
@@ -160,8 +190,8 @@ if __name__ == "__main__":
     parser.add_argument('--dilation', help='Dilation for local transformer', type=int, default=5)
     parser.add_argument('--downsample', help='Downsample resolution', type=int, default=28)
     parser.add_argument('--tag', help='Tag for differentiating runs on CC', default='', type=str)
-    parser.add_argument('--tfmhp', default=[8, 16, 6, 128], 
-                    nargs=4, metavar=('Heads', 'Head Dim', 'Number of Layers', 'Embed dim'),
+    parser.add_argument('--tfmhp', default=[8, 6, 128], 
+                    nargs=3, metavar=('Heads', 'Number of Layers', 'Embed dim'),
                     type=int, help='Hyperparameters for Transformer')
     parser.add_argument('--ignore_phase', help='Whether or not to use phase of FFT'
                         , default=False, action="store_true")
@@ -174,13 +204,22 @@ if __name__ == "__main__":
     parser.add_argument('--gunet_mode', help='GUnet mode, graclus or predefined pooling', default='graclus', type=str)
     parser.add_argument('--fully_connected', help='Use fully connected neighbourhood'
                         , default=False, action="store_true")
-    parser.add_argument('--kernels', default=[32, 32, 32, 32], 
+    parser.add_argument('--heads', default=[3, 6, 12], 
+                    nargs="*", 
+                    type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
+    parser.add_argument('--dims', default=[96, 192, 384], 
+                    nargs="*", 
+                    type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
+    parser.add_argument('--depths', default=[2, 2, 6], 
                     nargs="*", 
                     type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
     parser.add_argument('--window_size', help='Window size for SWIN Transformer', type=int, default=4)
     parser.add_argument('--memory', help='Whether to put the data into memory'
                         , default=False, action="store_true")
     
+    parser.add_argument('--warmup_epochs', help='Number of epochs for warmup', type=int, default=4)
+    parser.add_argument('--factor', help='Factor for hidden dimension in SWIN Transformer', default=1.0, type=float)
+
 
     import torch 
     torch.set_float32_matmul_precision('medium')
@@ -192,6 +231,12 @@ if __name__ == "__main__":
     dict_args['git'] = sha
     
     pl.seed_everything(dict_args['seed'], True)
+
+    # Data: load data module
+    assert dict_args['dataloader'] in DATALOADER_DIRECTORY
+    data_module = DATALOADER_DIRECTORY[dict_args['dataloader']](**dict_args)
+
+
     # Initialize model to train
     assert dict_args['model'] in MODEL_DIRECTORY
     model = MODEL_DIRECTORY[dict_args['model']](**dict_args)
@@ -199,14 +244,9 @@ if __name__ == "__main__":
         model = model.load_from_checkpoint(dict_args['load'])
 
     # Initialize logging paths
-    random_sec = random.randint(1, 20)
-    time.sleep(random_sec)
     now = datetime.datetime.now().strftime('%m%d-%H%M%S')
     weight_save_dir = os.path.join(dict_args["logdir"], os.path.join('models', 'state_dict', now+'_'+dict_args["tag"]))
  
-
-    os.makedirs(weight_save_dir, exist_ok=True)
-
 
     # Callback: early stopping parameters
     early_stopping_callback = EarlyStopping(
@@ -221,24 +261,22 @@ if __name__ == "__main__":
         dirpath=weight_save_dir, save_top_k=5, verbose=True, monitor="Validation MAE", mode="min"
     )
 
-    # Data: load data module
-    assert dict_args['dataloader'] in DATALOADER_DIRECTORY
-    data_module = DATALOADER_DIRECTORY[dict_args['dataloader']](**dict_args)
+    
 
     # Trainer: initialize training behaviour
    
     lr_monitor = LearningRateMonitor(logging_interval='step')
     logger = TensorBoardLogger(save_dir=dict_args['logdir'], version=now+'_'+dict_args["tag"], name='lightning_logs', log_graph=True)
     trainer = pl.Trainer(accelerator="gpu",
-        callbacks=[early_stopping_callback, checkpoint_callback, lr_monitor],
+        callbacks=[checkpoint_callback, lr_monitor],
         val_check_interval=dict_args['val_freq'],
-        deterministic=True,
+        deterministic=False,
         profiler='simple',
         logger=logger,
         max_epochs=dict_args["epoch"],
         log_every_n_steps=10,
         gradient_clip_val=dict_args['clip_grad_norm'],
-        devices=[dict_args['gpus']]
+        devices=[dict_args['gpus']],
     ) 
 
     # Trainer: train model

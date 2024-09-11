@@ -2,6 +2,7 @@ import torch
 from mamba_ssm import Mamba
 from Models.SP_MAMBA import MambaLMHeadModel
 from dataclasses import dataclass, field
+from fvcore.nn import FlopCountAnalysis, flop_count_table
 
 @dataclass
 class MambaConfig:
@@ -18,7 +19,7 @@ class MambaConfig:
 
 cfg = MambaConfig()
 
-batch, length, dim = 2, 625, 36
+batch, length, dim = 1, 1024, 36
 x = torch.randn(batch, length, dim).to("cuda")
 model = MambaLMHeadModel(
     34, 
@@ -28,4 +29,6 @@ model = MambaLMHeadModel(
 print('Model Initialized')
 y = model(x)
 print('Inferencing')
-print(y.shape)
+
+flops = FlopCountAnalysis(model, x)
+print(flop_count_table(flops))
