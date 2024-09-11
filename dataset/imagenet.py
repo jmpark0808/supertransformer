@@ -28,13 +28,14 @@ import pathlib
 import scipy
 import pickle
 class ImageNetDataset(data.Dataset):
-    def __init__(self, root_dir, augmentation, coeff, size):
+    def __init__(self, root_dir, augmentation, coeff, num_seg, size):
         self.root_dir = root_dir
         self.image_list = []
         self.target_list = []
         self.coeff = coeff
         self.size = size
         self.augmentation = augmentation
+        self.resample_points = int(((size**2)//num_seg)**0.5)*4
       
         for file in os.listdir(root_dir):
             if '_target' in file:
@@ -54,16 +55,17 @@ class ImageNetDataset(data.Dataset):
         
         features_np = np.load(self.image_list[item])
         res = int(features_np.shape[0]**0.5)
+
         if self.augmentation:
-            features_np = horizontal_flip(features_np, self.coeff, 0.5, self.size, (res, res))
-            features_np = rotate(features_np, self.coeff, 15, 0.5, (self.size, self.size))
+            features_np = horizontal_flip(features_np, self.resample_points, 0.5, self.size, (res, res))
+            features_np = rotate(features_np, self.resample_points, 15, 0.5, (self.size, self.size))
 
 
         features = torch.tensor(features_np).float()
         if self.augmentation:
 
             randaug = RandAugment(5)
-            color_space = features[:, 3:6].reshape(res, res, 3).permute(2, 0, 1)
+            color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
             color_space = (color_space*255).to(torch.uint8)
             color_space = randaug(color_space).float()
             color_space /= 255.
@@ -71,7 +73,7 @@ class ImageNetDataset(data.Dataset):
             # plt.show()
             color_space = color_space.reshape(3, res*res).permute(1, 0)
             
-            features[:, 3:6] = color_space
+            features[:, 2:5] = color_space
 
         target = torch.tensor(np.load(self.target_list[item]))
 
@@ -248,8 +250,8 @@ class SPImageNetDataModule(pl.LightningDataModule):
         self.size = kwargs.get('size')
     
 
-        train_dataset = ImageNetDataset(train_dir, True, self.coeff, self.size)
-        test_dataset = ImageNetDataset(test_dir, False, self.coeff, self.size)
+        train_dataset = ImageNetDataset(train_dir, True, self.coeff, self.num_seg, self.size)
+        test_dataset = ImageNetDataset(test_dir, False, self.coeff, self.num_seg, self.size)
 
         self.train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,
                                                                num_workers =self.num_workers, drop_last=True)
