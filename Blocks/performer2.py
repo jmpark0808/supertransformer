@@ -12,6 +12,7 @@ from Blocks.performer_diffpool import PerformerEncoderToken, TransformerEncoderT
 from Blocks.performer_diffpool import TransformerDecoder as PerformerDecoder
 from Blocks.TransformerBlocks import Transformer as TFM
 from Blocks.diffslic_og import DiffSLIC, spixel_upsampling
+from Blocks.local_attention import LocalAttention
 
 from torch_geometric.utils import scatter
 
@@ -235,6 +236,8 @@ class SeparableLinear(nn.Module):
         return input
 # classes
 
+
+
 class Attention(nn.Module):
     def __init__(
         self,
@@ -264,7 +267,7 @@ class Attention(nn.Module):
         self.heads = heads
         self.tokens = tokens
         self.global_heads = (heads - local_heads)
-        # self.local_attn = LocalAttention(window_size = local_window_size, causal = causal, autopad = True, dropout = dropout, look_forward = int(not causal), rel_pos_emb_config = (dim_head, local_heads)) if local_heads > 0 else None
+        self.local_attn = LocalAttention(window_size = local_window_size, causal = causal, autopad = True, dropout = dropout, look_forward = int(not causal), use_rotary_pos_emb=False) if local_heads > 0 else None
 
         # self.to_q = SeparableLinear(dim, inner_dim, tokens, bias = qkv_bias)
         # self.to_k = SeparableLinear(dim, inner_dim, tokens, bias = qkv_bias)
@@ -363,7 +366,7 @@ class Transformer(nn.Module):
         super().__init__()
         self.layers = nn.ModuleList([])
         local_attn_heads = 0
-        local_window_size = 256
+        local_window_size = 32
         causal = False
         nb_features = None
         generalized_attention = True
@@ -385,12 +388,9 @@ class Transformer(nn.Module):
             ]))
     def forward(self, x):
         # x = (B, N, D)
-        B, N, _ = x.shape
         for attn, ff in self.layers:
             x = attn(x) + x
             x = ff(x) + x
-
-
         return x
     
 
@@ -776,13 +776,13 @@ class ViPU(nn.Module):
         for idx, depth in enumerate(depths):
             if idx == len(depths)-1:
                 self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size//(2**idx), image_size//(2**idx)), depth,
-                                    heads[idx], 16, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
+                                    heads[idx], 32, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
             elif idx < 2:
                 self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
-                                    heads[idx], 16, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
+                                    heads[idx], 32, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
             else:
                 self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
-                                    heads[idx], 16, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
+                                    heads[idx], 32, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
             resolutions.append(image_size // (2 ** idx))
         # self.transformer_dec_1 = TransformerDecoder(dims[1], dims[2], (image_size//4, image_size//4), depths[1], heads[1], dims[1]//heads[1], int(mlp_ratio*dims[1]), emb_dropout, dropout, False)
         # self.transformer_dec_2 = TransformerDecoder(dims[0], dims[1], (image_size//2, image_size//2), depths[0], heads[0], dims[0]//heads[0], int(mlp_ratio*dims[0]), emb_dropout, dropout, False)
@@ -810,11 +810,11 @@ class ViPU(nn.Module):
         for idx, depth in enumerate(depths_reverse):
             if idx < len(depths_reverse)-2:
                 self.transformer_dec.append(TFMDecoder(dims_reverse[idx+1], dims_reverse[idx],  depth,
-                                    heads_reverse[idx+1], 16,
+                                    heads_reverse[idx+1], 32,
                                       int(mlp_ratio*dims_reverse[idx+1]),emb_dropout, dropout))
             else:
                 self.transformer_dec.append(PerformerDecoder(dims_reverse[idx+1], dims_reverse[idx], depth,
-                                    heads_reverse[idx+1], 16,
+                                    heads_reverse[idx+1], 32,
                                       int(mlp_ratio*dims_reverse[idx+1]),emb_dropout, dropout))
                 
 
