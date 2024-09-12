@@ -39,20 +39,14 @@ class SP_PERF_Wrapper(pl.LightningModule):
         self.total_train_epochs = kwargs.get('epoch')
         self.factor = kwargs.get('factor')
         self.size = kwargs.get('size')
-        resample_points = int(((self.size**2)//self.num_seg)**0.5)*4
-        self.resample_points = resample_points
         
-        if self.coeff == -1: # use all coefficients
-            kwargs['coeff'] = resample_points-1
-            self.coeff = resample_points-1
-        else:
-            assert resample_points-1 >= self.coeff
         input_dim = get_input_dim(kwargs)
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
         # SWIN UPerNet Production
         self.supert = ViP(image_size=res, patch_size=1, dim=self.tfm_hp[2], heads=self.tfm_hp[0], depth=self.tfm_hp[1],
-                           mlp_dim=self.tfm_hp[2]*4, coeff=self.coeff, channels=(input_dim-(self.coeff*2)), dim_head=self.tfm_hp[2], dropout=self.dropout_edge,
+                           mlp_dim=self.tfm_hp[2]*4, coeff=self.coeff, window_size=self.window_size, channels=(input_dim-(self.coeff*2)),
+                             dim_head=self.tfm_hp[3], dropout=self.dropout_edge,
                             emb_dropout=self.dropout, task='sod')
         # self.supert = ViPU(image_size=res, patch_size=1, dim=self.tfm_hp[2], heads=self.tfm_hp[0], depth=self.tfm_hp[1],
         #                    mlp_dim=self.tfm_hp[2]*1, channels=input_dim, dim_head=self.tfm_hp[2]//self.tfm_hp[0], dropout=self.dropout_edge,
@@ -137,22 +131,7 @@ class SP_PERF_Wrapper(pl.LightningModule):
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-        first = input[:, :, :8]
-        second_amp = input[:, :, 8:8+self.resample_points]
-        second_phase = input[:, :, 8+self.resample_points:-10]
-        if self.coeff%2!=0: # coeff is odd
-            second_amp_front = second_amp[:, :, 1:2+(self.coeff//2)]
-            second_amp_back = second_amp[:, :, -(self.coeff//2):]
-            second_phase_front = second_phase[:, :, 1:2+(self.coeff//2)]
-            second_phase_back = second_phase[:, :, -(self.coeff//2):]
-        else:
-            second_amp_front = second_amp[:, :, 1:1+self.coeff//2]
-            second_amp_back = second_amp[:, :, -self.coeff//2:]
-            second_phase_front = second_phase[:, :, 1:1+self.coeff//2]
-            second_phase_back = second_phase[:, :, -self.coeff//2:]
-        third = input[:, :, -10:]
-        input = torch.cat((first, second_amp_front, second_amp_back, second_phase_front, second_phase_back, third), dim=2)
-        
+
         pred = self.supert(input)
         pred = pred.reshape(pred.size(0), -1)
         return pred

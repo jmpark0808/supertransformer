@@ -12,7 +12,8 @@ from Blocks.performer_diffpool import PerformerEncoderToken, TransformerEncoderT
 from Blocks.performer_diffpool import TransformerDecoder as PerformerDecoder
 from Blocks.TransformerBlocks import Transformer as TFM
 from Blocks.diffslic_og import DiffSLIC, spixel_upsampling
-from Blocks.local_attention import LocalAttention
+from Blocks.local_attention import LocalAttention, WindowAttention
+
 
 from torch_geometric.utils import scatter
 
@@ -268,6 +269,7 @@ class Attention(nn.Module):
         self.tokens = tokens
         self.global_heads = (heads - local_heads)
         self.local_attn = LocalAttention(window_size = local_window_size, causal = causal, autopad = True, dropout = dropout, look_forward = int(not causal), use_rotary_pos_emb=False) if local_heads > 0 else None
+        self.local_attn = WindowAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=dropout)
 
         # self.to_q = SeparableLinear(dim, inner_dim, tokens, bias = qkv_bias)
         # self.to_k = SeparableLinear(dim, inner_dim, tokens, bias = qkv_bias)
@@ -310,7 +312,7 @@ class Attention(nn.Module):
 
         if not empty(lq):
             assert not cross_attend, 'local attention is not compatible with cross attention'
-            out = self.local_attn(lq, lk, lv, input_mask = mask)
+            out = self.local_attn(lq, lk, lv)
             attn_outs.append(out)
 
         out = torch.cat(attn_outs, dim = 1)
@@ -362,11 +364,12 @@ class FeedForward(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0.):
+    def __init__(self, dim, depth, heads, num_local_heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., window_size=8):
         super().__init__()
         self.layers = nn.ModuleList([])
-        local_attn_heads = 0
-        local_window_size = 32
+        assert heads>=num_local_heads
+        local_attn_heads = num_local_heads
+        local_window_size = window_size
         causal = False
         nb_features = None
         generalized_attention = True
@@ -585,7 +588,7 @@ class TransformerDec(nn.Module):
 
 class ViP(nn.Module):
     def __init__(self, *, image_size, patch_size, dim, depth, heads,
-                  mlp_dim, coeff, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0., task='cls'):
+                  mlp_dim, coeff, window_size, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0., task='cls'):
         super().__init__()
         image_height, image_width = pair(image_size)
         patch_height, patch_width = pair(patch_size)
@@ -612,7 +615,7 @@ class ViP(nn.Module):
         self.locations = nn.Sequential(nn.Linear(2+coeff*2, dim), nn.LayerNorm(dim))
 
         
-        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
+        self.transformer = Transformer(dim, depth, heads, heads//2, dim_head, mlp_dim, emb_dropout, dropout, window_size)
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer4 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
@@ -773,17 +776,22 @@ class ViPU(nn.Module):
         self.locations = nn.Sequential(nn.Linear(2, dims[0]), nn.LayerNorm(dims[0]))
         self.transformer_enc = nn.ModuleList([])
         resolutions = []
+        # for idx, depth in enumerate(depths):
+        #     if idx == len(depths)-1:
+        #         self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size//(2**idx), image_size//(2**idx)), depth,
+        #                             heads[idx], 32, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
+        #     elif idx < 2:
+        #         self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
+        #                             heads[idx], 32, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
+        #     else:
+        #         self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
+        #                             heads[idx], 32, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
+        #     resolutions.append(image_size // (2 ** idx))
         for idx, depth in enumerate(depths):
-            if idx == len(depths)-1:
-                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size//(2**idx), image_size//(2**idx)), depth,
-                                    heads[idx], 32, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
-            elif idx < 2:
-                self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
-                                    heads[idx], 32, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
-            else:
-                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
-                                    heads[idx], 32, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
-            resolutions.append(image_size // (2 ** idx))
+            
+            self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
+                                heads[idx], dims[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
+            
         # self.transformer_dec_1 = TransformerDecoder(dims[1], dims[2], (image_size//4, image_size//4), depths[1], heads[1], dims[1]//heads[1], int(mlp_ratio*dims[1]), emb_dropout, dropout, False)
         # self.transformer_dec_2 = TransformerDecoder(dims[0], dims[1], (image_size//2, image_size//2), depths[0], heads[0], dims[0]//heads[0], int(mlp_ratio*dims[0]), emb_dropout, dropout, False)
         # self.transformer_dec_3 = TransformerDecoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, True)

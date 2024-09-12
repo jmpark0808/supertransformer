@@ -321,10 +321,59 @@
     
 #-------------------------------------------------------------------------------------------
 
-# import torch
-# ln = torch.nn.LayerNorm(3)
 
-# a = torch.tensor([[0, 1, 2], [1, 2, 3], [2, 3, 4]]).float()
-# b = ln(a)
-# print(b)
+
+import os
+from PIL import Image
+import numpy as np
+from tqdm import tqdm
+from torchvision.datasets import ImageFolder
+from torch.utils.data import DataLoader
+from torchvision import transforms
+imagenet_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TR/Image'
+# dataset = ImageFolder(imagenet_dir, transform=transforms.Compose([transforms.ToTensor()]))
+# loader = DataLoader(dataset, batch_size=1, num_workers=20)
+all_heights = []
+all_widths = []
+
+for img in os.listdir(imagenet_dir):
+    img_path = os.path.join(imagenet_dir, img)
+    img = np.array(Image.open(img_path).convert('RGB'))
+    height, width, c = img.shape
+    all_heights.append(height)
+    all_widths.append(width)
+
+# for images, labels in tqdm(loader):
+#     _, _, height, width = images.size()
+#     all_heights.append(height)
+#     all_widths.append(width)
+    
+
+print(np.mean(all_heights))
+print(np.mean(all_widths))
+
+
+
+#-----------------------------------------------------------------------------
+
+# import os
+# import numpy as np
+# import matplotlib.pyplot as plt
+# main_dir = '/mnt/dragon/Datasets/sp_train'
+# files = os.listdir(main_dir)
+# count = 0
+# coeffs = np.zeros([55])
+# for file in files:
+#     if 'target' not in file:
+#         features = np.load(os.path.join(main_dir, file))
+        
+#         amplitude = features[:, 9:9+55]
+#         coeffs += amplitude.sum(0)
+#         count += amplitude.shape[0]
+
+# print(coeffs/count)
+# plt.bar(list(range(55)), coeffs/count)
+# plt.show()
+
+        
 

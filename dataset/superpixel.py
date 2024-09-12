@@ -30,8 +30,7 @@ class Resize(object):
 
     def __call__(self, sample):
         img, mask = sample['image'], sample['mask']
-        img, mask = img.resize((self.size, self.size), resample=Image.BILINEAR), mask.resize((self.size, self.size),
-                                                                                             resample=Image.BILINEAR)
+        img = img.resize((self.size, self.size), resample=Image.BILINEAR)
         
         return {'image': img, 'mask': mask}
     
