@@ -264,10 +264,14 @@ class SP_PERF_Wrapper(pl.LightningModule):
             tp = (y_temp * mask).sum(dim=-1)
             # avoid prec becomes 0
             prec[:, j], recall[:, j] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
+            
+            
         # (batch, threshold)
         if dataloader_idx == 0:
             self.precs += prec.sum(0)
+            print(prec.sum(0))
             self.recalls += recall.sum(0)
+            print(recall.sum(0))
             self.validation_step_outputs.append(mae)
             self.test_iteration += 1
         elif dataloader_idx == 1:
@@ -279,8 +283,10 @@ class SP_PERF_Wrapper(pl.LightningModule):
     def on_validation_epoch_end(self):
         prec = self.precs/self.mean_num
         recall = self.recalls/self.mean_num
+       
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
+        
         thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
         self.log('Validation Max F Score', torch.max(f_score))
         self.log('Validation Max F Threshold', thlist[torch.argmax(f_score)])
@@ -304,14 +310,14 @@ class SP_PERF_Wrapper(pl.LightningModule):
         self.maes = 0
         self.mean_num = 0
         
-        self.precs = torch.empty(self.num_thresholds).cuda()
-        self.recalls = torch.empty(self.num_thresholds).cuda(0)
+        self.precs = torch.zeros(self.num_thresholds).cuda()
+        self.recalls = torch.zeros(self.num_thresholds).cuda()
 
         self.maes_test = 0
         self.mean_num_test = 0
 
-        self.precs_test = torch.empty(self.num_thresholds).cuda()
-        self.recalls_test = torch.empty(self.num_thresholds).cuda()
+        self.precs_test = torch.zeros(self.num_thresholds).cuda()
+        self.recalls_test = torch.zeros(self.num_thresholds).cuda()
 
         self.validation_step_outputs = []
 
@@ -319,8 +325,8 @@ class SP_PERF_Wrapper(pl.LightningModule):
         self.maes = 0
         self.mean_num = 0
         
-        self.precs = torch.empty(256)
-        self.recalls = torch.empty(256)
+        self.precs = torch.zeros(256).cuda()
+        self.recalls = torch.zeros(256).cuda()
         self.test_step_outputs = []
 
 
@@ -332,7 +338,7 @@ class SP_PERF_Wrapper(pl.LightningModule):
         features = batch['features']
         seq_mask = batch['seq_mask']
         segments = batch['segments']
-        mask = batch['mask'].cpu()
+        mask = batch['mask']
 
 
         # forward pass

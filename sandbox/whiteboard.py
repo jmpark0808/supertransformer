@@ -323,34 +323,34 @@
 
 
 
-import os
-from PIL import Image
-import numpy as np
-from tqdm import tqdm
-from torchvision.datasets import ImageFolder
-from torch.utils.data import DataLoader
-from torchvision import transforms
-imagenet_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TR/Image'
-# dataset = ImageFolder(imagenet_dir, transform=transforms.Compose([transforms.ToTensor()]))
-# loader = DataLoader(dataset, batch_size=1, num_workers=20)
-all_heights = []
-all_widths = []
+# import os
+# from PIL import Image
+# import numpy as np
+# from tqdm import tqdm
+# from torchvision.datasets import ImageFolder
+# from torch.utils.data import DataLoader
+# from torchvision import transforms
+# imagenet_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TR/Image'
+# # dataset = ImageFolder(imagenet_dir, transform=transforms.Compose([transforms.ToTensor()]))
+# # loader = DataLoader(dataset, batch_size=1, num_workers=20)
+# all_heights = []
+# all_widths = []
 
-for img in os.listdir(imagenet_dir):
-    img_path = os.path.join(imagenet_dir, img)
-    img = np.array(Image.open(img_path).convert('RGB'))
-    height, width, c = img.shape
-    all_heights.append(height)
-    all_widths.append(width)
-
-# for images, labels in tqdm(loader):
-#     _, _, height, width = images.size()
+# for img in os.listdir(imagenet_dir):
+#     img_path = os.path.join(imagenet_dir, img)
+#     img = np.array(Image.open(img_path).convert('RGB'))
+#     height, width, c = img.shape
 #     all_heights.append(height)
 #     all_widths.append(width)
+
+# # for images, labels in tqdm(loader):
+# #     _, _, height, width = images.size()
+# #     all_heights.append(height)
+# #     all_widths.append(width)
     
 
-print(np.mean(all_heights))
-print(np.mean(all_widths))
+# print(np.mean(all_heights))
+# print(np.mean(all_widths))
 
 
 
@@ -377,3 +377,31 @@ print(np.mean(all_widths))
 
         
 
+# -----------------------------------------------------------
+
+import torch
+for _ in range(1000):
+    pred = torch.rand(30, 1024).cuda()
+    mask = torch.rand(30, 1024).cuda()
+
+    prec, recall = torch.zeros(pred.size(0), 10).cuda(), torch.zeros(pred.size(0), 10).cuda()
+
+    thlist = torch.linspace(0, 1 - 1e-10, 10).cuda()
+    for j in range(10):
+        y_temp = (pred >= thlist[j]).float()
+        tp = (y_temp * mask).sum(dim=-1)
+        # avoid prec becomes 0
+        prec[:, j], recall[:, j] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
+                
+    prec_mean = prec.mean(0)
+    prec_sum = prec.sum(0)/30
+    recall_mean = recall.mean(0)
+    recall_sum = recall.sum(0)/30      
+
+
+    beta_square = 0.3
+    f_score_mean = (1 + beta_square) * prec_mean * recall_mean / (beta_square * prec_mean + recall_mean)
+    f_score_sum = (1 + beta_square) * prec_sum * recall_sum / (beta_square * prec_sum + recall_sum)
+
+    print(torch.sum(torch.abs(f_score_mean-f_score_sum)))
+        
