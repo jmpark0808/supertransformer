@@ -641,9 +641,9 @@ class ViP(nn.Module):
         fft = x[:, :, 8:-10]
         lbp = x[:, :,  -10:]
         color = x[:, :, 2:8]
-        x = torch.cat((color, lbp, fft), dim=2)
-        # locations = torch.cat((centroids), dim=2)
-        locations = self.locations(centroids)
+        x = torch.cat((color, lbp), dim=2)
+        locations = torch.cat((centroids, fft), dim=2)
+        locations = self.locations(locations)
 
 
         x = self.to_patch_embedding(x)
