@@ -16,7 +16,7 @@ import torch.nn.functional as F
 
 dataset_images = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Image'
 masks = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Mask'
-segment_numbers = [112, 224, 448]# , 300
+segment_numbers = [224, 448]# , 300
 # segment_numbers = [100, 200, 300, 400, 500, 600, 800, 1000, 1500, 3000, 10000, 45000, 90000]
 compactness = [10]
 d= {}

@@ -308,7 +308,7 @@ class Attention(nn.Module):
                 q, k = apply_rotary_pos_emb(q, k, pos_emb)
 
             out = self.fast_attention(q, k, v)
-            out = self.dropout(out)
+            # out = self.dropout(out)
             attn_outs.append(out)
 
         if not empty(lq):
@@ -320,7 +320,7 @@ class Attention(nn.Module):
         out = rearrange(out, 'b h n d -> b n (h d)')
 #         print("Attention", out.size())
         out =  self.to_out(out)
-        # out = self.dropout(out)
+        out = self.dropout(out)
         return out
 
 
@@ -614,8 +614,7 @@ class ViP(nn.Module):
         self.locations = nn.Sequential(nn.Linear(2, dim))
 
         
-        self.transformer = nn.Sequential(Transformer(dim, depth//2, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size),
-        Transformer(dim, depth//2, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size))
+        self.transformer = Transformer(dim, depth, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size)
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer4 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
