@@ -268,7 +268,7 @@ class Attention(nn.Module):
         self.heads = heads
         self.tokens = tokens
         self.global_heads = (heads - local_heads)
-        self.local_attn = LocalAttention(window_size = local_window_size, causal = causal, autopad = True, dropout = dropout, look_forward = int(not causal), use_rotary_pos_emb=False) if local_heads > 0 else None
+        # self.local_attn = LocalAttention(window_size = local_window_size, causal = causal, autopad = True, dropout = dropout, look_forward = int(not causal), use_rotary_pos_emb=False) if local_heads > 0 else None
         self.local_attn = WindowAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=0)
 
         # self.to_q = SeparableLinear(dim, inner_dim, tokens, bias = qkv_bias)
@@ -614,7 +614,7 @@ class ViP(nn.Module):
         self.locations = nn.Sequential(nn.Linear(2, dim))
 
         
-        self.transformer = nn.Sequential(Transformer(dim, depth//2, heads, heads, dim_head, mlp_dim, emb_dropout, dropout, window_size),
+        self.transformer = nn.Sequential(Transformer(dim, depth//2, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size),
         Transformer(dim, depth//2, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size))
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
