@@ -604,19 +604,18 @@ class ViP(nn.Module):
 
         self.to_patch_embedding = nn.Sequential(
             # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
-            nn.LayerNorm(patch_dim),
             nn.Linear(patch_dim, dim),
-            nn.LayerNorm(dim),
         )
 
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
         
         # self.cls_token = nn.Parameter(torch.randn(1, self.num_tokens, dim))
         self.dropout = nn.Dropout(emb_dropout)
-        self.locations = nn.Sequential(nn.Linear(2+coeff*2, dim), nn.LayerNorm(dim))
+        self.locations = nn.Sequential(nn.Linear(2, dim))
 
         
-        self.transformer = Transformer(dim, depth, heads, heads//2, dim_head, mlp_dim, emb_dropout, dropout, window_size)
+        self.transformer = nn.Sequential(Transformer(dim, depth//2, heads, heads, dim_head, mlp_dim, emb_dropout, dropout, window_size),
+        Transformer(dim, depth//2, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size))
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer4 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
@@ -641,9 +640,9 @@ class ViP(nn.Module):
         fft = x[:, :, 8:-10]
         lbp = x[:, :,  -10:]
         color = x[:, :, 2:8]
-        x = torch.cat((color, lbp), dim=2)
-        locations = torch.cat((centroids, fft), dim=2)
-        locations = self.locations(locations)
+        x = torch.cat((color, lbp, fft), dim=2)
+        # locations = torch.cat((centroids), dim=2)
+        locations = self.locations(centroids)
 
 
         x = self.to_patch_embedding(x)
