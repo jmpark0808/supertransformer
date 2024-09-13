@@ -269,7 +269,7 @@ class Attention(nn.Module):
         self.tokens = tokens
         self.global_heads = (heads - local_heads)
         self.local_attn = LocalAttention(window_size = local_window_size, causal = causal, autopad = True, dropout = dropout, look_forward = int(not causal), use_rotary_pos_emb=False) if local_heads > 0 else None
-        self.local_attn = WindowAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=dropout)
+        self.local_attn = WindowAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=0)
 
         # self.to_q = SeparableLinear(dim, inner_dim, tokens, bias = qkv_bias)
         # self.to_k = SeparableLinear(dim, inner_dim, tokens, bias = qkv_bias)
@@ -308,6 +308,7 @@ class Attention(nn.Module):
                 q, k = apply_rotary_pos_emb(q, k, pos_emb)
 
             out = self.fast_attention(q, k, v)
+            out = self.dropout(out)
             attn_outs.append(out)
 
         if not empty(lq):
@@ -319,7 +320,7 @@ class Attention(nn.Module):
         out = rearrange(out, 'b h n d -> b n (h d)')
 #         print("Attention", out.size())
         out =  self.to_out(out)
-        out = self.dropout(out)
+        # out = self.dropout(out)
         return out
 
 

@@ -269,9 +269,7 @@ class SP_PERF_Wrapper(pl.LightningModule):
         # (batch, threshold)
         if dataloader_idx == 0:
             self.precs += prec.sum(0)
-            print(prec.sum(0))
             self.recalls += recall.sum(0)
-            print(recall.sum(0))
             self.validation_step_outputs.append(mae)
             self.test_iteration += 1
         elif dataloader_idx == 1:
