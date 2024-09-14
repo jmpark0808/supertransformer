@@ -606,6 +606,7 @@ class ViP(nn.Module):
             # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
             # nn.LayerNorm(patch_dim),
             nn.Linear(patch_dim, dim),
+            nn.LayerNorm([image_size*image_size, dim]),
         )
 
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
@@ -613,7 +614,7 @@ class ViP(nn.Module):
         # self.cls_token = nn.Parameter(torch.randn(1, self.num_tokens, dim))
         self.dropout = nn.Dropout(emb_dropout)
         self.locations = nn.Sequential(nn.Linear(2, dim))
-        self.ln = nn.LayerNorm(dim)
+        # self.ln = nn.LayerNorm(dim)
         # self.pdist = nn.PairwiseDistance()
         
         self.transformer = Transformer(dim, depth, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size)
@@ -641,7 +642,7 @@ class ViP(nn.Module):
         fft = x[:, :, 8:-10]
         lbp = x[:, :,  -10:]
         color = x[:, :, 2:8]
-        x = torch.cat((color, lbp), dim=2)
+        x = torch.cat((color, lbp, fft), dim=2)
         # locations = torch.cat((centroids, fft), dim=2)
         
         
@@ -663,7 +664,7 @@ class ViP(nn.Module):
         # x = torch.cat((cls_tokens, x), dim=1)
         # x += self.pos_embedding[:, :(n + 1)]
         x = self.dropout(x)
-        x = self.ln(x)
+        # x = self.ln(x)
 
         x = self.transformer(x)
 
