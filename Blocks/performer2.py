@@ -373,7 +373,7 @@ class Transformer(nn.Module):
         local_window_size = window_size
         causal = False
         nb_features = None
-        generalized_attention = True
+        generalized_attention = False
         kernel_fn = nn.ReLU()
         # attn_dropout = 0.
         no_projection = False
@@ -613,7 +613,7 @@ class ViP(nn.Module):
         # self.cls_token = nn.Parameter(torch.randn(1, self.num_tokens, dim))
         self.dropout = nn.Dropout(emb_dropout)
         self.locations = nn.Sequential(nn.Linear(2, dim))
-        self.ln = nn.LayerNorm(dim)
+        # self.ln = nn.LayerNorm(dim)
         # self.pdist = nn.PairwiseDistance()
         
         self.transformer = Transformer(dim, depth, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size)
@@ -663,7 +663,7 @@ class ViP(nn.Module):
         # x = torch.cat((cls_tokens, x), dim=1)
         # x += self.pos_embedding[:, :(n + 1)]
         x = self.dropout(x)
-        x = self.ln(x)
+        # x = self.ln(x)
 
         x = self.transformer(x)
 
