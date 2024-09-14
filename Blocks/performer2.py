@@ -613,8 +613,8 @@ class ViP(nn.Module):
         # self.cls_token = nn.Parameter(torch.randn(1, self.num_tokens, dim))
         self.dropout = nn.Dropout(emb_dropout)
         self.locations = nn.Sequential(nn.Linear(2, dim))
-        self.ln = nn.LayerNorm([image_size*image_size, dim])
-        self.pdist = nn.PairwiseDistance()
+        self.ln = nn.LayerNorm(dim)
+        # self.pdist = nn.PairwiseDistance()
         
         self.transformer = Transformer(dim, depth, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size)
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
