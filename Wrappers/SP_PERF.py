@@ -106,9 +106,9 @@ class SP_PERF_Wrapper(pl.LightningModule):
         
         self.trainer.fit_loop.setup_data()
         dataset= self.trainer.train_dataloader
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
-                                                      1, 5e-8)
-        # self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=self.es_patience, min_lr = 5e-8)
+        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
+        #                                               1, 5e-8)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=self.es_patience, min_lr = 5e-8)
         return optimizer
       
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure):
@@ -208,8 +208,8 @@ class SP_PERF_Wrapper(pl.LightningModule):
         self.num_samples += features.size(0)
         self.log('loss', loss.item())
         self.iteration += 1
-        if self.current_epoch >= self.warmup_epochs:
-            self.scheduler.step()
+        # if self.current_epoch >= self.warmup_epochs:
+        #     self.scheduler.step()
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx):
@@ -300,8 +300,8 @@ class SP_PERF_Wrapper(pl.LightningModule):
         self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
 
         self.log('Test MAE', self.maes_test/self.mean_num_test)
-        # if self.current_epoch >= self.warmup_epochs:
-        #     self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
+        if self.current_epoch >= self.warmup_epochs:
+            self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
         self.validation_step_outputs.clear()
 
     def on_validation_start(self):
