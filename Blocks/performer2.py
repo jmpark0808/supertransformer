@@ -606,7 +606,6 @@ class ViP(nn.Module):
             # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
             # nn.LayerNorm(patch_dim),
             nn.Linear(patch_dim, dim),
-            nn.LayerNorm(dim),
         )
 
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
@@ -617,7 +616,7 @@ class ViP(nn.Module):
         # self.ln = nn.LayerNorm(dim)
         # self.pdist = nn.PairwiseDistance()
         
-        self.transformer = Transformer(dim, depth, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size)
+        self.transformer = Transformer(dim, depth, heads, heads, dim_head, mlp_dim, emb_dropout, dropout, window_size)
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer4 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
@@ -631,7 +630,6 @@ class ViP(nn.Module):
         else:
             num_classes = 1000 
         self.mlp_head = nn.Sequential(
-            nn.LayerNorm(dim),
             nn.Linear(dim, num_classes)
         )
 
@@ -655,7 +653,8 @@ class ViP(nn.Module):
         # plt.show()
 
 
-        x = self.to_patch_embedding(x)
+        x = self.to_patch_embedding(x) # B, N, D
+
         b, n, _ = x.shape
 
         # cls_tokens = repeat(self.cls_token, '1 c d -> b c d', b = b)
