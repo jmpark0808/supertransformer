@@ -269,7 +269,8 @@ class Attention(nn.Module):
         self.tokens = tokens
         self.global_heads = (heads - local_heads)
         # self.local_attn = LocalAttention(window_size = local_window_size, causal = causal, autopad = True, dropout = dropout, look_forward = int(not causal), use_rotary_pos_emb=False) if local_heads > 0 else None
-        self.local_attn = WindowAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=0)
+        if local_heads != 0:
+            self.local_attn = WindowAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=0)
 
         # self.to_q = SeparableLinear(dim, inner_dim, tokens, bias = qkv_bias)
         # self.to_k = SeparableLinear(dim, inner_dim, tokens, bias = qkv_bias)
@@ -617,7 +618,7 @@ class ViP(nn.Module):
         self.ln = nn.LayerNorm([image_size**2, dim])
         # self.pdist = nn.PairwiseDistance()
         
-        self.transformer = Transformer(dim, depth, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size)
+        self.transformer = Transformer(dim, depth, heads, heads//2, dim_head, mlp_dim, emb_dropout, dropout, window_size)
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer4 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
@@ -628,11 +629,21 @@ class ViP(nn.Module):
         self.image_width = image_width
         if self.task == 'sod':
             num_classes = 1
+            self.mlp_head = nn.Sequential(
+                nn.Linear(dim, num_classes)
+            )
+
         else:
             num_classes = 1000 
-        self.mlp_head = nn.Sequential(
-            nn.Linear(dim, num_classes)
-        )
+            self.create_patches = nn.Sequential(
+            Rearrange('b (h p1 w p2) c -> b (h w) (p1 p2 c)', h = image_size, p1 = 4, p2 = 4),
+            # nn.LayerNorm(patch_dim),
+            nn.Linear(dim*16, 256),
+            # nn.LayerNorm(dim)
+            )
+            self.mlp_head = nn.Sequential(
+                nn.Linear(256, num_classes)
+            )
 
 
 
@@ -674,6 +685,7 @@ class ViP(nn.Module):
         # x = self.transformer4(x)
 
         if self.task == 'cls':
+            x = self.create_patches(x)
             x = x.mean(dim=1)# if self.pool == 'mean' else x[:, :4]
             # x = x.reshape(x.size(0), self.image_height//4, 4, self.image_width//4, 4, -1)
             # x = x.mean(dim=3).mean(dim=1)
