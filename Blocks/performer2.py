@@ -639,6 +639,7 @@ class ViP(nn.Module):
             Rearrange('b (h p1 w p2) c -> b (h w) (p1 p2 c)', h = image_size, p1 = 4, p2 = 4),
             # nn.LayerNorm(patch_dim),
             nn.Linear(dim*16, 256),
+            Transformer(256, 2, 16, 0, 16, 256*4, emb_dropout, dropout, window_size)
             # nn.LayerNorm(dim)
             )
             self.mlp_head = nn.Sequential(
