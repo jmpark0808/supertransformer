@@ -12,7 +12,7 @@ from Blocks.performer_diffpool import PerformerEncoderToken, TransformerEncoderT
 from Blocks.performer_diffpool import TransformerDecoder as PerformerDecoder
 from Blocks.TransformerBlocks import Transformer as TFM
 from Blocks.diffslic_og import DiffSLIC, spixel_upsampling
-from Blocks.local_attention import LocalAttention, WindowAttention
+from Blocks.local_attention import LocalAttention, WindowAttention, GlobalAttention, DilatedAttention
 
 
 from torch_geometric.utils import scatter
@@ -263,7 +263,8 @@ class Attention(nn.Module):
         dim_head = default(dim_head, dim // heads)
         inner_dim = dim_head * heads 
         
-        self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
+        # self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
+        self.fast_attention = DilatedAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=0)
 
         self.heads = heads
         self.tokens = tokens
@@ -618,7 +619,7 @@ class ViP(nn.Module):
         # self.ln = nn.LayerNorm([image_size**2, dim])
         # self.pdist = nn.PairwiseDistance()
         
-        self.transformer = Transformer(dim, depth, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size)
+        self.transformer = Transformer(dim, depth, heads, heads//2, dim_head, mlp_dim, emb_dropout, dropout, window_size)
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer4 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
