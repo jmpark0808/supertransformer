@@ -12,7 +12,7 @@ from Blocks.performer_diffpool import PerformerEncoderToken, TransformerEncoderT
 from Blocks.performer_diffpool import TransformerDecoder as PerformerDecoder
 from Blocks.TransformerBlocks import Transformer as TFM
 from Blocks.diffslic_og import DiffSLIC, spixel_upsampling
-from Blocks.local_attention import LocalAttention, WindowAttention, GlobalAttention, DilatedAttention
+from Blocks.local_attention import LocalAttention, WindowAttention, GlobalAttention, DilatedAttention, WindowSampling
 
 
 from torch_geometric.utils import scatter
@@ -262,8 +262,8 @@ class Attention(nn.Module):
         assert dim % heads == 0, 'dimension must be divisible by number of heads'
         dim_head = default(dim_head, dim // heads)
         inner_dim = dim_head * heads 
-        
-        self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
+        if heads != local_heads:
+            self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
         # self.fast_attention = DilatedAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=0)
 
         self.heads = heads
@@ -620,7 +620,7 @@ class ViP(nn.Module):
         # self.ln = nn.LayerNorm([image_size**2, dim])
         # self.pdist = nn.PairwiseDistance()
         
-        self.transformer = Transformer(dim, depth, heads, heads, dim_head, mlp_dim, emb_dropout, dropout, window_size)
+        self.transformer = Transformer(dim, depth, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size)
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer4 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
@@ -638,9 +638,10 @@ class ViP(nn.Module):
         else:
             num_classes = 1000 
             self.create_patches = nn.Sequential(
-            Rearrange('b (h p1 w p2) c -> b (h w) (p1 p2 c)', h = image_size, p1 = 4, p2 = 4),
-            # nn.LayerNorm(patch_dim),
-            nn.Linear(dim*16, 256),
+            # Rearrange('b (h p1 w p2) c -> b (h w) (p1 p2 c)', h = image_size, p1 = 4, p2 = 4),
+            # # nn.LayerNorm(patch_dim),
+            # nn.Linear(dim*16, 256),
+            WindowSampling(dim, 16, 16, 64, 1.0, 0),
             Transformer(256, 2, 16, 16, 16, 256*4, emb_dropout, dropout, 8)
             # nn.LayerNorm(dim)
             )

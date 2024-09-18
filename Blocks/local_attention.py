@@ -50,6 +50,63 @@ def look_around(x, backward = 1, forward = 0, pad_value = -1, dim = 2):
 
 # main class
 
+class WindowSampling(nn.Module):
+    r""" Window based multi-head self attention (W-MSA) module with relative position bias.
+    It supports both of shifted and non-shifted window.
+
+    Args:
+        dim (int): Number of input channels.
+        window_size (tuple[int]): The height and width of the window.
+        num_heads (int): Number of attention heads.
+        qkv_bias (bool, optional):  If True, add a learnable bias to query, key, value. Default: True
+        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set
+        attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
+        proj_drop (float, optional): Dropout ratio of output. Default: 0.0
+    """
+
+    def __init__(self, in_dim, heads, head_dim, K,  qk_scale=None, attn_drop=0.):
+
+        super().__init__()
+        
+        self.fmt = nn.Parameter(torch.randn(1, heads, K, head_dim))
+        self.heads = heads
+
+        self.k = nn.Linear(in_dim, heads*head_dim)
+        self.v = nn.Linear(in_dim, heads*head_dim)
+        self.proj = nn.Linear(heads*head_dim, heads*head_dim)
+        self.K = K
+
+
+        self.scale = qk_scale or 1.0
+        
+        self.attn_drop = nn.Dropout(attn_drop)
+   
+        # trunc_normal_(self.relative_position_bias_table, std=.02)
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x):
+        """
+        Args:
+            x: input features with shape of (num_windows*B, N, C)
+            mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
+        """
+         
+        q = self.fmt.repeat(x.size(0), 1, 1, 1)
+        k = self.k(x).reshape(x.size(0), x.size(1), self.heads, -1).permute(0, 2, 1, 3)
+        v = self.v(x).reshape(x.size(0), x.size(1), self.heads, -1).permute(0, 2, 1, 3)
+
+        attn = (q @ k.transpose(-2, -1)) # B, H, K, N
+
+       
+        attn = self.softmax(attn) 
+
+        attn = self.attn_drop(attn)
+
+        x = (attn @ v) # B, H, K, D
+       
+        x = x.permute(0, 2, 1, 3).reshape(x.size(0), self.K, -1)
+        x = self.proj(x)
+        return x
 
 class WindowAttention(nn.Module):
     r""" Window based multi-head self attention (W-MSA) module with relative position bias.
