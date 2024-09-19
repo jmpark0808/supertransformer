@@ -263,16 +263,16 @@ class Attention(nn.Module):
         dim_head = default(dim_head, dim // heads)
         inner_dim = dim_head * heads 
         if heads != local_heads:
-            self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
-        # self.fast_attention = DilatedAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=0)
+            # self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
+            self.fast_attention = DilatedAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=dropout)
 
         self.heads = heads
         self.tokens = tokens
         self.global_heads = (heads - local_heads)
         # self.local_attn = LocalAttention(window_size = local_window_size, causal = causal, autopad = True, dropout = dropout, look_forward = int(not causal), use_rotary_pos_emb=False) if local_heads > 0 else None
         if local_heads != 0:
-            # self.local_attn = WindowAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=0)
-            self.local_attn = GlobalAttention(qk_scale=dim_head**0.5, attn_drop=0)
+            self.local_attn = WindowAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=dropout)
+            # self.local_attn = GlobalAttention(qk_scale=dim_head**0.5, attn_drop=0)
 
         # self.to_q = SeparableLinear(dim, inner_dim, tokens, bias = qkv_bias)
         # self.to_k = SeparableLinear(dim, inner_dim, tokens, bias = qkv_bias)
