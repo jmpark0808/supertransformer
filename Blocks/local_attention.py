@@ -64,17 +64,19 @@ class WindowSampling(nn.Module):
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
 
-    def __init__(self, in_dim, heads, head_dim, K,  qk_scale=None, attn_drop=0.):
+    def __init__(self, in_dim, heads, head_dim,window_size, qk_scale=None, attn_drop=0.):
 
         super().__init__()
         
-        self.fmt = nn.Parameter(torch.randn(1, heads, K, head_dim))
         self.heads = heads
+        self.window_size = window_size
 
+
+        self.q = nn.Linear(in_dim, heads*head_dim)
         self.k = nn.Linear(in_dim, heads*head_dim)
         self.v = nn.Linear(in_dim, heads*head_dim)
-        self.proj = nn.Linear(heads*head_dim, heads*head_dim)
-        self.K = K
+        # self.proj = nn.Linear(heads*head_dim, heads*head_dim)
+        
 
 
         self.scale = qk_scale or 1.0
@@ -90,13 +92,20 @@ class WindowSampling(nn.Module):
             x: input features with shape of (num_windows*B, N, C)
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
-         
-        q = self.fmt.repeat(x.size(0), 1, 1, 1)
+        B, N, C = x.shape
+        height = int(N**0.5)
+        width = int(N**0.5)
+        q = x.reshape(B, height, width, C)
+        q = q.view(B, height // self.window_size, self.window_size, width // self.window_size, self.window_size, C)
+        q = q.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, -1, self.window_size*self.window_size, C).mean(2)
+
+        
+        q = self.q(q).reshape(x.size(0), q.size(1), self.heads, -1).permute(0, 2, 1, 3)
         k = self.k(x).reshape(x.size(0), x.size(1), self.heads, -1).permute(0, 2, 1, 3)
         v = self.v(x).reshape(x.size(0), x.size(1), self.heads, -1).permute(0, 2, 1, 3)
 
         attn = (q @ k.transpose(-2, -1)) # B, H, K, N
-
+        
        
         attn = self.softmax(attn) 
 
@@ -104,8 +113,8 @@ class WindowSampling(nn.Module):
 
         x = (attn @ v) # B, H, K, D
        
-        x = x.permute(0, 2, 1, 3).reshape(x.size(0), self.K, -1)
-        x = self.proj(x)
+        x = x.permute(0, 2, 1, 3).reshape(x.size(0), q.size(2), -1)
+        # x = self.proj(x)
         return x
 
 class WindowAttention(nn.Module):
