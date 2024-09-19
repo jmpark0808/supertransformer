@@ -64,7 +64,7 @@ class WindowSampling(nn.Module):
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
 
-    def __init__(self, in_dim, heads, head_dim,window_size, qk_scale=None, attn_drop=0.):
+    def __init__(self, in_dim, heads, head_dim,window_size, qk_scale=None, attn_drop=0., emb_drop = 0.):
 
         super().__init__()
         
@@ -72,13 +72,20 @@ class WindowSampling(nn.Module):
         self.window_size = window_size
 
         self.ln = nn.LayerNorm(in_dim)
-
+        self.skip_proj = nn.Linear(in_dim, heads*head_dim)
 
         self.q = nn.Linear(in_dim, heads*head_dim)
         self.k = nn.Linear(in_dim, heads*head_dim)
         self.v = nn.Linear(in_dim, heads*head_dim)
+        self.proj = nn.Linear(heads*head_dim, heads*head_dim)
         
-        
+        self.ln2 = nn.LayerNorm(heads*head_dim)
+
+        self.mlp = nn.Sequential(nn.Linear(heads*head_dim, heads*head_dim*4),
+                nn.GELU(),
+                nn.Dropout(emb_drop),
+                nn.Linear(heads*head_dim*4, heads*head_dim),
+                nn.Dropout(emb_drop))
 
 
         self.scale = qk_scale or 1.0
@@ -96,6 +103,7 @@ class WindowSampling(nn.Module):
         """
         
         B, N, C = x.shape
+        skip = x
         x = self.ln(x)
         height = int(N**0.5)
         width = int(N**0.5)
@@ -103,6 +111,10 @@ class WindowSampling(nn.Module):
         q = q.view(B, height // self.window_size, self.window_size, width // self.window_size, self.window_size, C)
         q = q.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, -1, self.window_size*self.window_size, C).mean(2)
 
+        skip = skip.reshape(B, height, width, C)
+        skip = skip.view(B, height // self.window_size, self.window_size, width // self.window_size, self.window_size, C)
+        skip = skip.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, -1, self.window_size*self.window_size, C).mean(2)
+        skip = self.skip_proj(skip)
         
         q = self.q(q).reshape(x.size(0), q.size(1), self.heads, -1).permute(0, 2, 1, 3)
         k = self.k(x).reshape(x.size(0), x.size(1), self.heads, -1).permute(0, 2, 1, 3)
@@ -122,6 +134,15 @@ class WindowSampling(nn.Module):
 
        
         x = x.permute(0, 2, 1, 3).reshape(x.size(0), q.size(2), -1)
+        x = self.proj(x)
+
+        x += skip
+        skip = x
+        x = self.ln2(x)
+        x = self.mlp(x)
+        x += skip
+
+
 
 
         return x

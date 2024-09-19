@@ -642,7 +642,7 @@ class ViP(nn.Module):
             # # nn.LayerNorm(patch_dim),
             # nn.Linear(dim*16, 256),
             WindowSampling(dim, 16, 16, 4, 1.0, 0),
-            TFM(256, 2, 16, 16, 256*4, emb_dropout, dropout)
+            TFM(256, 1, 16, 16, 256*4, emb_dropout, dropout)
             # nn.LayerNorm(dim)
             )
             self.mlp_head = nn.Sequential(
