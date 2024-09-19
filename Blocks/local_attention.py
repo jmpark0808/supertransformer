@@ -146,6 +146,102 @@ class WindowSampling(nn.Module):
 
 
         return x
+    
+
+
+class WindowFMT(nn.Module):
+    r""" Window based multi-head self attention (W-MSA) module with relative position bias.
+    It supports both of shifted and non-shifted window.
+
+    Args:
+        dim (int): Number of input channels.
+        window_size (tuple[int]): The height and width of the window.
+        num_heads (int): Number of attention heads.
+        qkv_bias (bool, optional):  If True, add a learnable bias to query, key, value. Default: True
+        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set
+        attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
+        proj_drop (float, optional): Dropout ratio of output. Default: 0.0
+    """
+
+    def __init__(self, in_dim, heads, head_dim, K, qk_scale=None, attn_drop=0., emb_drop = 0.):
+
+        super().__init__()
+        
+        self.heads = heads
+
+        self.ln = nn.LayerNorm(in_dim)
+        self.skip_proj = nn.Linear(in_dim, heads*head_dim)
+
+        self.q = nn.Parameter(torch.randn(1, heads, K, head_dim))
+        self.k = nn.Linear(in_dim, heads*head_dim)
+        self.v = nn.Linear(in_dim, heads*head_dim)
+        self.proj = nn.Linear(heads*head_dim, heads*head_dim)
+        
+        self.ln2 = nn.LayerNorm(heads*head_dim)
+
+        self.mlp = nn.Sequential(nn.Linear(heads*head_dim, heads*head_dim*4),
+                nn.GELU(),
+                nn.Dropout(emb_drop),
+                nn.Linear(heads*head_dim*4, heads*head_dim),
+                nn.Dropout(emb_drop))
+
+
+        self.scale = qk_scale or 1.0
+        
+        self.attn_drop = nn.Dropout(attn_drop)
+   
+        # trunc_normal_(self.relative_position_bias_table, std=.02)
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x):
+        """
+        Args:
+            x: input features with shape of (num_windows*B, N, C)
+            mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
+        """
+        
+        B, N, C = x.shape
+        skip = x
+        x = self.ln(x)
+        height = int(N**0.5)
+        width = int(N**0.5)
+   
+
+        skip = skip.reshape(B, height, width, C)
+        skip = skip.view(B, height // 4, 4, width // 4, 4, C)
+        skip = skip.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, -1, 16, C).mean(2)
+        skip = self.skip_proj(skip)
+        
+        q = self.q
+        k = self.k(x).reshape(x.size(0), x.size(1), self.heads, -1).permute(0, 2, 1, 3)
+        v = self.v(x).reshape(x.size(0), x.size(1), self.heads, -1).permute(0, 2, 1, 3)
+
+        
+        attn = (q @ k.transpose(-2, -1)) # B, H, K, N
+
+ 
+        attn = self.softmax(attn) 
+
+
+        attn = self.attn_drop(attn)
+  
+
+        x = (attn @ v) # B, H, K, D
+
+       
+        x = x.permute(0, 2, 1, 3).reshape(x.size(0), q.size(2), -1)
+        x = self.proj(x)
+
+        x += skip
+        skip = x
+        x = self.ln2(x)
+        x = self.mlp(x)
+        x += skip
+
+
+
+
+        return x
 
 class WindowAttention(nn.Module):
     r""" Window based multi-head self attention (W-MSA) module with relative position bias.

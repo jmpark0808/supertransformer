@@ -12,7 +12,7 @@ from Blocks.performer_diffpool import PerformerEncoderToken, TransformerEncoderT
 from Blocks.performer_diffpool import TransformerDecoder as PerformerDecoder
 from Blocks.TransformerBlocks import Transformer as TFM
 from Blocks.diffslic_og import DiffSLIC, spixel_upsampling
-from Blocks.local_attention import LocalAttention, WindowAttention, GlobalAttention, DilatedAttention, WindowSampling
+from Blocks.local_attention import LocalAttention, WindowAttention, GlobalAttention, DilatedAttention, WindowSampling, WindowFMT
 
 
 from torch_geometric.utils import scatter
@@ -638,11 +638,11 @@ class ViP(nn.Module):
         else:
             num_classes = 1000 
             self.create_patches = nn.Sequential(
-            # Rearrange('b (h p1 w p2) c -> b (h w) (p1 p2 c)', h = image_size, p1 = 4, p2 = 4),
+            Rearrange('b (h p1 w p2) c -> b (h w) (p1 p2 c)', h = image_size, p1 = 4, p2 = 4),
             # # nn.LayerNorm(patch_dim),
-            # nn.Linear(dim*16, 256),
-            WindowSampling(dim, 16, 16, 4, 1.0, 0),
-            TFM(256, 1, 16, 16, 256*4, emb_dropout, dropout)
+            nn.Linear(dim*16, 256),
+            # WindowSampling(dim, 16, 16, 4, 1.0, 0),
+            TFM(256, 2, 16, 16, 256*4, emb_dropout, dropout)
             # nn.LayerNorm(dim)
             )
             self.mlp_head = nn.Sequential(
