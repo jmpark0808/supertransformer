@@ -109,8 +109,8 @@ if __name__ == "__main__":
                         default=42, type=int)
     parser.add_argument('--clip_grad_norm', help='Clipping gradient norm, 0 means no clipping', type=float, default=0.)
     parser.add_argument('--tag', help='Tag for differentiating runs on CC', default='', type=str)
-    parser.add_argument('--tfmhp', default=[8, 6, 128, 32], 
-                    nargs=4, metavar=('Heads', 'Number of Layers', 'Embed dim', 'Head dim'),
+    parser.add_argument('--tfmhp', default=[8, 4, 6, 128, 32], 
+                    nargs=5, metavar=('Heads', 'local heads', 'Number of Layers', 'Embed dim', 'Head dim'),
                     type=int, help='Hyperparameters for Transformer')
     parser.add_argument('--coeff', help='Number of coefficients for fft', type=int, default=10)
     parser.add_argument('--compactness', help='Compactness for SLIC', type=float, default=10)

@@ -44,9 +44,9 @@ class SP_PERF_Wrapper(pl.LightningModule):
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
         # SWIN UPerNet Production
-        self.supert = ViP(image_size=res, patch_size=1, dim=self.tfm_hp[2], heads=self.tfm_hp[0], depth=self.tfm_hp[1],
-                           mlp_dim=self.tfm_hp[2]*4, coeff=self.coeff, window_size=self.window_size, channels=input_dim,
-                             dim_head=self.tfm_hp[3], dropout=self.dropout_edge,
+        self.supert = ViP(image_size=res, patch_size=1, dim=self.tfm_hp[3], heads=self.tfm_hp[0], local_heads=self.tfm_hp[1], depth=self.tfm_hp[2],
+                           mlp_dim=self.tfm_hp[3]*4, coeff=self.coeff, window_size=self.window_size, channels=input_dim,
+                             dim_head=self.tfm_hp[4], dropout=self.dropout_edge,
                             emb_dropout=self.dropout, task='sod')
         # self.supert = ViPU(image_size=res, patch_size=1, dim=self.tfm_hp[2], heads=self.tfm_hp[0], depth=self.tfm_hp[1],
         #                    mlp_dim=self.tfm_hp[2]*1, channels=input_dim, dim_head=self.tfm_hp[2]//self.tfm_hp[0], dropout=self.dropout_edge,

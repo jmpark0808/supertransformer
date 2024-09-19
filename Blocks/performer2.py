@@ -591,7 +591,7 @@ class TransformerDec(nn.Module):
 
 
 class ViP(nn.Module):
-    def __init__(self, *, image_size, patch_size, dim, depth, heads,
+    def __init__(self, *, image_size, patch_size, dim, depth, heads, local_heads,
                   mlp_dim, coeff, window_size, pool = 'cls', channels = 3, dim_head = 64, dropout = 0., emb_dropout = 0., task='cls'):
         super().__init__()
         image_height, image_width = pair(image_size)
@@ -620,7 +620,7 @@ class ViP(nn.Module):
         # self.ln = nn.LayerNorm([image_size**2, dim])
         # self.pdist = nn.PairwiseDistance()
         
-        self.transformer = Transformer(dim, depth, heads, heads//2, dim_head, mlp_dim, emb_dropout, dropout, window_size)
+        self.transformer = Transformer(dim, depth, heads, local_heads, dim_head, mlp_dim, emb_dropout, dropout, window_size)
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer4 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
@@ -642,7 +642,7 @@ class ViP(nn.Module):
             # # nn.LayerNorm(patch_dim),
             # nn.Linear(dim*16, 256),
             WindowSampling(dim, 16, 16, 4, 1.0, 0),
-            Transformer(256, 2, 16, 16, 16, 256*4, emb_dropout, dropout, 8)
+            TFM(256, 2, 16, 16, 256*4, emb_dropout, dropout)
             # nn.LayerNorm(dim)
             )
             self.mlp_head = nn.Sequential(
