@@ -170,7 +170,7 @@ class SP_ImageNet_PERF_Wrapper(pl.LightningModule):
         self.train_acc += acc
         self.num_samples += n
 
-        self.log('loss', loss.item(), sync_dist=True)
+        self.log('loss', loss.item(), sync_dist=True, prog_bar=True)
         self.iteration += 1
         if self.current_epoch >= self.warmup_epochs:
             self.scheduler.step()

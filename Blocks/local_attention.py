@@ -71,11 +71,13 @@ class WindowSampling(nn.Module):
         self.heads = heads
         self.window_size = window_size
 
+        self.ln = nn.LayerNorm(in_dim)
+
 
         self.q = nn.Linear(in_dim, heads*head_dim)
         self.k = nn.Linear(in_dim, heads*head_dim)
         self.v = nn.Linear(in_dim, heads*head_dim)
-        # self.proj = nn.Linear(heads*head_dim, heads*head_dim)
+        
         
 
 
@@ -92,7 +94,9 @@ class WindowSampling(nn.Module):
             x: input features with shape of (num_windows*B, N, C)
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
+        
         B, N, C = x.shape
+        x = self.ln(x)
         height = int(N**0.5)
         width = int(N**0.5)
         q = x.reshape(B, height, width, C)
@@ -104,17 +108,22 @@ class WindowSampling(nn.Module):
         k = self.k(x).reshape(x.size(0), x.size(1), self.heads, -1).permute(0, 2, 1, 3)
         v = self.v(x).reshape(x.size(0), x.size(1), self.heads, -1).permute(0, 2, 1, 3)
 
-        attn = (q @ k.transpose(-2, -1)) # B, H, K, N
         
-       
+        attn = (q @ k.transpose(-2, -1)) # B, H, K, N
+
+ 
         attn = self.softmax(attn) 
 
+
         attn = self.attn_drop(attn)
+  
 
         x = (attn @ v) # B, H, K, D
+
        
         x = x.permute(0, 2, 1, 3).reshape(x.size(0), q.size(2), -1)
-        # x = self.proj(x)
+
+
         return x
 
 class WindowAttention(nn.Module):
