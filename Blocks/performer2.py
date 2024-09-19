@@ -620,7 +620,7 @@ class ViP(nn.Module):
         # self.ln = nn.LayerNorm([image_size**2, dim])
         # self.pdist = nn.PairwiseDistance()
         
-        self.transformer = Transformer(dim, depth, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size)
+        self.transformer = Transformer(dim, depth, heads, heads//2, dim_head, mlp_dim, emb_dropout, dropout, window_size)
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer4 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
