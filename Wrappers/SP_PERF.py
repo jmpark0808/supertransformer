@@ -56,14 +56,17 @@ class SP_PERF_Wrapper(pl.LightningModule):
        
 
         kwargs['parameters'] = parameter_count(self.supert)['']
+        
         # print(parameter_count(self.supert))
         # assert(0)
         inp = torch.randn([1, res*res, input_dim+2])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
+        self.log('Flops', kwargs['flops'])
+        self.log('Parameters', kwargs['parameters'])
 
-        # print(kwargs['parameters'], kwargs['flops'])
-        # assert(0)
+        print(kwargs['parameters'], kwargs['flops'])
+        assert(0)
         self.mixup = MixupSaliency(
             cutmix_alpha=1.0, cutmix_minmax=None,
             prob=1.0,  mode='batch',

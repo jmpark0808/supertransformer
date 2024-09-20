@@ -56,6 +56,8 @@ class SP_ImageNet_PERF_Wrapper(pl.LightningModule):
         inp = torch.randn([1, self.num_seg, input_dim+2])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
+        self.log('Flops', kwargs['flops'])
+        self.log('Parameters', kwargs['parameters'])
         # from fvcore.nn import FlopCountAnalysis, flop_count_table
         # inp = torch.randn([1, input_dim+2, 32, 32])
         # flops = FlopCountAnalysis(self.supert, inp)

@@ -142,7 +142,7 @@ def linear_attention(q, k, v):
 class FastAttention(nn.Module):
     def __init__(self, dim_heads, nb_features = None, ortho_scaling = 0, causal = False, generalized_attention = False, kernel_fn = nn.ReLU(), no_projection = False):
         super().__init__()
-        nb_features = default(nb_features, int(dim_heads * math.log(dim_heads)))
+        nb_features = default(nb_features, int(dim_heads * math.log(dim_heads))*2)
 
         self.dim_heads = dim_heads
         self.nb_features = nb_features
@@ -263,8 +263,8 @@ class Attention(nn.Module):
         dim_head = default(dim_head, dim // heads)
         inner_dim = dim_head * heads 
         if heads != local_heads:
-            # self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
-            self.fast_attention = DilatedAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=dropout)
+            self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
+            # self.fast_attention = DilatedAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=dropout)
 
         self.heads = heads
         self.tokens = tokens
