@@ -263,8 +263,8 @@ class Attention(nn.Module):
         dim_head = default(dim_head, dim // heads)
         inner_dim = dim_head * heads 
         if heads != local_heads:
-            self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
-            # self.fast_attention = DilatedAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=dropout)
+            # self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
+            self.fast_attention = DilatedAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=dropout)
 
         self.heads = heads
         self.tokens = tokens
@@ -282,7 +282,7 @@ class Attention(nn.Module):
         self.to_k = nn.Linear(dim, inner_dim, bias=qkv_bias)
         self.to_v = nn.Linear(dim, inner_dim, bias=qkv_bias)
         self.to_out = nn.Linear(inner_dim, dim, bias = attn_out_bias)
-        self.dropout = nn.Dropout(dropout)
+        # self.dropout = nn.Dropout(dropout)
         
 
     def forward(self, x, pos_emb = None, context = None, mask = None, context_mask = None, **kwargs):
@@ -323,7 +323,7 @@ class Attention(nn.Module):
         out = rearrange(out, 'b h n d -> b n (h d)')
 #         print("Attention", out.size())
         out =  self.to_out(out)
-        out = self.dropout(out)
+        # out = self.dropout(out)
         return out
 
 
@@ -638,10 +638,10 @@ class ViP(nn.Module):
         else:
             num_classes = 1000 
             self.create_patches = nn.Sequential(
-            Rearrange('b (h p1 w p2) c -> b (h w) (p1 p2 c)', h = image_size, p1 = 4, p2 = 4),
+            # Rearrange('b (h p1 w p2) c -> b (h w) (p1 p2 c)', h = image_size, p1 = 4, p2 = 4),
             # # nn.LayerNorm(patch_dim),
-            nn.Linear(dim*16, 256),
-            # WindowSampling(dim, 16, 16, 4, 1.0, 0),
+            # nn.Linear(dim*16, 256),
+            WindowSampling(dim, 16, 16, 4, 1.0, dropout, emb_dropout),
             TFM(256, 2, 16, 16, 256*4, emb_dropout, dropout)
             # nn.LayerNorm(dim)
             )
