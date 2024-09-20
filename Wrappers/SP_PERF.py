@@ -65,8 +65,8 @@ class SP_PERF_Wrapper(pl.LightningModule):
         self.log('Flops', kwargs['flops'])
         self.log('Parameters', kwargs['parameters'])
 
-        print(kwargs['parameters'], kwargs['flops'])
-        assert(0)
+        # print(kwargs['parameters'], kwargs['flops'])
+        # assert(0)
         self.mixup = MixupSaliency(
             cutmix_alpha=1.0, cutmix_minmax=None,
             prob=1.0,  mode='batch',
@@ -250,6 +250,7 @@ class SP_PERF_Wrapper(pl.LightningModule):
             samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
         
         mae = torch.sum(torch.mean(torch.abs(samples - mask), dim=tuple(range(1, len(samples.size())))))
+        
         if dataloader_idx == 0:
             self.maes += mae
             self.mean_num += features.size(0)
