@@ -263,8 +263,8 @@ class Attention(nn.Module):
         dim_head = default(dim_head, dim // heads)
         inner_dim = dim_head * heads 
         if heads != local_heads:
-            # self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
-            self.fast_attention = DilatedAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=dropout)
+            self.fast_attention = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
+            # self.fast_attention = DilatedAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=dropout)
 
         self.heads = heads
         self.tokens = tokens
@@ -624,7 +624,7 @@ class ViP(nn.Module):
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer4 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
-
+        self.proj_updater = ProjectionUpdater(self.transformer, 1000)
         self.pool = pool
         self.to_latent = nn.Identity()
         self.image_height = image_height
@@ -649,9 +649,11 @@ class ViP(nn.Module):
                 nn.Linear(256, num_classes)
             )
 
-
+    def fix_projection_matrices_(self):
+        self.proj_updater.feature_redraw_interval = None
 
     def forward(self, x):
+        self.proj_updater.redraw_projections()
         centroids = x[:, :, :2]
         fft = x[:, :, 8:-10]
         lbp = x[:, :,  -10:]

@@ -324,6 +324,7 @@ class SP_PERF_Wrapper(pl.LightningModule):
         self.validation_step_outputs = []
 
     def on_test_start(self):
+        self.supert.fix_projection_matrices_()
         self.maes = 0
         self.mean_num = 0
         
@@ -341,7 +342,7 @@ class SP_PERF_Wrapper(pl.LightningModule):
         seq_mask = batch['seq_mask']
         segments = batch['segments']
         mask = batch['mask']
-
+        
 
         # forward pass
         res = int(self.num_seg**0.5)
