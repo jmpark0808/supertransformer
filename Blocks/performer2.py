@@ -282,7 +282,7 @@ class Attention(nn.Module):
         self.to_k = nn.Linear(dim, inner_dim, bias=qkv_bias)
         self.to_v = nn.Linear(dim, inner_dim, bias=qkv_bias)
         self.to_out = nn.Linear(inner_dim, dim, bias = attn_out_bias)
-        # self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout)
         
 
     def forward(self, x, pos_emb = None, context = None, mask = None, context_mask = None, **kwargs):
@@ -323,7 +323,7 @@ class Attention(nn.Module):
         out = rearrange(out, 'b h n d -> b n (h d)')
 #         print("Attention", out.size())
         out =  self.to_out(out)
-        # out = self.dropout(out)
+        out = self.dropout(out)
         return out
 
 
@@ -376,7 +376,7 @@ class Transformer(nn.Module):
         local_window_size = window_size
         causal = False
         nb_features = None
-        generalized_attention = True
+        generalized_attention = False
         kernel_fn = nn.ReLU()
         # attn_dropout = 0.
         no_projection = False
