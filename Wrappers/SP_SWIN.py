@@ -41,7 +41,7 @@ class SP_SWIN_Wrapper(pl.LightningModule):
             assert resample_points-1 >= self.coeff
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
-        self.supert = SP_SWIN(input_dim, self.tfm_hp[2], self.tfm_hp[0], self.tfm_hp[1],
+        self.supert = SP_SWIN(input_dim, self.tfm_hp[3], self.tfm_hp[0], self.tfm_hp[2],
                                self.dropout, self.dropout_edge, self.kernels, self.window_size, int(self.num_seg**0.5))
         self.iteration = 0
         self.test_iteration = 0

@@ -221,6 +221,7 @@ class SP_ImageNet_PERF_Wrapper(pl.LightningModule):
         self.log('Final Test Accuracy', acc, sync_dist=True)
 
     def on_test_start(self):
+        self.supert.fix_projection_matrices_()
         self.test_acc = 0
         self.test_num_samples = 0
 
