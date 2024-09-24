@@ -585,8 +585,8 @@ class TransformerDec(nn.Module):
         
     def forward(self, x, context):
         for attn, ff in self.layers:
-            context = attn(x, context=context) + context
-            context = ff(context) + context
+            x = attn(x, context=context) + x
+            x = ff(x) + x
         return context
 
 
