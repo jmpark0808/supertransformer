@@ -62,8 +62,9 @@ class SP_PERF_Wrapper(pl.LightningModule):
         inp = torch.randn([1, res*res, input_dim+2])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
-        self.log('Flops', kwargs['flops'])
-        self.log('Parameters', kwargs['parameters'])
+        self.flops = kwargs['flops']
+        self.num_parameters = kwargs['parameters']
+       
 
         # print(kwargs['parameters'], kwargs['flops'])
         # assert(0)
@@ -142,6 +143,10 @@ class SP_PERF_Wrapper(pl.LightningModule):
     def on_train_epoch_start(self):
         self.train_fscores = 0
         self.num_samples = 0
+
+    def on_train_start(self):
+        self.log('Flops', self.flops)
+        self.log('Parameters', self.num_parameters)
     
     def on_train_epoch_end(self):
         fscores = self.train_fscores/self.num_samples
@@ -157,6 +162,7 @@ class SP_PERF_Wrapper(pl.LightningModule):
         logging resources:
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
+        
         features = batch['features']
         seq_mask = batch['seq_mask']
         segments = batch['segments']

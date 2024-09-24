@@ -574,6 +574,11 @@ class TransformerDec(nn.Module):
         attn_out_bias = True
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
+                PreNorm(dim, SelfAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
+                                            local_window_size = local_window_size, nb_features = nb_features,
+                                              generalized_attention = generalized_attention, kernel_fn = kernel_fn,
+                                                dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
+                                                  attn_out_bias = attn_out_bias)),
                 PreNorm(dim, CrossAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
                                              local_window_size = local_window_size, nb_features = nb_features,
                                                generalized_attention = generalized_attention, kernel_fn = kernel_fn,
@@ -584,10 +589,11 @@ class TransformerDec(nn.Module):
 
         
     def forward(self, x, context):
-        for attn, ff in self.layers:
-            x = attn(x, context=context) + x
+        for attn, cross_attn, ff in self.layers:
+            x = attn(x) + x
+            x = cross_attn(x, context=context) + x
             x = ff(x) + x
-        return context
+        return x
 
 
 class ViP(nn.Module):
@@ -635,7 +641,7 @@ class ViP(nn.Module):
         if self.task == 'sod':
             num_classes = 1
             self.decoder = nn.ModuleList()
-            for i in range(depth-1):
+            for i in range(depth):
                 self.decoder.append(TransformerDec(dim, 1, heads, dim_head, mlp_dim, emb_dropout, dropout))
             
             self.mlp_head = nn.Sequential(
@@ -690,10 +696,13 @@ class ViP(nn.Module):
         x = self.dropout(x)
         # x = self.ln(x)
 
+        dec = x
+
         fts = []
         for layer in self.transformer:
             x = layer(x)
             fts.append(x)
+        
         
         fts.reverse()
         fts = fts[1:]
@@ -713,9 +722,9 @@ class ViP(nn.Module):
             return self.mlp_head(x)
         else:
             for idx, layer in enumerate(self.decoder):
-                x = layer(fts[idx],x)
-            x= self.to_latent(x)
-            return self.mlp_head(x)
+                dec = layer(dec,x)
+            dec = self.to_latent(dec)
+            return self.mlp_head(dec)
         
         
 
