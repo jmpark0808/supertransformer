@@ -651,11 +651,11 @@ class ViP(nn.Module):
         else:
             num_classes = 1000 
             self.create_patches = nn.Sequential(
-            # Rearrange('b (h p1 w p2) c -> b (h w) (p1 p2 c)', h = image_size, p1 = 4, p2 = 4),
+            Rearrange('b (h p1 w p2) c -> b (h w) (p1 p2 c)', h = image_size, p1 = 4, p2 = 2),
             # # nn.LayerNorm(patch_dim),
             # nn.Linear(dim*16, 256),
-            WindowSampling(dim, 16, 16, 4, 1.0, dropout, emb_dropout),
-            TFM(256, 1, 16, 16, 256*4, emb_dropout, dropout)
+            # WindowSampling(dim, 16, 16, 4, 1.0, dropout, emb_dropout),
+            TFM(256, 2, 16, 16, 256*4, emb_dropout, dropout)
             # nn.LayerNorm(dim)
             )
             self.mlp_head = nn.Sequential(
