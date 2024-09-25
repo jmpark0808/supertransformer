@@ -146,7 +146,7 @@ class ToTensorSP(object):
         # label_onehot = F.one_hot(segments, self.num_seg).float()
         segments = slic(img_np, n_segments=self.num_seg,
             compactness=self.compactness,
-            max_num_iter=10,
+            max_num_iter=1,
             convert2lab=True,
             enforce_connectivity=False,
             slic_zero=False)-1

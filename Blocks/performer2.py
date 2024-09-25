@@ -621,8 +621,11 @@ class ViP(nn.Module):
         # self.pdist = nn.PairwiseDistance()
         
         self.transformer =nn.ModuleList()
-        for i in range(depth):
-            self.transformer.append(Transformer(dim, 1, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size))
+        # for i in range(depth):
+        self.transformer.append(Transformer(dim, 1, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size))
+        self.transformer.append(Transformer(dim, 1, heads*2, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size))
+        self.transformer.append(Transformer(dim, 3, heads*4, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size))
+        self.transformer.append(Transformer(dim, 1, heads*8, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size))
         
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
@@ -635,8 +638,10 @@ class ViP(nn.Module):
         if self.task == 'sod':
             num_classes = 1
             self.decoder = nn.ModuleList()
-            for i in range(depth-1):
-                self.decoder.append(TransformerDec(dim, 1, heads, dim_head, mlp_dim, emb_dropout, dropout))
+            # for i in range(depth-1):
+            self.decoder.append(TransformerDec(dim, 1, heads*4, dim_head, mlp_dim, emb_dropout, dropout))
+            self.decoder.append(TransformerDec(dim, 1, heads*2, dim_head, mlp_dim, emb_dropout, dropout))
+            self.decoder.append(TransformerDec(dim, 1, heads, dim_head, mlp_dim, emb_dropout, dropout))
             
             self.sod_head = nn.Sequential(
                 nn.Linear(dim, num_classes)
@@ -645,11 +650,11 @@ class ViP(nn.Module):
         else:
             num_classes = 1000 
             self.create_patches = nn.Sequential(
-            # Rearrange('b (h p1 w p2) c -> b (h w) (p1 p2 c)', h = image_size, p1 = 4, p2 = 4),
+            Rearrange('b (h p1 w p2) c -> b (h w) (p1 p2 c)', h = image_size, p1 = 4, p2 = 2),
             # # nn.LayerNorm(patch_dim),
             # nn.Linear(dim*16, 256),
-            WindowSampling(dim, 16, 16, 4, 1.0, dropout, emb_dropout),
-            TFM(256, 1, 16, 16, 256*4, emb_dropout, dropout)
+            # WindowSampling(dim, 16, 16, 4, 1.0, dropout, emb_dropout),
+            TFM(256, 2, 16, 16, 256*4, emb_dropout, dropout)
             # nn.LayerNorm(dim)
             )
             self.mlp_head = nn.Sequential(
