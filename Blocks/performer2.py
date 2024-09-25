@@ -638,7 +638,7 @@ class ViP(nn.Module):
             for i in range(depth-1):
                 self.decoder.append(TransformerDec(dim, 1, heads, dim_head, mlp_dim, emb_dropout, dropout))
             
-            self.mlp_head = nn.Sequential(
+            self.sod_head = nn.Sequential(
                 nn.Linear(dim, num_classes)
             )
 
@@ -715,7 +715,7 @@ class ViP(nn.Module):
             for idx, layer in enumerate(self.decoder):
                 x = layer(fts[idx],x)
             x= self.to_latent(x)
-            return self.mlp_head(x)
+            return self.sod_head(x)
         
         
 
