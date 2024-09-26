@@ -73,7 +73,7 @@ class SP_ImageNet_OGSWIN_APE_Wrapper(pl.LightningModule):
         # flops = FlopCountAnalysis(self.supert, inp)
         # print(kwargs['parameters'], kwargs['flops'])
         # assert(0)
-        self.mixup = Mixup(
+        self.mixup = Mixup(         
             mixup_alpha=0.8, cutmix_alpha=1.0, cutmix_minmax=None,
             prob=1.0, switch_prob=0.5, mode='batch',
             label_smoothing=0.1, num_classes=1000)

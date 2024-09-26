@@ -420,7 +420,7 @@ class TransformerEncoderToken(nn.Module):
     
 
 class TFMDecoder(nn.Module):
-    def __init__(self, q_dim, kv_dim, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0.):
+    def __init__(self, q_dim, kv_dim, depth, heads, dim_head, mlp_dim, resolution, dropout = 0., attn_dropout=0.):
         super().__init__()
         self.layers = nn.ModuleList([])
         for _ in range(depth):
@@ -430,7 +430,8 @@ class TFMDecoder(nn.Module):
             ]))
         
         if q_dim != kv_dim:
-            self.dim_lower = nn.Linear(kv_dim, q_dim)
+            self.dim_lower = nn.Sequential(nn.Linear(kv_dim, q_dim*4), 
+                                           Rearrange('b (h w) (c n m) -> b (h n w m) c', m = 2, n=2, h=resolution))
         else:
             self.dim_lower = nn.Identity()
         # if downsample:
@@ -444,11 +445,11 @@ class TFMDecoder(nn.Module):
         kv = self.dim_lower(kv)
 
         for attn, ff in self.layers:
-            q = attn(q, kv) + q
-            q = ff(q) + q
+            kv = attn(q, kv) + kv
+            kv = ff(kv) + kv
 
         
-        return q
+        return kv
 
 class PerformerEncoderToken(nn.Module):
     def __init__(self, dim, out_dim, nodes, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., downsample=False):
@@ -523,14 +524,14 @@ class PerformerEncoderToken(nn.Module):
     
 
 class TransformerDecoder(nn.Module):
-    def __init__(self, dim, out_dim, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0.):
+    def __init__(self, dim, out_dim, depth, heads, dim_head, mlp_dim, resolution, dropout = 0., attn_dropout=0.):
         super().__init__()
         self.layers = nn.ModuleList([])
         local_attn_heads = 0
         local_window_size = 256
         causal = False
         nb_features = None
-        generalized_attention = False
+        generalized_attention = True
         kernel_fn = nn.ReLU()
         # attn_dropout = 0.
         no_projection = False
@@ -545,17 +546,18 @@ class TransformerDecoder(nn.Module):
                                                  attn_out_bias = attn_out_bias)),
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
-
-        self.dim_lower = nn.Linear(out_dim, dim)
+        self.dim_lower = nn.Sequential(nn.Linear(out_dim, dim*4), 
+                                       Rearrange('b (h w) (c n m) -> b (h n w m) c', m = 2, n = 2, h = resolution, w = resolution))
 
         
     def forward(self, x, context):
+        
         context = self.dim_lower(context)
         
         for attn, ff in self.layers:
-            x = attn(x, context) + x
-            x = ff(x) + x
-        return x
+            context = attn(x, context) + context
+            context = ff(context) + context
+        return context
 
 
 class ViP(nn.Module):

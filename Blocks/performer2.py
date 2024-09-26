@@ -353,13 +353,15 @@ class PreNorm(nn.Module):
         return self.fn(self.norm(x), **kwargs)
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, hidden_dim, dropout = 0.):
+    def __init__(self, dim, hidden_dim, dropout = 0., out_dim=None):
         super().__init__()
+        if out_dim==None:
+            out_dim = dim
         self.net = nn.Sequential(
             nn.Linear(dim, hidden_dim),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, dim),
+            nn.Linear(hidden_dim, out_dim),
             nn.Dropout(dropout)
         )
     def forward(self, x):
@@ -368,7 +370,7 @@ class FeedForward(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, dim, depth, heads, num_local_heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., window_size=8):
+    def __init__(self, dim, depth, heads, num_local_heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., window_size=8, out_dim=None):
         super().__init__()
         self.layers = nn.ModuleList([])
         assert heads>=num_local_heads
@@ -382,6 +384,10 @@ class Transformer(nn.Module):
         no_projection = False
         qkv_bias = True
         attn_out_bias = True
+        if out_dim is not None:
+            self.final_layer = nn.Linear(dim, out_dim)
+        else:
+            self.final_layer = nn.Identity()
         
         self.heads = heads
         for _ in range(depth):
@@ -398,7 +404,8 @@ class Transformer(nn.Module):
         for attn, ff in self.layers:
             x = attn(x) + x
             x = ff(x) + x
-        return x
+        ds = x
+        return ds, self.final_layer(x)
     
 
 '''
@@ -490,7 +497,7 @@ class TransformerEncoder(nn.Module):
         local_window_size = 256
         causal = False
         nb_features = None
-        generalized_attention = False
+        generalized_attention = True
         kernel_fn = nn.ReLU()
         no_projection = False
         qkv_bias = True
@@ -559,7 +566,7 @@ class TransformerDecoder(nn.Module):
     
 
 class TransformerDec(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0.):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., out_dim=None):
         super().__init__()
         self.layers = nn.ModuleList([])
         local_attn_heads = 0
@@ -572,6 +579,10 @@ class TransformerDec(nn.Module):
         no_projection = False
         qkv_bias = True
         attn_out_bias = True
+        if out_dim is not None:
+            self.final_layer = nn.Linear(out_dim, dim)
+        else:
+            self.final_layer = nn.Identity()
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
                 PreNorm(dim, CrossAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
@@ -584,6 +595,7 @@ class TransformerDec(nn.Module):
 
         
     def forward(self, x, context):
+        context = self.final_layer(context)
         for attn, ff in self.layers:
             context = attn(x, context=context) + context
             context = ff(context) + context
@@ -622,10 +634,10 @@ class ViP(nn.Module):
         
         self.transformer =nn.ModuleList()
         # for i in range(depth):
-        self.transformer.append(Transformer(dim, 1, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size))
-        self.transformer.append(Transformer(dim, 1, heads*2, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size))
-        self.transformer.append(Transformer(dim, 3, heads*4, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size))
-        self.transformer.append(Transformer(dim, 1, heads*8, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size))
+        self.transformer.append(Transformer(dim, 4, heads, 0, dim_head, mlp_dim, emb_dropout, dropout, window_size, out_dim=dim*4))
+        # self.transformer.append(Transformer(dim*2, 1, heads*2, 0, dim_head, mlp_dim*2, emb_dropout, dropout, window_size, out_dim=dim*4))
+        self.transformer.append(Transformer(dim*4, 2, heads*4, 0, dim_head, mlp_dim*4, emb_dropout, dropout, window_size))
+        # self.transformer.append(Transformer(dim*8, 1, heads*8, 0, dim_head, mlp_dim*8, emb_dropout, dropout, window_size))
         
         # self.transformer2 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
         # self.transformer3 = Transformer(dim, block_depth, heads, dim_head, mlp_dim, emb_dropout, dropout)
@@ -639,9 +651,9 @@ class ViP(nn.Module):
             num_classes = 1
             self.decoder = nn.ModuleList()
             # for i in range(depth-1):
-            self.decoder.append(TransformerDec(dim, 1, heads*4, dim_head, mlp_dim, emb_dropout, dropout))
-            self.decoder.append(TransformerDec(dim, 1, heads*2, dim_head, mlp_dim, emb_dropout, dropout))
-            self.decoder.append(TransformerDec(dim, 1, heads, dim_head, mlp_dim, emb_dropout, dropout))
+            self.decoder.append(TransformerDec(dim*4, 1, heads*4, dim_head, mlp_dim*4, emb_dropout, dropout, out_dim=dim*8))
+            self.decoder.append(TransformerDec(dim*2, 1, heads*2, dim_head, mlp_dim*2, emb_dropout, dropout, out_dim=dim*4))
+            self.decoder.append(TransformerDec(dim, 1, heads, dim_head, mlp_dim, emb_dropout, dropout, out_dim=dim*2))
             
             self.sod_head = nn.Sequential(
                 nn.Linear(dim, num_classes)
@@ -649,12 +661,13 @@ class ViP(nn.Module):
 
         else:
             num_classes = 1000 
+            factor = 8
             self.create_patches = nn.Sequential(
-            Rearrange('b (h p1 w p2) c -> b (h w) (p1 p2 c)', h = image_size, p1 = 4, p2 = 2),
+            # Rearrange('b (h p1 w p2) c -> b (h w) (p1 p2 c)', h = image_size//factor, p1 = factor, p2 = factor),
             # # nn.LayerNorm(patch_dim),
-            # nn.Linear(dim*16, 256),
-            # WindowSampling(dim, 16, 16, 4, 1.0, dropout, emb_dropout),
-            TFM(256, 2, 16, 16, 256*4, emb_dropout, dropout)
+            # nn.Linear(dim*factor*factor, 256),
+            WindowSampling(dim*4, 16, 16, factor, 1.0, dropout, emb_dropout),
+            TFM(256, 1, 16, 16, 256*4, emb_dropout, dropout)
             # nn.LayerNorm(dim)
             )
             self.mlp_head = nn.Sequential(
@@ -697,9 +710,10 @@ class ViP(nn.Module):
 
         fts = []
         for layer in self.transformer:
-            x = layer(x)
-            fts.append(x)
-        
+            ds, x = layer(x)
+            fts.append(ds)
+            
+
         fts.reverse()
         fts = fts[1:]
         # x = torch.cat(all_xs, dim=-1)
@@ -813,32 +827,31 @@ class ViPU(nn.Module):
         self.img_size = image_size
         self.to_patch_embedding = nn.Sequential(
             # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
-            nn.LayerNorm(patch_dim),
             nn.Linear(patch_dim, dims[0]),
-            nn.LayerNorm(dims[0]),
         )
 
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
         # self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.dropout = nn.Dropout(emb_dropout)
-        self.locations = nn.Sequential(nn.Linear(2, dims[0]), nn.LayerNorm(dims[0]))
+        self.locations = nn.Sequential(nn.Linear(2, dims[0]))
         self.transformer_enc = nn.ModuleList([])
         resolutions = []
-        # for idx, depth in enumerate(depths):
-        #     if idx == len(depths)-1:
-        #         self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size//(2**idx), image_size//(2**idx)), depth,
-        #                             heads[idx], 32, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
-        #     elif idx < 2:
-        #         self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
-        #                             heads[idx], 32, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
-        #     else:
-        #         self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
-        #                             heads[idx], 32, int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
-        #     resolutions.append(image_size // (2 ** idx))
         for idx, depth in enumerate(depths):
             
-            self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
-                                heads[idx], dims[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
+            if idx == len(depths)-1:
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size//(2**idx), image_size//(2**idx)), depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
+            elif idx < 2:
+                self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
+            else:
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
+            resolutions.append(image_size // (2 ** idx))
+        # for idx, depth in enumerate(depths):
+            
+        #     self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
+        #                         heads[idx], dims[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
             
         # self.transformer_dec_1 = TransformerDecoder(dims[1], dims[2], (image_size//4, image_size//4), depths[1], heads[1], dims[1]//heads[1], int(mlp_ratio*dims[1]), emb_dropout, dropout, False)
         # self.transformer_dec_2 = TransformerDecoder(dims[0], dims[1], (image_size//2, image_size//2), depths[0], heads[0], dims[0]//heads[0], int(mlp_ratio*dims[0]), emb_dropout, dropout, False)
@@ -862,16 +875,18 @@ class ViPU(nn.Module):
         depths_reverse = depths[::-1][1:]
         dims_reverse = dims[::-1]
         heads_reverse = heads[::-1]
+        resolutions = resolutions[::-1]
+
        
         for idx, depth in enumerate(depths_reverse):
             if idx < len(depths_reverse)-2:
                 self.transformer_dec.append(TFMDecoder(dims_reverse[idx+1], dims_reverse[idx],  depth,
-                                    heads_reverse[idx+1], 32,
-                                      int(mlp_ratio*dims_reverse[idx+1]),emb_dropout, dropout))
+                                    heads_reverse[idx+1], dims_reverse[idx+1]//heads_reverse[idx+1],
+                                      int(mlp_ratio*dims_reverse[idx+1]), resolutions[idx], emb_dropout, dropout))
             else:
                 self.transformer_dec.append(PerformerDecoder(dims_reverse[idx+1], dims_reverse[idx], depth,
-                                    heads_reverse[idx+1], 32,
-                                      int(mlp_ratio*dims_reverse[idx+1]),emb_dropout, dropout))
+                                    heads_reverse[idx+1], dims_reverse[idx+1]//heads_reverse[idx+1],
+                                      int(mlp_ratio*dims_reverse[idx+1]), resolutions[idx], emb_dropout, dropout))
                 
 
         # self.mlp_head = nn.Sequential(
@@ -881,9 +896,16 @@ class ViPU(nn.Module):
         # self.upsample = nn.Upsample(size=image_size)
         # self.sod_head = nn.Linear(sum(dims), 1)
         self.sod_head = nn.Linear(dims_reverse[-1], 1)
+        self.proj_updater_enc = ProjectionUpdater(self.transformer_enc, 1000)
+        self.proj_updater_dec = ProjectionUpdater(self.transformer_dec, 1000)
 
+    def fix_projection_matrices_(self):
+        self.proj_updater_enc.feature_redraw_interval = None
+        self.proj_updater_dec.feature_redraw_interval = None
 
     def forward(self, x):
+        self.proj_updater_enc.redraw_projections()
+        self.proj_updater_dec.redraw_projections()
         centroids = x[:, :, :2].float()
         # fft = x[:, :, 8:-10]
         # lbp = x[:, :,  -10:]
@@ -910,6 +932,7 @@ class ViPU(nn.Module):
 
             ds, x = layer(x)
             fts.append(ds)
+           
             
             
         fts.reverse()
