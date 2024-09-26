@@ -472,13 +472,60 @@ class TransformerEncoder(nn.Module):
             # x, perm, score = self.downsample(x)
         return ds, x
 '''  
+
+
+class LineMerging(nn.Module):
+    r""" Patch Merging Layer.
+
+    Args:
+        input_resolution (tuple[int]): Resolution of input feature.
+        dim (int): Number of input channels.
+        norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
+    """
+
+    def __init__(self, input_resolution, dim, out_dim, norm_layer=nn.LayerNorm):
+        super().__init__()
+        self.input_resolution = input_resolution
+        self.dim = dim
+        self.out_dim = out_dim
+        self.reduction = nn.Linear(2 * dim, out_dim, bias=False)
+        self.norm = norm_layer(2 * dim)
+
+    def forward(self, x):
+        """
+        x: B, H*W, C
+        """
+        H, W = self.input_resolution
+        B, L, C = x.shape
+        
+        assert L == H * W, "input feature has wrong size"
+        assert H % 2 == 0 and W % 2 == 0, f"x size ({H}*{W}) are not even."
+
+        x = x.view(B, H, W, C)
+
+        x0 = x[:, :, 0::2, :]  # B H W/2 C
+        x1 = x[:, :, 1::2, :]  # B H W/2 C
+
+        x = torch.cat([x0, x1], -1)  # B H W/2 2*C
+        x = x.view(B, -1, 2 * C)  # B H*W/2 4*C
+
+        x = self.norm(x)
+        x = self.reduction(x)
+
+        return x
+
+    def extra_repr(self) -> str:
+        return f"input_resolution={self.input_resolution}, dim={self.dim}"
+
+
 class TFMEncoder(nn.Module):
     def __init__(self, dim, out_dim, input_resolution, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., downsample=False):
         super().__init__()
         self.layers = TFM(dim=dim, depth=depth, heads=heads, dim_head=dim_head, mlp_dim=mlp_dim, dropout=dropout, attn_dropout=attn_dropout)
         if downsample:
             # self.downsample = PatchMerging(input_resolution, dim, out_dim)
-            self.downsample = WindowSampling(dim, heads*2, dim_head, 2, 1.0, attn_dropout, dropout)
+            self.downsample = LineMerging(input_resolution, dim, out_dim)
+            # self.downsample = WindowSampling(dim, heads*2, dim_head, 2, 1.0, attn_dropout, dropout)
         else:
             self.downsample = None
     def forward(self, x):
@@ -514,7 +561,8 @@ class TransformerEncoder(nn.Module):
             ]))
         if downsample:
             # self.downsample = PatchMerging(input_resolution, dim, out_dim)
-            self.downsample = WindowSampling(dim, heads*2, dim_head, 2, 1.0, attn_dropout, dropout)
+            self.downsample = LineMerging(input_resolution, dim, out_dim)
+            # self.downsample = WindowSampling(dim, heads*2, dim_head, 2, 1.0, attn_dropout, dropout)
         else:
             self.downsample = None
     def forward(self, x):
@@ -1328,13 +1376,13 @@ class ViPEnc(nn.Module):
         for idx, depth in enumerate(depths):
             
             if idx == len(depths)-1:
-                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size//(2**idx), image_size//(2**idx)), depth,
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size, image_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
             elif idx < 2:
-                self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
+                self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size, image_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
             else:
-                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size, image_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
             self.resolutions.append(image_size // (2 ** idx))
 
