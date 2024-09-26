@@ -12,7 +12,7 @@ from util.optimizers import SoftTargetCrossEntropy
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingWarmRestarts
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 # from Blocks.performer import Performer
-from Blocks.performer_diffpool import ViPEnc
+from Blocks.performer2 import ViPEnc
 import torch.nn as nn
 
 class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
@@ -45,7 +45,7 @@ class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
         
         self.classes= 1000
         self.supert = ViPEnc(image_size=self.res[0], patch_size=1,  dims=self.dims, heads=self.heads,
-                          mlp_ratio=4, channels=16, depths=self.depths, dropout=self.dropout_edge, emb_dropout=self.dropout
+                          mlp_ratio=4, channels=input_dim, depths=self.depths, dropout=self.dropout_edge, emb_dropout=self.dropout
                           )
         # self.supert = Performer(input_dim, self.tfm_hp[2], self.tfm_hp[0], self.tfm_hp[1], 1000, attn_dropout=self.dropout_edge,
         #                         dropout=self.dropout, mlp_ratio=4)
@@ -219,6 +219,7 @@ class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
         self.log('Final Test Accuracy', acc, sync_dist=True)
 
     def on_test_start(self):
+        self.supert.fix_projection_matrices_()
         self.test_acc = 0
         self.test_num_samples = 0
 

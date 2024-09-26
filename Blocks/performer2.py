@@ -824,31 +824,19 @@ class ViPU(nn.Module):
 
         num_patches = (image_height // patch_height) * (image_width // patch_width)
         patch_dim = channels
+
+        vip = ViPEnc(image_size=image_size, patch_size=1, dims=dims, depths=depths, heads=heads,
+                      mlp_ratio=mlp_ratio, channels=channels, dropout=dropout, emb_dropout=emb_dropout)
+
      
         self.img_size = image_size
-        self.to_patch_embedding = nn.Sequential(
-            # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
-            nn.Linear(patch_dim, dims[0]),
-        )
-
+        self.to_patch_embedding = vip.to_patch_embedding        
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
         # self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
-        self.dropout = nn.Dropout(emb_dropout)
-        self.locations = nn.Sequential(nn.Linear(2, dims[0]))
-        self.transformer_enc = nn.ModuleList([])
-        resolutions = []
-        for idx, depth in enumerate(depths):
-            
-            if idx == len(depths)-1:
-                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size//(2**idx), image_size//(2**idx)), depth,
-                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
-            elif idx < 2:
-                self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
-                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
-            else:
-                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
-                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
-            resolutions.append(image_size // (2 ** idx))
+        self.dropout = vip.dropout
+        self.locations = vip.locations
+        self.transformer_enc = vip.transformer_enc
+        
         # for idx, depth in enumerate(depths):
             
         #     self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
@@ -876,7 +864,7 @@ class ViPU(nn.Module):
         depths_reverse = depths[::-1][1:]
         dims_reverse = dims[::-1]
         heads_reverse = heads[::-1]
-        resolutions = resolutions[::-1]
+        resolutions = vip.resolutions[::-1]
 
        
         for idx, depth in enumerate(depths_reverse):
@@ -899,6 +887,7 @@ class ViPU(nn.Module):
         self.sod_head = nn.Linear(dims_reverse[-1], 1)
         self.proj_updater_enc = ProjectionUpdater(self.transformer_enc, 1000)
         self.proj_updater_dec = ProjectionUpdater(self.transformer_dec, 1000)
+        del vip
 
     def fix_projection_matrices_(self):
         self.proj_updater_enc.feature_redraw_interval = None
@@ -1323,23 +1312,20 @@ class ViPEnc(nn.Module):
         num_patches = (image_height // patch_height) * (image_width // patch_width)
         patch_dim = channels
      
-
+        self.img_size = image_size
         self.to_patch_embedding = nn.Sequential(
             # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
-            nn.LayerNorm(patch_dim),
             nn.Linear(patch_dim, dims[0]),
-            nn.LayerNorm(dims[0]),
         )
 
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
         # self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.dropout = nn.Dropout(emb_dropout)
-        self.locations = nn.Sequential(nn.Linear(22, dims[0]), nn.LayerNorm(dims[0]))
-
-        
+        self.locations = nn.Sequential(nn.Linear(2, dims[0]))
         self.transformer_enc = nn.ModuleList([])
-        nodes = image_size*image_size
+        self.resolutions = []
         for idx, depth in enumerate(depths):
+            
             if idx == len(depths)-1:
                 self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size//(2**idx), image_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
@@ -1349,26 +1335,28 @@ class ViPEnc(nn.Module):
             else:
                 self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
-
-
-            
+            self.resolutions.append(image_size // (2 ** idx))
 
         self.mlp_head = nn.Sequential(
             nn.LayerNorm(dims[-1]),
             nn.Linear(dims[-1], 1000)
         )
+        self.proj_updater_enc = ProjectionUpdater(self.transformer_enc, 1000)
+        
+    def fix_projection_matrices_(self):
+        self.proj_updater_enc.feature_redraw_interval = None
 
 
 
     def forward(self, x):
+        self.proj_updater_enc.redraw_projections()
         centroids = x[:, :, :2]
         fft = x[:, :, 8:-10]
         lbp = x[:, :,  -10:]
         color = x[:, :, 2:8]
-        x = torch.cat((color, lbp), dim=2)
+        x = torch.cat((color, lbp, fft), dim=2)
         
-        locations = torch.cat((centroids, fft), dim=2)
-        locations = self.locations(locations)
+        locations = self.locations(centroids)
 
 
         x = self.to_patch_embedding(x)
