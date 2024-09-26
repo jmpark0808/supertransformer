@@ -512,7 +512,8 @@ class TransformerEncoder(nn.Module):
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
         if downsample:
-            self.downsample = PatchMerging(input_resolution, dim, out_dim)
+            # self.downsample = PatchMerging(input_resolution, dim, out_dim)
+            self.downsample = WindowSampling(dim, heads*2, dim_head, 2, 1.0, attn_dropout, dropout)
         else:
             self.downsample = None
     def forward(self, x):
