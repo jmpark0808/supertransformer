@@ -524,8 +524,8 @@ class TFMEncoder(nn.Module):
         self.layers = TFM(dim=dim, depth=depth, heads=heads, dim_head=dim_head, mlp_dim=mlp_dim, dropout=dropout, attn_dropout=attn_dropout)
         if downsample:
             # self.downsample = PatchMerging(input_resolution, dim, out_dim)
-            self.downsample = LineMerging(input_resolution, dim, out_dim)
-            # self.downsample = WindowSampling(dim, heads*2, dim_head, 2, 1.0, attn_dropout, dropout)
+            # self.downsample = LineMerging(input_resolution, dim, out_dim)
+            self.downsample = WindowSampling(dim, heads*2, dim_head, 2, 1.0, attn_dropout, dropout)
         else:
             self.downsample = None
     def forward(self, x):
@@ -561,8 +561,8 @@ class TransformerEncoder(nn.Module):
             ]))
         if downsample:
             # self.downsample = PatchMerging(input_resolution, dim, out_dim)
-            self.downsample = LineMerging(input_resolution, dim, out_dim)
-            # self.downsample = WindowSampling(dim, heads*2, dim_head, 2, 1.0, attn_dropout, dropout)
+            # self.downsample = LineMerging(input_resolution, dim, out_dim)
+            self.downsample = WindowSampling(dim, heads*2, dim_head, 2, 1.0, attn_dropout, dropout)
         else:
             self.downsample = None
     def forward(self, x):
