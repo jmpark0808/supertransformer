@@ -146,7 +146,6 @@ class SwinUTransformer(nn.Module):
         x = self.patch_embed(x)
         
         x = self.pos_drop(x)
-        print(x.size(), pos.size())
         x = x + pos
 
         ft = []
