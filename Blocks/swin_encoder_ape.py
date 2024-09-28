@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from timm.models.layers import trunc_normal_
 from Blocks.swin_common import PatchEmbed, BasicLayer, PatchMerging
+from Blocks.performer2 import LineMerging
 
 class SwinTransformer(nn.Module):
     r""" Swin Transformer
@@ -49,7 +50,7 @@ class SwinTransformer(nn.Module):
         # split image into non-overlapping patches
 
         self.patch_embed = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=in_chans-(coeff*2), embed_dim=embed_dim[0],
+            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim[0],
             norm_layer=norm_layer if self.patch_norm else None)
         num_patches = self.patch_embed.num_patches
         patches_resolution = self.patch_embed.patches_resolution
@@ -66,10 +67,21 @@ class SwinTransformer(nn.Module):
         # build layers
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
+            if i_layer == 0:
+                merge = PatchMerging 
+                resolution = (patches_resolution[0] // (2 ** i_layer),
+                                                 patches_resolution[1] // (2 ** i_layer))
+            elif (i_layer < self.num_layers - 1):
+                merge = LineMerging 
+                resolution = (patches_resolution[0] // 2,
+                                                 patches_resolution[1] // (2 ** i_layer))
+            else:
+                merge = None
+                resolution = (patches_resolution[0] // 2,
+                                                 patches_resolution[1] // (2 ** i_layer))
             layer = BasicLayer(dim=embed_dim[i_layer],
                                out_dim=embed_dim[i_layer+1] if i_layer < self.num_layers-1 else None,
-                               input_resolution=(patches_resolution[0] // (2 ** i_layer),
-                                                 patches_resolution[1] // (2 ** i_layer)),
+                               input_resolution=resolution,
                                depth=depths[i_layer],
                                num_heads=num_heads[i_layer],
                                window_size=window_size,
@@ -78,12 +90,12 @@ class SwinTransformer(nn.Module):
                                drop=drop_rate, attn_drop=attn_drop_rate,
                                drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
                                norm_layer=norm_layer,
-                               downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
+                               downsample=merge,
                                use_checkpoint=use_checkpoint,
                                fused_window_process=fused_window_process)
             self.layers.append(layer)
 
-        self.locations = nn.Sequential(*[nn.Linear(2+(coeff*2), embed_dim[0]), nn.ReLU(), nn.Linear(embed_dim[0], embed_dim[0])])
+        self.locations = nn.Sequential(*[nn.Linear(2, embed_dim[0])])
         
         self.norm = norm_layer(self.num_features)
         self.avgpool = nn.AdaptiveAvgPool1d(1)
@@ -127,9 +139,9 @@ class SwinTransformer(nn.Module):
         fft = x[:, 8:-10, :, :]
         lbp = x[:, -10:, :, :]
         color = x[:, 2:8, :, :]
-        x = torch.cat((color, lbp), dim=1)
-        locations = torch.cat((centroids, fft), dim=1).permute(0, 2, 3, 1)
-        locations = self.locations(locations)
+        x = torch.cat((color, lbp, fft), dim=1)
+        # locations = torch.cat((centroids, fft), dim=1).permute(0, 2, 3, 1)
+        locations = self.locations(centroids.permute(0, 2, 3, 1))
         locations = locations.reshape(locations.size(0), -1, locations.size(3))
         x = self.forward_features(x, locations)
         x = self.head(x)
