@@ -95,7 +95,7 @@ class SwinTransformer(nn.Module):
                                fused_window_process=fused_window_process)
             self.layers.append(layer)
 
-        self.locations = nn.Sequential(*[nn.Linear(22, embed_dim[0])])
+        self.locations = nn.Sequential(*[nn.Linear(22, embed_dim[0]), nn.ReLU(), nn.Linear(embed_dim[0], embed_dim[0])])
         
         self.norm = norm_layer(self.num_features)
         self.avgpool = nn.AdaptiveAvgPool1d(1)
