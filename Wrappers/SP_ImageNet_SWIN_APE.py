@@ -108,7 +108,7 @@ class SP_ImageNet_OGSWIN_APE_Wrapper(pl.LightningModule):
         self.trainer.fit_loop.setup_data()
         dataset= self.trainer.train_dataloader
         self.scheduler = CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
-                                                      1, 5e-8)
+                                                      1, 5e-6)
         # self.scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=7, min_lr = 5e-8)
         
         return optimizer
