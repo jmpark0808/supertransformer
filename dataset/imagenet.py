@@ -62,18 +62,18 @@ class ImageNetDataset(data.Dataset):
 
 
         features = torch.tensor(features_np).float()
-        if self.augmentation:
+        # if self.augmentation:
 
-            randaug = RandAugment(5)
-            color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
-            color_space = (color_space*255).to(torch.uint8)
-            color_space = randaug(color_space).float()
-            color_space /= 255.
-            # plt.imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
-            # plt.show()
-            color_space = color_space.reshape(3, res*res).permute(1, 0)
+        #     randaug = RandAugment(5)
+        #     color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
+        #     color_space = (color_space*255).to(torch.uint8)
+        #     color_space = randaug(color_space).float()
+        #     color_space /= 255.
+        #     # plt.imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
+        #     # plt.show()
+        #     color_space = color_space.reshape(3, res*res).permute(1, 0)
             
-            features[:, 2:5] = color_space
+        #     features[:, 2:5] = color_space
 
         target = torch.tensor(np.load(self.target_list[item]))
 
