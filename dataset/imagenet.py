@@ -62,27 +62,27 @@ class ImageNetDataset(data.Dataset):
 
 
         features = torch.tensor(features_np).float()
-        if self.augmentation:
+        # if self.augmentation:
             
-            randaug = RandAugment(5)
-            erase = transforms.RandomErasing(0.25)
-            color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
-            # fig, ax = plt.subplots(1, 2)
-            # ax[0].imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
-            # op_names = 'No augment'
-            if np.random.random() < 0.5:
-                color_space = (color_space*255).to(torch.uint8)
-                color_space, op_names = randaug(color_space)
-                color_space = color_space.float()
-                color_space /= 255.
-            color_space = erase(color_space)
+        #     randaug = RandAugment(5)
+        #     erase = transforms.RandomErasing(0.25)
+        #     color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
+        #     # fig, ax = plt.subplots(1, 2)
+        #     # ax[0].imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
+        #     # op_names = 'No augment'
+        #     if np.random.random() < 0.5:
+        #         color_space = (color_space*255).to(torch.uint8)
+        #         color_space, op_names = randaug(color_space)
+        #         color_space = color_space.float()
+        #         color_space /= 255.
+        #     color_space = erase(color_space)
             
-            # ax[1].imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
-            # ax[1].set_title(op_names)
-            # plt.show()
-            color_space = color_space.reshape(3, res*res).permute(1, 0)
+        #     # ax[1].imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
+        #     # ax[1].set_title(op_names)
+        #     # plt.show()
+        #     color_space = color_space.reshape(3, res*res).permute(1, 0)
             
-            features[:, 2:5] = color_space
+        #     features[:, 2:5] = color_space
 
         target = torch.tensor(np.load(self.target_list[item]))
 
