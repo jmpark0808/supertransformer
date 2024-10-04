@@ -110,7 +110,30 @@ class SP_PERFU_Wrapper(pl.LightningModule):
         Choose what optimizers and learning-rate schedulers to use in your optimization.
         """
         
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+        skip_list = {'absolute_pos_embed'}
+        skip_keywords = {'relative_position_bias_table'}
+        has_decay = []
+        no_decay = []
+
+        def check_keywords_in_name(name, keywords=()):
+            isin = False
+            for keyword in keywords:
+                if keyword in name:
+                    isin = True
+            return isin
+
+        for name, param in self.supert.named_parameters():
+            if not param.requires_grad:
+                continue  # frozen weights
+            if len(param.shape) == 1 or name.endswith(".bias") or (name in skip_list) or \
+                    check_keywords_in_name(name, skip_keywords):
+                no_decay.append(param)
+                # print(f"{name} has no weight decay")
+            else:
+                has_decay.append(param)
+        parameters = [{'params': has_decay},
+                {'params': no_decay, 'weight_decay': 0.}]
+        optimizer = torch.optim.AdamW(parameters, lr=self.lr, weight_decay=0.05)
         # self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         #     optimizer,
         #     mode='min',
@@ -119,11 +142,11 @@ class SP_PERFU_Wrapper(pl.LightningModule):
         #     min_lr=1e-8,
         #     verbose=True)
         
-        # self.trainer.fit_loop.setup_data()
-        # dataset= self.trainer.train_dataloader
-        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
-        #                                               1, 5e-8)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=self.es_patience, min_lr = 5e-8)
+        self.trainer.fit_loop.setup_data()
+        dataset= self.trainer.train_dataloader
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
+                                                      1, 5e-8)
+        # self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=self.es_patience, min_lr = 5e-8)
         return optimizer
       
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure):
@@ -242,8 +265,8 @@ class SP_PERFU_Wrapper(pl.LightningModule):
         self.num_samples += features.size(0)
         self.log('loss', loss.item())
         self.iteration += 1
-        # if self.current_epoch >= self.warmup_epochs:
-        #     self.scheduler.step()
+        if self.current_epoch >= self.warmup_epochs:
+            self.scheduler.step()
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx):
@@ -335,8 +358,8 @@ class SP_PERFU_Wrapper(pl.LightningModule):
         self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
 
         self.log('Test MAE', self.maes_test/self.mean_num_test)
-        if self.current_epoch >= self.warmup_epochs:
-            self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
+        # if self.current_epoch >= self.warmup_epochs:
+        #     self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
         self.validation_step_outputs.clear()
 
     def on_validation_start(self):
