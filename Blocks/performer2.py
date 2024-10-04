@@ -282,7 +282,7 @@ class Attention(nn.Module):
         self.to_k = nn.Linear(dim, inner_dim, bias=qkv_bias)
         self.to_v = nn.Linear(dim, inner_dim, bias=qkv_bias)
         self.to_out = nn.Linear(inner_dim, dim, bias = attn_out_bias)
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout1d(dropout)
         
 
     def forward(self, x, pos_emb = None, context = None, mask = None, context_mask = None, **kwargs):
@@ -295,8 +295,10 @@ class Attention(nn.Module):
         context_mask = default(context_mask, mask) if not cross_attend else context_mask
   
         q, k, v = self.to_q(x), self.to_k(context), self.to_v(context)
-        
+        q = self.dropout(q)
+        k = self.dropout(k)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), (q, k, v))
+        
         
         (q, lq), (k, lk), (v, lv) = map(lambda t: (t[:, :gh], t[:, gh:]), (q, k, v))
         
@@ -323,7 +325,7 @@ class Attention(nn.Module):
         out = rearrange(out, 'b h n d -> b n (h d)')
 #         print("Attention", out.size())
         out =  self.to_out(out)
-        out = self.dropout(out)
+        # out = self.dropout(out)
         return out
 
 
@@ -1377,13 +1379,13 @@ class ViPEnc(nn.Module):
             
             if idx == len(depths)-1:
                 self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size//(2**idx), image_size//(2**idx)), depth,
-                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),0, 0, downsample=False))
             elif idx < 2:
                 self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
             else:
                 self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
-                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),0, 0, downsample=True))
             self.resolutions.append(image_size // (2 ** idx))
 
         self.mlp_head = nn.Sequential(
