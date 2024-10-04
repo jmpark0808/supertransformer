@@ -67,23 +67,18 @@ class SwinTransformer(nn.Module):
         # build layers
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
-            # if i_layer == 0:
-            if (i_layer < self.num_layers - 1):
+            if i_layer == 0:
                 merge = PatchMerging 
                 resolution = (patches_resolution[0] // (2 ** i_layer),
                                                     patches_resolution[1] // (2 ** i_layer))
+            elif (i_layer < self.num_layers - 1):
+                merge = LineMerging 
+                resolution = (patches_resolution[0] // 2,
+                                                 patches_resolution[1] // (2 ** i_layer))
             else:
                 merge = None
-                resolution = (patches_resolution[0] // (2 ** i_layer),
-                                                    patches_resolution[1] // (2 ** i_layer))
-            # elif (i_layer < self.num_layers - 1):
-            #     merge = LineMerging 
-            #     resolution = (patches_resolution[0] // 2,
-            #                                      patches_resolution[1] // (2 ** i_layer))
-            # else:
-            #     merge = None
-            #     resolution = (patches_resolution[0] // 2,
-            #                                      patches_resolution[1] // (2 ** i_layer))
+                resolution = (patches_resolution[0] // 2,
+                                                 patches_resolution[1] // (2 ** i_layer))
             layer = BasicLayer(dim=embed_dim[i_layer],
                                out_dim=embed_dim[i_layer+1] if i_layer < self.num_layers-1 else None,
                                input_resolution=resolution,
