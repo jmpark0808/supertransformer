@@ -406,9 +406,11 @@ class SPDataset(data.Dataset):
             randaug = RandAugment(5)
             res = int(self.num_seg**0.5)
             color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
-            color_space = (color_space*255).to(torch.uint8)
-            color_space = randaug(color_space).float()
-            color_space /= 255.
+            if np.random.random() < 0.5:
+                color_space = (color_space*255).to(torch.uint8)
+                color_space, _ = randaug(color_space)
+                color_space = color_space.float()
+                color_space /= 255.
             # plt.imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
             # plt.show()
             color_space = color_space.reshape(3, self.num_seg).permute(1, 0)
