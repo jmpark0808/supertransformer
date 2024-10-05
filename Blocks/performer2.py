@@ -297,6 +297,7 @@ class Attention(nn.Module):
         q, k, v = self.to_q(x), self.to_k(context), self.to_v(context)
         q = self.dropout(q)
         k = self.dropout(k)
+        v = self.dropout(v)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), (q, k, v))
         
         
