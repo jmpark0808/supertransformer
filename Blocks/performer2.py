@@ -288,6 +288,8 @@ class Attention(nn.Module):
     def forward(self, x, pos_emb = None, context = None, mask = None, context_mask = None, **kwargs):
         
         b, n, _, h, gh = *x.shape, self.heads, self.global_heads
+
+        x = self.dropout(x)
         
         cross_attend = exists(context)
         # print(x.size(), context.size())
@@ -295,9 +297,7 @@ class Attention(nn.Module):
         context_mask = default(context_mask, mask) if not cross_attend else context_mask
   
         q, k, v = self.to_q(x), self.to_k(context), self.to_v(context)
-        q = self.dropout(q)
-        k = self.dropout(k)
-        v = self.dropout(v)
+        
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), (q, k, v))
         
         
