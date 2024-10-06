@@ -526,8 +526,8 @@ class TFMEncoder(nn.Module):
         super().__init__()
         self.layers = TFM(dim=dim, depth=depth, heads=heads, dim_head=dim_head, mlp_dim=mlp_dim, dropout=dropout, attn_dropout=attn_dropout)
         if downsample:
-            self.downsample = PatchMerging(input_resolution, dim, out_dim)
-            # self.downsample = LineMerging(input_resolution, dim, out_dim)
+            # self.downsample = PatchMerging(input_resolution, dim, out_dim)
+            self.downsample = LineMerging(input_resolution, dim, out_dim)
             # self.downsample = WindowSampling(dim, heads*2, dim_head, 2, 1.0, attn_dropout, dropout)
         else:
             self.downsample = None
@@ -563,8 +563,8 @@ class TransformerEncoder(nn.Module):
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
         if downsample:
-            self.downsample = PatchMerging(input_resolution, dim, out_dim)
-            # self.downsample = LineMerging(input_resolution, dim, out_dim)
+            # self.downsample = PatchMerging(input_resolution, dim, out_dim)
+            self.downsample = LineMerging(input_resolution, dim, out_dim)
             # self.downsample = WindowSampling(dim, heads*2, dim_head, 2, 1.0, attn_dropout, dropout)
         else:
             self.downsample = None
@@ -1384,13 +1384,13 @@ class ViPEnc(nn.Module):
         for idx, depth in enumerate(depths):
             
             if idx == len(depths)-1:
-                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size//(2**idx), image_size//(2**idx)), depth,
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size, image_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),0, 0, downsample=False))
             elif idx < 2:
-                self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
+                self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size, image_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
             else:
-                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size//(2**idx), image_size//(2**idx)), depth,
+                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size, image_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),0, 0, downsample=True))
             self.resolutions.append(image_size // (2 ** idx))
 
