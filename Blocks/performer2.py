@@ -282,14 +282,13 @@ class Attention(nn.Module):
         self.to_k = nn.Linear(dim, inner_dim, bias=qkv_bias)
         self.to_v = nn.Linear(dim, inner_dim, bias=qkv_bias)
         self.to_out = nn.Linear(inner_dim, dim, bias = attn_out_bias)
-        self.dropout = nn.Dropout1d(dropout)
+        self.dropout = nn.Dropout(dropout)
         
 
     def forward(self, x, pos_emb = None, context = None, mask = None, context_mask = None, **kwargs):
         
         b, n, _, h, gh = *x.shape, self.heads, self.global_heads
 
-        x = self.dropout(x)
         
         cross_attend = exists(context)
         # print(x.size(), context.size())
@@ -326,7 +325,7 @@ class Attention(nn.Module):
         out = rearrange(out, 'b h n d -> b n (h d)')
 #         print("Attention", out.size())
         out =  self.to_out(out)
-        # out = self.dropout(out)
+        out = self.dropout(out)
         return out
 
 
@@ -1385,13 +1384,13 @@ class ViPEnc(nn.Module):
             
             if idx == len(depths)-1:
                 self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size, image_size//(2**idx)), depth,
-                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),0, 0, downsample=False))
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
             elif idx < 2:
                 self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size, image_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
             else:
                 self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size, image_size//(2**idx)), depth,
-                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),0, 0, downsample=True))
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]), emb_dropout, dropout, downsample=True))
             self.resolutions.append(image_size // (2 ** idx))
 
         self.mlp_head = nn.Sequential(
