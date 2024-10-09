@@ -430,8 +430,10 @@ class TFMDecoder(nn.Module):
             ]))
         
         if q_dim != kv_dim:
-            self.dim_lower = nn.Sequential(nn.Linear(kv_dim, q_dim*4), 
-                                           Rearrange('b (h w) (c n m) -> b (h n w m) c', n=2, m=2, w=resolution))
+            # self.dim_lower = nn.Sequential(nn.Linear(kv_dim, q_dim*4), 
+            #                                Rearrange('b (h w) (c n m) -> b (h n w m) c', n=2, m=2, w=resolution))
+            self.dim_lower = nn.Sequential(nn.Linear(kv_dim, q_dim*2), 
+                                           Rearrange('b (h w) (c n) -> b (h w n) c', n=2, w=resolution))
         else:
             self.dim_lower = nn.Identity()
         # if downsample:
@@ -546,8 +548,11 @@ class TransformerDecoder(nn.Module):
                                                  attn_out_bias = attn_out_bias)),
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
-        self.dim_lower = nn.Sequential(nn.Linear(out_dim, dim*4), 
-                                       Rearrange('b (h w) (c n m) -> b (h n w m) c', n = 2, m=2, w = resolution))
+        # self.dim_lower = nn.Sequential(nn.Linear(out_dim, dim*4), 
+        #                                Rearrange('b (h w) (c n m) -> b (h n w m) c', n = 2, m=2, w = resolution))
+        
+        self.dim_lower = nn.Sequential(nn.Linear(out_dim, dim*2), 
+                                       Rearrange('b (h w) (c n) -> b (h w n) c', n = 2, w = resolution))
 
         
     def forward(self, x, context):

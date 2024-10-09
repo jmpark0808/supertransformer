@@ -1,4 +1,4 @@
-# from typing import Callable, Optional, Union
+#from typing import Callable, Optional, Union
 # from einops import rearrange
 # import torch
 # from torch import Tensor
@@ -407,17 +407,17 @@
 
 
 # -------------------------------------------------
-import torch
+# import torch
 
-a = torch.zeros(100, 2)
-ind = 0 
-for i in range(0, 10):
-    for j in range(0, 10):
-        a[ind] = torch.tensor([i, j])
-        ind +=1
-print(a)
-b = torch.nn.LayerNorm(2)
-c = b(a)
-print(c)
+# a = torch.zeros(100, 2)
+# ind = 0 
+# for i in range(0, 10):
+#     for j in range(0, 10):
+#         a[ind] = torch.tensor([i, j])
+#         ind +=1
+# print(a)
+# b = torch.nn.LayerNorm(2)
+# c = b(a)
+# print(c)
 
         

@@ -75,8 +75,8 @@ class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
         self.loss_fn = SoftTargetCrossEntropy()
         self.iteration = 0
         self.test_iteration = 0
+        self.start_training_flag = False
         self.save_hyperparameters()
-        self.switch_flag = True
         
 
     def loss(self, pred, label):
@@ -167,10 +167,12 @@ class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
         logging resources:
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
-        # if self.trainer.current_epoch >= self.warmup_epochs and self.switch_flag:
-        #     self.trainer.optimizers[0] = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=0.00005)
-        #     self.scheduler = ReduceLROnPlateau(self.trainer.optimizers[0], mode='max', factor=0.1, patience=self.es_patience, min_lr = 5e-8)
-        #     self.switch_flag = False
+        if not self.start_training_flag and self.global_step != 0:
+            self.trainer.fit_loop.setup_data()
+            dataset= self.trainer.train_dataloader
+            for _ in range(self.global_step-len(dataset)*self.warmup_epochs):
+                self.scheduler.step()
+            self.start_training_flag  = True
 
 
         features, target = batch
