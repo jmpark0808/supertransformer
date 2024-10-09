@@ -87,6 +87,7 @@ class SP_ImageNet_OGSWIN_APE_Wrapper(pl.LightningModule):
         self.loss_fn = SoftTargetCrossEntropy()
         self.iteration = 0
         self.test_iteration = 0
+        self.start_training_flag = False
         self.save_hyperparameters()
         
 
@@ -133,8 +134,8 @@ class SP_ImageNet_OGSWIN_APE_Wrapper(pl.LightningModule):
         
         self.scheduler = CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
                                                       1, 5e-6)
-        for _ in range(self.global_step-len(dataset)*self.warmup_epochs):
-            self.scheduler.step()
+        
+        
         # self.scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=7, min_lr = 5e-8)
         
         return optimizer
@@ -195,6 +196,14 @@ class SP_ImageNet_OGSWIN_APE_Wrapper(pl.LightningModule):
         logging resources:
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
+        if not self.start_training_flag and self.global_step != 0:
+            self.trainer.fit_loop.setup_data()
+            dataset= self.trainer.train_dataloader
+            for _ in range(self.global_step-len(dataset)*self.warmup_epochs):
+                self.scheduler.step()
+            self.start_traiing_flag = True
+
+            
         features, target = batch
 
         features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
@@ -215,6 +224,7 @@ class SP_ImageNet_OGSWIN_APE_Wrapper(pl.LightningModule):
 
         self.train_acc += acc
         self.num_samples += n
+        
 
         self.log('loss', loss.item(), sync_dist=True)
         self.iteration += 1
