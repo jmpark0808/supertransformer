@@ -201,7 +201,7 @@ class SP_ImageNet_OGSWIN_APE_Wrapper(pl.LightningModule):
             dataset= self.trainer.train_dataloader
             for _ in range(self.global_step-len(dataset)*self.warmup_epochs):
                 self.scheduler.step()
-            self.start_traiing_flag = True
+            self.start_training_flag  = True
 
             
         features, target = batch
