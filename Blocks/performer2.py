@@ -897,59 +897,59 @@ class ViPU(nn.Module):
         # self.transformer_dec_2 = TransformerDecoder(dims[0], dims[1], (image_size//2, image_size//2), depths[0], heads[0], dims[0]//heads[0], int(mlp_ratio*dims[0]), emb_dropout, dropout, False)
         # self.transformer_dec_3 = TransformerDecoder(dim, (image_size//2, image_size//2), depth, heads, dim_head, mlp_dim, emb_dropout, dropout, True)
 
-        # dims.reverse()
-        # self.upsample_layers = nn.ModuleList()
-        # resolutions = vip.resolutions
-        # for i_layer in range(len(depths)):
-        #     layer = BasicLayerUpsampleMA(dim=dims[i_layer],
-        #                                total_dim=sum(dims),
-        #                        input_resolution=resolutions,
-        #                        num_heads=heads[len(depths)-i_layer-1],
-        #                        mlp_ratio=4,
-        #                        qkv_bias=True, 
-        #                        qk_scale=1, 
-        #                        drop=emb_dropout, 
-        #                        attn_drop=dropout,
-        #                        use_checkpoint=False)
-        #     self.upsample_layers.append(layer)
+        dims.reverse()
+        self.upsample_layers = nn.ModuleList()
+        resolutions = vip.resolutions
+        for i_layer in range(len(depths)):
+            layer = BasicLayerUpsampleMA(dim=dims[i_layer],
+                                       total_dim=sum(dims),
+                               input_resolution=resolutions,
+                               num_heads=heads[len(depths)-i_layer-1],
+                               mlp_ratio=4,
+                               qkv_bias=True, 
+                               qk_scale=1, 
+                               drop=emb_dropout, 
+                               attn_drop=dropout,
+                               use_checkpoint=False)
+            self.upsample_layers.append(layer)
 
 
-        self.transformer_dec = nn.ModuleList([])
-        depths_reverse = depths[::-1][1:]
-        dims_reverse = dims[::-1]
-        heads_reverse = heads[::-1]
-        resolutions = vip.resolutions[::-1]
+        # self.transformer_dec = nn.ModuleList([])
+        # depths_reverse = depths[::-1][1:]
+        # dims_reverse = dims[::-1]
+        # heads_reverse = heads[::-1]
+        # resolutions = vip.resolutions[::-1]
 
        
-        for idx, depth in enumerate(depths_reverse):
-            if idx < len(depths_reverse)-2:
-                self.transformer_dec.append(TFMDecoder(dims_reverse[idx+1], dims_reverse[idx],  depth,
-                                    heads_reverse[idx+1], dims_reverse[idx+1]//heads_reverse[idx+1],
-                                      int(mlp_ratio*dims_reverse[idx+1]), resolutions[idx], emb_dropout, dropout))
-            else:
-                self.transformer_dec.append(PerformerDecoder(dims_reverse[idx+1], dims_reverse[idx], depth,
-                                    heads_reverse[idx+1], dims_reverse[idx+1]//heads_reverse[idx+1],
-                                      int(mlp_ratio*dims_reverse[idx+1]), resolutions[idx], emb_dropout, dropout))
+        # for idx, depth in enumerate(depths_reverse):
+        #     if idx < len(depths_reverse)-2:
+        #         self.transformer_dec.append(TFMDecoder(dims_reverse[idx+1], dims_reverse[idx],  depth,
+        #                             heads_reverse[idx+1], dims_reverse[idx+1]//heads_reverse[idx+1],
+        #                               int(mlp_ratio*dims_reverse[idx+1]), resolutions[idx], emb_dropout, dropout))
+        #     else:
+        #         self.transformer_dec.append(PerformerDecoder(dims_reverse[idx+1], dims_reverse[idx], depth,
+        #                             heads_reverse[idx+1], dims_reverse[idx+1]//heads_reverse[idx+1],
+        #                               int(mlp_ratio*dims_reverse[idx+1]), resolutions[idx], emb_dropout, dropout))
                 
 
         # self.mlp_head = nn.Sequential(
         #     nn.LayerNorm(dims[0]),
         #     nn.Linear(dims[0], 1)
         # )
-        # self.upsample = nn.Upsample(size=image_size)
-        # self.sod_head = nn.Linear(sum(dims), 1)
-        self.sod_head = nn.Linear(dims_reverse[-1], 1)
+        self.upsample = nn.Upsample(size=image_size)
+        self.sod_head = nn.Linear(sum(dims), 1)
+        # self.sod_head = nn.Linear(dims_reverse[-1], 1)
         self.proj_updater_enc = ProjectionUpdater(self.transformer_enc, 1000)
-        self.proj_updater_dec = ProjectionUpdater(self.transformer_dec, 1000)
+        # self.proj_updater_dec = ProjectionUpdater(self.transformer_dec, 1000)
         del vip
 
     def fix_projection_matrices_(self):
         self.proj_updater_enc.feature_redraw_interval = None
-        self.proj_updater_dec.feature_redraw_interval = None
+        # self.proj_updater_dec.feature_redraw_interval = None
 
     def forward(self, x):
         self.proj_updater_enc.redraw_projections()
-        self.proj_updater_dec.redraw_projections()
+        # self.proj_updater_dec.redraw_projections()
         centroids = x[:, :, :2].float()
         # fft = x[:, :, 8:-10]
         # lbp = x[:, :,  -10:]
@@ -979,23 +979,23 @@ class ViPU(nn.Module):
            
             
             
-        fts.reverse()
-        for idx, layer in enumerate(self.transformer_dec):
-            x = layer(fts[idx+1], x)
+        # fts.reverse()
+        # for idx, layer in enumerate(self.transformer_dec):
+        #     x = layer(fts[idx+1], x)
 
 
-        # up_ft = []
-        # for idx, layer in enumerate(self.upsample_layers):
-        #     x = layer(ft[len(ft)-idx-1], ft)
-        #     ft[len(ft)-idx-1] = x
+        up_ft = []
+        for idx, layer in enumerate(self.upsample_layers):
+            x = layer(fts[len(fts)-idx-1], fts)
+            fts[len(fts)-idx-1] = x
             
-        #     res = int(math.sqrt(x.size(1)))
-        #     x = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
-        #     x = self.upsample(x).permute(0, 2, 3, 1)
-        #     x = x.reshape(x.size(0), self.img_size**2, -1)
-        #     up_ft.append(x)
+            res = int(math.sqrt(x.size(1)))
+            x = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
+            x = self.upsample(x).permute(0, 2, 3, 1)
+            x = x.reshape(x.size(0), self.img_size**2, -1)
+            up_ft.append(x)
 
-        # up_ft = torch.cat(up_ft, dim=2)
+        up_ft = torch.cat(up_ft, dim=2)
         # print(x.size())
 
         # x = self.transformer_dec_1(feats[1], x)
@@ -1003,7 +1003,7 @@ class ViPU(nn.Module):
         # x = self.aspp(feats[-1])
         # x = self.upsample_layers(feats[0], feats[1], feats[2], x)
         
-        x = self.sod_head(x)
+        x = self.sod_head(up_ft)
         # x = self.transformer_dec(x, x)
         return x
         # return self.mlp_head(x)
