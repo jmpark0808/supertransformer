@@ -1405,7 +1405,7 @@ class ViPEnc(nn.Module):
 
 
     def forward(self, x):
-        self.proj_updater_enc.redraw_projections()
+        # self.proj_updater_enc.redraw_projections()
         centroids = x[:, :, :2]
         fft = x[:, :, 8:-10]
         lbp = x[:, :,  -10:]
