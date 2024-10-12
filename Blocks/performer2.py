@@ -948,7 +948,7 @@ class ViPU(nn.Module):
         # self.proj_updater_dec.feature_redraw_interval = None
 
     def forward(self, x):
-        self.proj_updater_enc.redraw_projections()
+        # self.proj_updater_enc.redraw_projections()
         # self.proj_updater_dec.redraw_projections()
         centroids = x[:, :, :2].float()
         # fft = x[:, :, 8:-10]
