@@ -940,6 +940,8 @@ class ViPU(nn.Module):
         self.sod_head = nn.Linear(sum(dims), 1)
         # self.sod_head = nn.Linear(dims_reverse[-1], 1)
         self.proj_updater_enc = ProjectionUpdater(self.transformer_enc, 1000)
+        self.resolutions = resolutions.copy()
+        self.resolutions.reverse()
         # self.proj_updater_dec = ProjectionUpdater(self.transformer_dec, 1000)
         del vip
 
@@ -989,8 +991,8 @@ class ViPU(nn.Module):
             x = layer(fts[len(fts)-idx-1], fts)
             fts[len(fts)-idx-1] = x
             
-            res = int(math.sqrt(x.size(1)))
-            x = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
+            res = self.resolutions[idx]
+            x = x.reshape(x.size(0), res[0], res[1], -1).permute(0, 3, 1, 2)
             x = self.upsample(x).permute(0, 2, 3, 1)
             x = x.reshape(x.size(0), self.img_size**2, -1)
             up_ft.append(x)
@@ -1391,7 +1393,7 @@ class ViPEnc(nn.Module):
             else:
                 self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size, image_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]), emb_dropout, dropout, downsample=True))
-            self.resolutions.append(image_size // (2 ** idx))
+            self.resolutions.append((image_size, image_size // (2 ** idx)))
 
         self.mlp_head = nn.Sequential(
             nn.LayerNorm(dims[-1]),
