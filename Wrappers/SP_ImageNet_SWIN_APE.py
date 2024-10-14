@@ -71,6 +71,7 @@ class SP_ImageNet_OGSWIN_APE_Wrapper(pl.LightningModule):
         # from fvcore.nn import FlopCountAnalysis, flop_count_table
         # inp = torch.randn([1, input_dim+2, 32, 32])
         # flops = FlopCountAnalysis(self.supert, inp)
+        # print(flop_count_table(flops, max_depth=10))
         # print(kwargs['parameters'], kwargs['flops'])
         # assert(0)
         self.mixup = Mixup(         

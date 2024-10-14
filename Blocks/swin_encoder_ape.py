@@ -66,6 +66,8 @@ class SwinTransformer(nn.Module):
 
         # build layers
         self.layers = nn.ModuleList()
+        self.resolutions = []
+        self.embed_dims = []
         for i_layer in range(self.num_layers):
             # if (i_layer < self.num_layers - 1):
             #     merge = PatchMerging
@@ -97,7 +99,8 @@ class SwinTransformer(nn.Module):
                                downsample=merge,
                                use_checkpoint=use_checkpoint,
                                fused_window_process=fused_window_process)
-            
+            self.resolutions.append(resolution)
+            self.embed_dims.append(embed_dim[i_layer])
             self.layers.append(layer)
 
         self.locations = nn.Sequential(*[nn.Linear(2, embed_dim[0])])

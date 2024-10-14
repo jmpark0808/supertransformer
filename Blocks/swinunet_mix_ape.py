@@ -11,7 +11,7 @@ import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
 from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA, BasicLayer, PatchMerging
-
+from Blocks.swin_encoder_ape import SwinTransformer
 WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
@@ -51,6 +51,14 @@ class SwinUTransformer(nn.Module):
                  norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
                  use_checkpoint=False, fused_window_process=False, **kwargs):
         super().__init__()
+
+
+        swinencoder = SwinTransformer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, num_classes=num_classes,
+                                      embed_dim=embed_dim, depths=depths, num_heads=num_heads,
+                                      window_size=window_size, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                      drop_rate=drop_rate, attn_drop_rate=attn_drop_rate, drop_path_rate=drop_path_rate,
+                                      norm_layer=norm_layer, ape=ape, patch_norm=patch_norm, 
+                                      use_checkpoint=use_checkpoint, fused_window_process=fused_window_process, **kwargs)
         self.img_size = img_size
         self.num_classes = num_classes
         self.num_layers = len(depths)
@@ -60,9 +68,7 @@ class SwinUTransformer(nn.Module):
         self.mlp_ratio = mlp_ratio
 
         # split image into non-overlapping patches
-        self.patch_embed = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=16, embed_dim=embed_dim[0],
-            norm_layer=norm_layer if self.patch_norm else None)
+        self.patch_embed = swinencoder.patch_embed
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
         patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
@@ -79,28 +85,10 @@ class SwinUTransformer(nn.Module):
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
 
         # build layers
-        self.layers = nn.ModuleList()
-        resolutions = []
-        embed_dims = []
-        for i_layer in range(self.num_layers):
-            layer = BasicLayer(dim=embed_dim[i_layer],
-                                   out_dim=embed_dim[i_layer+1] if i_layer < self.num_layers-1 else None,
-                               input_resolution=(patches_resolution[0] // (2 ** i_layer),
-                                                 patches_resolution[1] // (2 ** i_layer)),
-                               depth=depths[i_layer],
-                               num_heads=num_heads[i_layer],
-                               window_size=window_size,
-                               mlp_ratio=self.mlp_ratio,
-                               qkv_bias=qkv_bias, qk_scale=qk_scale,
-                               drop=drop_rate, attn_drop=attn_drop_rate,
-                               drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
-                               norm_layer=norm_layer,
-                               downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
-                               use_checkpoint=use_checkpoint)
-            self.layers.append(layer)
-            resolutions.append(patches_resolution[0] // (2 ** i_layer))
-            embed_dims.append(embed_dim[i_layer])
+        self.layers = swinencoder.layers
         # resolutions.append(patches_resolution[0] // (2 ** i_layer))
+        embed_dims = swinencoder.embed_dims
+        resolutions = swinencoder.resolutions
         embed_dims.reverse()
             
             
@@ -121,9 +109,13 @@ class SwinUTransformer(nn.Module):
 
         self.upsample = nn.Upsample(size=img_size[0])
         self.sod_head = nn.Linear(sum(embed_dim), 1)
-        self.locations = nn.Sequential(*[nn.Linear(22, embed_dim[0]), nn.ReLU(), nn.Linear(embed_dim[0], embed_dim[0])])
+        self.locations = swinencoder.locations
         
         self.apply(self._init_weights)
+       
+        self.resolutions = resolutions.copy()
+        self.resolutions.reverse()
+        del swinencoder
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -165,8 +157,8 @@ class SwinUTransformer(nn.Module):
             x = layer(ft[len(ft)-idx-1], ft)
             ft[len(ft)-idx-1] = x
             
-            res = int(math.sqrt(x.size(1)))
-            x = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
+            res = self.resolutions[idx]
+            x = x.reshape(x.size(0), res[0], res[1], -1).permute(0, 3, 1, 2)
             x = self.upsample(x).permute(0, 2, 3, 1)
             x = x.reshape(x.size(0), self.img_size**2, -1)
             up_ft.append(x)
@@ -181,8 +173,8 @@ class SwinUTransformer(nn.Module):
         fft = x[:, 8:-10, :, :]
         lbp = x[:, -10:, :, :]
         color = x[:, 2:8, :, :]
-        x = torch.cat((color, lbp), dim=1)
-        locations = torch.cat((centroids, fft), dim=1).permute(0, 2, 3, 1)
+        x = torch.cat((color, lbp, fft), dim=1)
+        locations = centroids.permute(0, 2, 3, 1)
         locations = self.locations(locations)
         locations = locations.reshape(locations.size(0), -1, locations.size(3))
         x = self.forward_features(x, locations)

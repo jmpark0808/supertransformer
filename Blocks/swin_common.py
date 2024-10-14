@@ -223,8 +223,9 @@ class BasicLayerUpsampleMA(nn.Module):
         self.blocks = UMixDecoder(dim, num_heads, mlp_ratio, qkv_bias, qk_scale, attn_drop, drop )
         # self.blocks = nn.TransformerDecoderLayer(dim,nhead=num_heads, dim_feedforward=int(mlp_ratio*dim), 
         #                                          dropout=drop, batch_first=True, norm_first=True) 
-        min_res = min(input_resolution)
-        self.avg_pools = nn.ModuleList([nn.AvgPool2d(res//min_res, res//min_res) for res in input_resolution])
+        min_res = min([res[1] for res in input_resolution])
+        
+        self.avg_pools = nn.ModuleList([nn.AvgPool2d((1, res[1]//min_res), (1, res[1]//min_res)) for res in input_resolution])
         
         self.linear = nn.Linear(total_dim, dim)
         
@@ -232,8 +233,9 @@ class BasicLayerUpsampleMA(nn.Module):
        
     def forward(self, x_q, x_kv):
         feats = []
-        for idx, res in enumerate(self.input_resolution):
-            feats.append(self.avg_pools[idx](x_kv[idx].reshape(x_kv[idx].size(0), res, res, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1))
+        for idx,(h, w) in enumerate(self.input_resolution):
+            feats.append(self.avg_pools[idx](x_kv[idx].reshape(x_kv[idx].size(0), h, w, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1))
+
         # feat1 = self.avg_pool_x8(x_kv[0].reshape(x_kv[0].size(0), 32, 32, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
         # feat2 = self.avg_pool_x4(x_kv[1].reshape(x_kv[1].size(0), 16, 16, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
         # feat3 = self.avg_pool_x2(x_kv[2].reshape(x_kv[2].size(0), 8, 8, -1).permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
