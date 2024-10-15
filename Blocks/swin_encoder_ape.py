@@ -105,7 +105,7 @@ class SwinTransformer(nn.Module):
 
         self.locations = nn.Sequential(*[nn.Linear(2, embed_dim[0])])
         
-        self.norm = norm_layer(self.num_features)
+        # self.norm = norm_layer(self.num_features)
         self.avgpool = nn.AdaptiveAvgPool1d(1)
         self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
 
@@ -139,7 +139,7 @@ class SwinTransformer(nn.Module):
 
 
         x = self.avgpool(x.transpose(1, 2)).transpose(1, 2)  # B C 1
-        x = self.norm(x)  # B L C
+        # x = self.norm(x)  # B L C
         
         x = torch.flatten(x, 1)
         return x
