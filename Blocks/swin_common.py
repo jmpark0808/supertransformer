@@ -223,9 +223,10 @@ class BasicLayerUpsampleMA(nn.Module):
         self.blocks = UMixDecoder(dim, num_heads, mlp_ratio, qkv_bias, qk_scale, attn_drop, drop )
         # self.blocks = nn.TransformerDecoderLayer(dim,nhead=num_heads, dim_feedforward=int(mlp_ratio*dim), 
         #                                          dropout=drop, batch_first=True, norm_first=True) 
-        min_res = min([res[1] for res in input_resolution])
+        min_res_0 = min([res[0] for res in input_resolution])
+        min_res_1 = min([res[1] for res in input_resolution])
         
-        self.avg_pools = nn.ModuleList([nn.AvgPool2d((1, res[1]//min_res), (1, res[1]//min_res)) for res in input_resolution])
+        self.avg_pools = nn.ModuleList([nn.AvgPool2d((res[0]//min_res_0, res[1]//min_res_1), (res[0]//min_res_0, res[1]//min_res_1)) for res in input_resolution])
         
         self.linear = nn.Linear(total_dim, dim)
         
