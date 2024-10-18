@@ -77,8 +77,8 @@ class SP_PERFU_Wrapper(pl.LightningModule):
         self.flops = kwargs['flops']
         self.num_parameters = kwargs['parameters']
 
-        print(kwargs['parameters'], kwargs['flops'])
-        assert(0)
+        # print(kwargs['parameters'], kwargs['flops'])
+        # assert(0)
         self.mixup = MixupSaliency(
             cutmix_alpha=1.0, cutmix_minmax=None,
             prob=1.0,  mode='batch',
