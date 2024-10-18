@@ -3,6 +3,7 @@ from torch import nn, einsum
 import torch.nn.functional as F
 from einops import rearrange, repeat, reduce
 from einops.layers.torch import Rearrange
+from timm.layers import trunc_normal_
 from math import ceil
 from functools import partial
 from contextlib import contextmanager
@@ -944,6 +945,17 @@ class ViPU(nn.Module):
         self.resolutions.reverse()
         # self.proj_updater_dec = ProjectionUpdater(self.transformer_dec, 1000)
         del vip
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
 
     def fix_projection_matrices_(self):
         self.proj_updater_enc.feature_redraw_interval = None
