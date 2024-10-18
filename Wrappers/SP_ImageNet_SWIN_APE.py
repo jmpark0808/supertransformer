@@ -61,17 +61,17 @@ class SP_ImageNet_OGSWIN_APE_Wrapper(pl.LightningModule):
         #                                             self.tfm_hp[0]*4,
         #                                                 self.tfm_hp[0]*8], mlp_ratio=4, num_classes=self.classes)
         # Mix attention encoder
-        # self.supert = SwinTransformer(img_size=self.res, coeff=self.coeff, in_chans=input_dim, patch_size=1, window_size=self.window_size,
-        #                                embed_dim=self.dims, depths=self.depths,
-        #                                  num_heads=self.heads, mlp_ratio=4, num_classes=self.classes, attn_drop_rate=self.dropout_edge, 
-        #                                  qkv_bias=False, drop_path_rate=0.)
-        self.supert = ViPEnc(image_size=self.res[0], patch_size=1,  dims=self.dims, heads=self.heads,
-                          mlp_ratio=4, channels=input_dim, depths=self.depths, dropout=self.dropout_edge, emb_dropout=self.dropout
-                          )
+        self.supert = SwinTransformer(img_size=self.res, coeff=self.coeff, in_chans=input_dim, patch_size=1, window_size=self.window_size,
+                                       embed_dim=self.dims, depths=self.depths,
+                                         num_heads=self.heads, mlp_ratio=4, num_classes=self.classes, attn_drop_rate=self.dropout_edge, 
+                                         qkv_bias=False, drop_path_rate=0.)
+        # self.supert = ViPEnc(image_size=self.res[0], patch_size=1,  dims=self.dims, heads=self.heads,
+        #                   mlp_ratio=4, channels=input_dim, depths=self.depths, dropout=self.dropout_edge, emb_dropout=self.dropout
+        #                   )
         kwargs['parameters'] = parameter_count(self.supert)['']
         
-        # inp = torch.randn([1, input_dim+2, self.res[0], self.res[1]])
-        inp = torch.randn([1, self.res[0]*self.res[1], input_dim+2])
+        inp = torch.randn([1, input_dim+2, self.res[0], self.res[1]])
+        # inp = torch.randn([1, self.res[0]*self.res[1], input_dim+2])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
         # from fvcore.nn import FlopCountAnalysis, flop_count_table
@@ -183,8 +183,8 @@ class SP_ImageNet_OGSWIN_APE_Wrapper(pl.LightningModule):
         #     second_phase_back = second_phase[:,  -self.coeff//2:]
         # third = input[:,  -10:]
         # input = torch.cat((first, second_amp_front, second_amp_back, second_phase_front, second_phase_back, third), dim=1)
-        B, C, H, W = input.size()
-        input = input.reshape(B, C, -1).permute(0, 2, 1)
+        # B, C, H, W = input.size()
+        # input = input.reshape(B, C, -1).permute(0, 2, 1)
         pred = self.supert(input)
 
         return pred
