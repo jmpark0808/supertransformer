@@ -43,6 +43,8 @@ class SP_PERFU_Wrapper(pl.LightningModule):
         self.depths = kwargs.get('depths')
         self.coeff = kwargs.get('coeff')
         self.size = kwargs.get('size')
+        self.dp = kwargs.get('drop_path')
+        self.mlp_ratio = kwargs.get('mlp_ratio')
         resample_points = int(((self.size**2)//self.num_seg)**0.5)*4
         self.resample_points = resample_points
         
@@ -62,8 +64,8 @@ class SP_PERFU_Wrapper(pl.LightningModule):
         #                    mlp_dim=self.tfm_hp[2]*1, channels=input_dim, dim_head=self.tfm_hp[2]//self.tfm_hp[0], dropout=self.dropout_edge,
         #                     emb_dropout=self.dropout, task='sod')
         self.supert = ViPU(image_size=res, patch_size=1, dims=self.dims, heads=self.heads, depths=self.depths,
-                           mlp_ratio=4, channels=input_dim, dropout=self.dropout_edge,
-                            emb_dropout=self.dropout )
+                           mlp_ratio=self.mlp_ratio, channels=input_dim, dropout=self.dropout_edge,
+                            emb_dropout=self.dropout, drop_path_rate=self.dp)
         # self.supert = PerformerU(input_dim=input_dim, embed_dim=self.tfm_hp[2], heads=self.tfm_hp[0], depth=self.tfm_hp[1],
         #                          attn_dropout=self.dropout_edge, dropout=self.dropout, mlp_ratio=4)
        

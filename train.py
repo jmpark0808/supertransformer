@@ -180,6 +180,7 @@ if __name__ == "__main__":
     parser.add_argument('--num_seg', help='Approximate number of segmentations', default=600, type=int)
     parser.add_argument('--dropout', help='Dropout for Transformers', default=0., type=float)
     parser.add_argument('--dropout_edge', help='Dropout for dropout_edge', default=0., type=float)
+    parser.add_argument('--drop_path', help='Dropout rate for drop path', default=0., type=float)
     parser.add_argument('--seed', help='Seed for reproduceability', 
                         default=42, type=int)
     parser.add_argument('--clip_grad_norm', help='Clipping gradient norm, 0 means no clipping', type=float, default=0.)
@@ -214,7 +215,7 @@ if __name__ == "__main__":
                     type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
     parser.add_argument('--window_size', help='Window size for SWIN Transformer', type=int, default=4)
     parser.add_argument('--warmup_epochs', help='Number of epochs for warmup', type=int, default=4)
-    parser.add_argument('--factor', help='Factor for hidden dimension in SWIN Transformer', default=1.0, type=float)
+    parser.add_argument('--mlp_ratio', help='Mlp ratio for FF networks', default=4, type=float)
 
 
     import torch 

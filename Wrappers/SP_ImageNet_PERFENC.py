@@ -38,6 +38,8 @@ class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
         self.heads = kwargs.get('heads')
         self.dims = kwargs.get('dims')
         self.depths = kwargs.get('depths')
+        self.mlp_ratio = kwargs.get('mlp_ratio')
+        self.dp = kwargs.get('drop_path')
         
         input_dim = get_input_dim(kwargs)
         self.res = (int(self.num_seg**0.5), int(self.num_seg**0.5))
@@ -45,8 +47,8 @@ class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
         
         self.classes= 1000
         self.supert = ViPEnc(image_size=self.res[0], patch_size=1,  dims=self.dims, heads=self.heads,
-                          mlp_ratio=4, channels=input_dim, depths=self.depths, dropout=self.dropout_edge, emb_dropout=self.dropout
-                          )
+                          mlp_ratio=self.mlp_ratio, channels=input_dim, depths=self.depths, dropout=self.dropout_edge, emb_dropout=self.dropout
+                          , drop_path_rate=self.dp)
         # self.supert = Performer(input_dim, self.tfm_hp[2], self.tfm_hp[0], self.tfm_hp[1], 1000, attn_dropout=self.dropout_edge,
         #                         dropout=self.dropout, mlp_ratio=4)
 
