@@ -6,7 +6,7 @@ from einops.layers.torch import Rearrange
 from math import ceil
 from functools import partial
 from contextlib import contextmanager
-from Blocks.swin_common import PatchMerging, PatchExpand
+from Blocks.merge import PatchMerging, PatchExpand
 from Blocks.TransformerBlocks import Transformer as TFM
 from Blocks.TransformerBlocks import CrossAttention as CA
 from Blocks.TransformerBlocks import Attention as Att

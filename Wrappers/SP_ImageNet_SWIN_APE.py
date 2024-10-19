@@ -37,6 +37,8 @@ class SP_ImageNet_OGSWIN_APE_Wrapper(pl.LightningModule):
         self.dims = kwargs.get('dims')
         self.depths = kwargs.get('depths')
         self.size = kwargs.get('size')
+        self.mlp_ratio = kwargs.get('mlp_ratio')
+        self.dp = kwargs.get('drop_path')
         resample_points = int(((self.size**2)//self.num_seg)**0.5)*4
         self.resample_points = resample_points
         # if self.coeff == -1: # use all coefficients
@@ -63,8 +65,8 @@ class SP_ImageNet_OGSWIN_APE_Wrapper(pl.LightningModule):
         # Mix attention encoder
         self.supert = SwinTransformer(img_size=self.res, coeff=self.coeff, in_chans=input_dim, patch_size=1, window_size=self.window_size,
                                        embed_dim=self.dims, depths=self.depths,
-                                         num_heads=self.heads, mlp_ratio=4, num_classes=self.classes, attn_drop_rate=self.dropout_edge, 
-                                         qkv_bias=False, drop_path_rate=0.)
+                                         num_heads=self.heads, mlp_ratio=self.mlp_ratio, num_classes=self.classes, attn_drop_rate=self.dropout_edge, 
+                                         qkv_bias=False, drop_path_rate=self.dp)
         # self.supert = ViPEnc(image_size=self.res[0], patch_size=1,  dims=self.dims, heads=self.heads,
         #                   mlp_ratio=4, channels=input_dim, depths=self.depths, dropout=self.dropout_edge, emb_dropout=self.dropout
         #                   )
