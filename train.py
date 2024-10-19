@@ -228,16 +228,18 @@ if __name__ == "__main__":
     
     pl.seed_everything(dict_args['seed'], True)
 
-    # Data: load data module
-    assert dict_args['dataloader'] in DATALOADER_DIRECTORY
-    data_module = DATALOADER_DIRECTORY[dict_args['dataloader']](**dict_args)
-
-
     # Initialize model to train
     assert dict_args['model'] in MODEL_DIRECTORY
     model = MODEL_DIRECTORY[dict_args['model']](**dict_args)
     if dict_args['load']:
         model = model.load_from_checkpoint(dict_args['load'])
+
+    # Data: load data module
+    assert dict_args['dataloader'] in DATALOADER_DIRECTORY
+    data_module = DATALOADER_DIRECTORY[dict_args['dataloader']](**dict_args)
+
+
+    
 
     # Initialize logging paths
     now = datetime.datetime.now().strftime('%m%d-%H%M%S')

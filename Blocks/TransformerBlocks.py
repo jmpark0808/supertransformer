@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import torchvision
 import time
 import numpy as np
+from timm.layers import DropPath
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 from Wrappers.PositionalEncoding import PositionalEncodingSuperPixel
@@ -276,18 +277,23 @@ class GraphEAttention(nn.Module):
         return self.to_out(out)
 
 class Transformer(nn.Module):
-    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0.):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., drop_path=0.):
         super().__init__()
         self.layers = nn.ModuleList([])
-        for _ in range(depth):
+        
+        
+        for i in range(depth):
+            dp = drop_path[i] if isinstance(drop_path, list) else drop_path
+            dp = DropPath(dp) if dp > 0. else nn.Identity()
             self.layers.append(nn.ModuleList([
                 PreNorm(dim, Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout, attn_dropout= attn_dropout)),
-                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout)),
+                dp
             ]))
     def forward(self, x):
-        for attn, ff in self.layers:
-            x = attn(x) + x
-            x = ff(x) + x
+        for attn, ff, dp in self.layers:
+            x = dp(attn(x)) + x
+            x = dp(ff(x)) + x
         return x
 
 class PosTransformer(nn.Module):

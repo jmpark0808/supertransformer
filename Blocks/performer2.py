@@ -3,7 +3,7 @@ from torch import nn, einsum
 import torch.nn.functional as F
 from einops import rearrange, repeat, reduce
 from einops.layers.torch import Rearrange
-from timm.layers import trunc_normal_
+from timm.layers import trunc_normal_, DropPath
 from math import ceil
 from functools import partial
 from contextlib import contextmanager
@@ -522,9 +522,11 @@ class LineMerging(nn.Module):
 
 
 class TFMEncoder(nn.Module):
-    def __init__(self, dim, out_dim, input_resolution, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., downsample=False):
+    def __init__(self, dim, out_dim, input_resolution, depth, heads, dim_head,
+                  mlp_dim, dropout = 0., attn_dropout=0., downsample=False, drop_path=0.):
         super().__init__()
-        self.layers = TFM(dim=dim, depth=depth, heads=heads, dim_head=dim_head, mlp_dim=mlp_dim, dropout=dropout, attn_dropout=attn_dropout)
+        self.layers = TFM(dim=dim, depth=depth, heads=heads, dim_head=dim_head, mlp_dim=mlp_dim
+                          , dropout=dropout, attn_dropout=attn_dropout, drop_path=drop_path)
         if downsample:
             # self.downsample = PatchMerging(input_resolution, dim, out_dim)
             self.downsample = LineMerging(input_resolution, dim, out_dim)
@@ -541,7 +543,9 @@ class TFMEncoder(nn.Module):
         return ds, x
 
 class TransformerEncoder(nn.Module):
-    def __init__(self, dim, out_dim, input_resolution, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., downsample=False):
+    def __init__(self, dim, out_dim, input_resolution, depth, heads, dim_head,
+                  mlp_dim, dropout = 0., attn_dropout=0., downsample=False,
+                  drop_path=0.):
         super().__init__()
         self.layers = nn.ModuleList([])
         local_attn_heads = 0
@@ -553,14 +557,17 @@ class TransformerEncoder(nn.Module):
         no_projection = False
         qkv_bias = True
         attn_out_bias = True
-        for _ in range(depth):
+        for i in range(depth):
+            dp = drop_path[i] if isinstance(drop_path, list) else drop_path
+            dp = DropPath(dp) if dp > 0. else nn.Identity()
             self.layers.append(nn.ModuleList([
                 PreNorm(dim, SelfAttention(dim, causal = causal, heads = heads, dim_head = dim_head, local_heads = local_attn_heads,
                                             local_window_size = local_window_size, nb_features = nb_features,
                                               generalized_attention = generalized_attention, kernel_fn = kernel_fn,
                                                 dropout = attn_dropout, no_projection = no_projection, qkv_bias = qkv_bias,
                                                   attn_out_bias = attn_out_bias)),
-                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
+                PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout)),
+                dp
             ]))
         if downsample:
             # self.downsample = PatchMerging(input_resolution, dim, out_dim)
@@ -569,9 +576,9 @@ class TransformerEncoder(nn.Module):
         else:
             self.downsample = None
     def forward(self, x):
-        for attn, ff in self.layers:
-            x = attn(x) + x
-            x = ff(x) + x
+        for attn, ff, dp in self.layers:
+            x = dp(attn(x)) + x
+            x = dp(ff(x)) + x
         ds = x
         # print('linear', self.layers[0][1].fn.net[0].weight.grad)
         
@@ -867,7 +874,7 @@ class ViPEncDec(nn.Module):
 
 class ViPU(nn.Module):
     def __init__(self, *, image_size, patch_size, dims, depths, heads, mlp_ratio, 
-                  channels = 3, dropout = 0., emb_dropout = 0.):
+                  channels = 3, dropout = 0., emb_dropout = 0., drop_path_rate=0.):
         super().__init__()
         image_height, image_width = pair(image_size)
         patch_height, patch_width = pair(patch_size)
@@ -878,7 +885,8 @@ class ViPU(nn.Module):
         patch_dim = channels
 
         vip = ViPEnc(image_size=image_size, patch_size=1, dims=dims, depths=depths, heads=heads,
-                      mlp_ratio=mlp_ratio, channels=channels, dropout=dropout, emb_dropout=emb_dropout)
+                      mlp_ratio=mlp_ratio, channels=channels, dropout=dropout, emb_dropout=emb_dropout
+                      , drop_path_rate=drop_path_rate)
 
      
         self.img_size = image_size
@@ -946,16 +954,9 @@ class ViPU(nn.Module):
         # self.proj_updater_dec = ProjectionUpdater(self.transformer_dec, 1000)
         del vip
 
-        self.apply(self._init_weights)
+        
 
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
+        
 
     def fix_projection_matrices_(self):
         self.proj_updater_enc.feature_redraw_interval = None
@@ -1372,7 +1373,7 @@ class SegViPUSLIC(nn.Module):
 
 class ViPEnc(nn.Module):
     def __init__(self, *, image_size, patch_size, dims, depths, heads, mlp_ratio, 
-                  channels = 3, dropout = 0., emb_dropout = 0.):
+                  channels = 3, dropout = 0., emb_dropout = 0., drop_path_rate=0.):
         super().__init__()
         image_height, image_width = pair(image_size)
         patch_height, patch_width = pair(patch_size)
@@ -1394,22 +1395,31 @@ class ViPEnc(nn.Module):
         self.locations = nn.Sequential(nn.Linear(2, dims[0]))
         self.transformer_enc = nn.ModuleList([])
         self.resolutions = []
+
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
+
+        
         for idx, depth in enumerate(depths):
             if idx == len(depths)-1:
                 self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size, image_size//(2**idx)), depth,
-                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout,
+                                      downsample=False, drop_path=dpr[sum(depths[:idx]):sum(depths[:idx + 1])]))
             else:
                 self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size, image_size//(2**idx)), depth,
-                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
+                                    heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout,
+                                      downsample=True, drop_path=dpr[sum(depths[:idx]):sum(depths[:idx + 1])]))
             # if idx == len(depths)-1:
             #     self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size, image_size//(2**idx)), depth,
-            #                         heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=False))
+            #                         heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout,
+            #                           downsample=False, drop_path=dpr[sum(depths[:idx]):sum(depths[:idx + 1])]))
             # elif idx < 2:
             #     self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size, image_size//(2**idx)), depth,
-            #                         heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout, downsample=True))
+            #                         heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout,
+            #                           downsample=True, drop_path=dpr[sum(depths[:idx]):sum(depths[:idx + 1])]))
             # else:
             #     self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size, image_size//(2**idx)), depth,
-            #                         heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]), emb_dropout, dropout, downsample=True))
+            #                         heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]), emb_dropout, dropout,
+            #                           downsample=True, drop_path=dpr[sum(depths[:idx]):sum(depths[:idx + 1])]))
             self.resolutions.append((image_size, image_size // (2 ** idx)))
 
         self.mlp_head = nn.Sequential(
