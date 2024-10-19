@@ -1401,11 +1401,11 @@ class ViPEnc(nn.Module):
         
         for idx, depth in enumerate(depths):
             if idx == len(depths)-1:
-                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx], (image_size, image_size//(2**idx)), depth,
+                self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx], (image_size, image_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout,
                                       downsample=False, drop_path=dpr[sum(depths[:idx]):sum(depths[:idx + 1])]))
             else:
-                self.transformer_enc.append(TFMEncoder(dims[idx], dims[idx+1], (image_size, image_size//(2**idx)), depth,
+                self.transformer_enc.append(TransformerEncoder(dims[idx], dims[idx+1], (image_size, image_size//(2**idx)), depth,
                                     heads[idx], dims[idx]//heads[idx], int(mlp_ratio*dims[idx]),emb_dropout, dropout,
                                       downsample=True, drop_path=dpr[sum(depths[:idx]):sum(depths[:idx + 1])]))
             # if idx == len(depths)-1:
