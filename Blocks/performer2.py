@@ -282,6 +282,7 @@ class Attention(nn.Module):
         self.to_q = nn.Linear(dim, inner_dim, bias=qkv_bias)
         self.to_k = nn.Linear(dim, inner_dim, bias=qkv_bias)
         self.to_v = nn.Linear(dim, inner_dim, bias=qkv_bias)
+        self.scale = dim_head ** -0.5
         self.to_out = nn.Linear(inner_dim, dim, bias = attn_out_bias)
         self.dropout = nn.Dropout(dropout)
         
@@ -297,6 +298,7 @@ class Attention(nn.Module):
         context_mask = default(context_mask, mask) if not cross_attend else context_mask
   
         q, k, v = self.to_q(x), self.to_k(context), self.to_v(context)
+        q = q * self.scale
         
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = h), (q, k, v))
         
