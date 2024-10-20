@@ -179,10 +179,11 @@ if __name__ == "__main__":
     
     lr_monitor = LearningRateMonitor(logging_interval='step')
     logger = TensorBoardLogger(save_dir=dict_args['logdir'], version=now+'_'+dict_args["tag"], name='lightning_logs', log_graph=True)
-    if 'PERF' in dict_args['model']:
-        precision = 32
-    else:
-        precision = '16-mixed'
+    # if 'PERF' in dict_args['model']:
+    #     precision = 32
+    # else:
+    #     precision = '16-mixed'
+    precision =32
     trainer = pl.Trainer(
         callbacks=[checkpoint_callback, lr_monitor],
         val_check_interval=dict_args['val_freq'],
