@@ -226,12 +226,12 @@ class SwinTransformerBlock(nn.Module):
         assert 0 <= self.shift_size[1] < self.window_size[1], "shift_size must in 0-window_size"
 
         self.norm1 = norm_layer(dim)
-        # self.attn = WindowAttention(
-        #     dim, window_size=self.window_size, num_heads=num_heads,
-        #     qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
-        self.attn = Attention(dim, False, num_heads, dim//num_heads, 0, 256, None,
-                              1000, True, nn.ReLU(), attn_drop, False, qkv_bias,
-                                True)
+        self.attn = WindowAttention(
+            dim, window_size=self.window_size, num_heads=num_heads,
+            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
+        # self.attn = Attention(dim, False, num_heads, dim//num_heads, 0, 256, None,
+        #                       1000, True, nn.ReLU(), attn_drop, False, qkv_bias,
+        #                         True)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)

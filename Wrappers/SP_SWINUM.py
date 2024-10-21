@@ -36,6 +36,8 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
         self.dims = kwargs.get('dims')
         self.depths = kwargs.get('depths')
         self.size = kwargs.get('size')
+        self.mlp_ratio = kwargs.get('mlp_ratio')
+        self.dp = kwargs.get('drop_path')
         resample_points = int(((self.size**2)//self.num_seg)**0.5)*4
         self.resample_points = resample_points
         
@@ -50,8 +52,8 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
         # Generator that produces the HeatMap
         self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
                                        embed_dim=self.dims, depths=self.depths,
-                                         num_heads=self.heads, mlp_ratio=4, attn_drop_rate=self.dropout_edge, drop_rate=self.dropout,
-                                         drop_path_rate=0.)
+                                         num_heads=self.heads, mlp_ratio=self.mlp_ratio, attn_drop_rate=self.dropout_edge, drop_rate=self.dropout,
+                                         drop_path_rate=self.dp)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
         kwargs['parameters'] = parameter_count(self.supert)['']

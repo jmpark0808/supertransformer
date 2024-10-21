@@ -241,7 +241,7 @@ class BasicLayerUpsampleMA(nn.Module):
         min_res_0 = min([res[0] for res in input_resolution])
         min_res_1 = min([res[1] for res in input_resolution])
         
-        self.avg_pools = nn.ModuleList([nn.AvgPool2d((1, res[1]//min_res_1), (1, res[1]//min_res_1)) for res in input_resolution])
+        self.avg_pools = nn.ModuleList([nn.AvgPool2d((res[0]//min_res_0, res[1]//min_res_1), (res[0]//min_res_0, res[1]//min_res_1)) for res in input_resolution])
         
         self.linear = nn.Linear(total_dim, dim)
         
