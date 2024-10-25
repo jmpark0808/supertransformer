@@ -126,9 +126,9 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
                 else:
                     has_decay_enc.append(param)
         parameters = [{'params': has_decay_dec},
-                      {'params': has_decay_enc, 'lr': self.lr*0.1},
+                      {'params': has_decay_enc, 'lr': self.lr*0.01},
                 {'params': no_decay_dec, 'weight_decay': 0.},
-                {'params': no_decay_enc, 'weight_decay': 0., 'lr': self.lr*0.1}]
+                {'params': no_decay_enc, 'weight_decay': 0., 'lr': self.lr*0.01}]
         optimizer = torch.optim.AdamW(parameters, lr=self.lr, weight_decay=0.05)
         # self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         #     optimizer,
