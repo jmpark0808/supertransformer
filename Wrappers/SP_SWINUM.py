@@ -64,8 +64,8 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
         self.num_parameters = kwargs['parameters']
         # print(flop_count_table(flops))
 
-        print(kwargs['parameters'] , kwargs['flops'])
-        assert(0)
+        # print(kwargs['parameters'] , kwargs['flops'])
+        # assert(0)
         self.mixup = MixupSaliency(
             cutmix_alpha=1.0, cutmix_minmax=None,
             prob=1.0,  mode='batch',
