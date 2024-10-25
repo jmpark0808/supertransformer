@@ -1,3 +1,25 @@
+
+
+
+from PIL import Image
+import os
+import numpy as np
+train_dir = '/mnt/f/Datasets/HRSOD_release/HRSOD_release/HRSOD_train/'
+
+hs = []
+ws = []
+for file in os.listdir(train_dir):
+    file_path = os.path.join(train_dir, file)
+    img = Image.open(file_path)
+    np_img = np.array(img)
+    hs.append(np_img.shape[0])
+    ws.append(np_img.shape[1])
+
+print(np.max(hs), np.max(ws))
+
+
+
+
 #from typing import Callable, Optional, Union
 # from einops import rearrange
 # import torch

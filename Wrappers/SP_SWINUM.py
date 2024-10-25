@@ -64,8 +64,8 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
         self.num_parameters = kwargs['parameters']
         # print(flop_count_table(flops))
 
-        # print(kwargs['parameters'] , kwargs['flops'])
-        # assert(0)
+        print(kwargs['parameters'] , kwargs['flops'])
+        assert(0)
         self.mixup = MixupSaliency(
             cutmix_alpha=1.0, cutmix_minmax=None,
             prob=1.0,  mode='batch',
@@ -98,8 +98,10 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
         
         skip_list = {'absolute_pos_embed'}
         skip_keywords = {'relative_position_bias_table'}
-        has_decay = []
-        no_decay = []
+        has_decay_enc = []
+        has_decay_dec = []
+        no_decay_enc = []
+        no_decay_dec = []
 
         def check_keywords_in_name(name, keywords=()):
             isin = False
@@ -113,12 +115,20 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
                 continue  # frozen weights
             if len(param.shape) == 1 or name.endswith(".bias") or (name in skip_list) or \
                     check_keywords_in_name(name, skip_keywords):
-                no_decay.append(param)
+                if 'sod_head' in name or 'upsample_layers' in name:
+                    no_decay_dec.append(param)
+                else:
+                    no_decay_enc.append(param)
                 # print(f"{name} has no weight decay")
             else:
-                has_decay.append(param)
-        parameters = [{'params': has_decay},
-                {'params': no_decay, 'weight_decay': 0.}]
+                if 'sod_head' in name or 'upsample_layers' in name:
+                    has_decay_dec.append(param)
+                else:
+                    has_decay_enc.append(param)
+        parameters = [{'params': has_decay_dec},
+                      {'params': has_decay_enc, 'lr': self.lr*0.1},
+                {'params': no_decay_dec, 'weight_decay': 0.},
+                {'params': no_decay_enc, 'weight_decay': 0., 'lr': self.lr*0.1}]
         optimizer = torch.optim.AdamW(parameters, lr=self.lr, weight_decay=0.05)
         # self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         #     optimizer,
