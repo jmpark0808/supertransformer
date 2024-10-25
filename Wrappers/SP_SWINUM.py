@@ -38,6 +38,7 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
         self.size = kwargs.get('size')
         self.mlp_ratio = kwargs.get('mlp_ratio')
         self.dp = kwargs.get('drop_path')
+        self.encoder_lr_weight = kwargs.get('encoder_lr_weight')
         resample_points = int(((self.size**2)//self.num_seg)**0.5)*4
         self.resample_points = resample_points
         
@@ -126,9 +127,9 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
                 else:
                     has_decay_enc.append(param)
         parameters = [{'params': has_decay_dec},
-                      {'params': has_decay_enc, 'lr': self.lr*0.01},
+                      {'params': has_decay_enc, 'lr': self.lr*self.encoder_lr_weight},
                 {'params': no_decay_dec, 'weight_decay': 0.},
-                {'params': no_decay_enc, 'weight_decay': 0., 'lr': self.lr*0.01}]
+                {'params': no_decay_enc, 'weight_decay': 0., 'lr': self.lr*self.encoder_lr_weight}]
         optimizer = torch.optim.AdamW(parameters, lr=self.lr, weight_decay=0.05)
         # self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         #     optimizer,

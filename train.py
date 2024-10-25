@@ -216,6 +216,7 @@ if __name__ == "__main__":
     parser.add_argument('--window_size', help='Window size for SWIN Transformer', type=int, default=4)
     parser.add_argument('--warmup_epochs', help='Number of epochs for warmup', type=int, default=4)
     parser.add_argument('--mlp_ratio', help='Mlp ratio for FF networks', default=4, type=float)
+    parser.add_argument('--encoder_lr_weight', help='Set LR factor for pre-trained encoder weights', default=0.1, type=float)
 
 
     import torch 
