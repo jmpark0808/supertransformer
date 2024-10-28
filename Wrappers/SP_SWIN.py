@@ -30,9 +30,18 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         self.window_size = kwargs.get('window_size')
         self.image_size = kwargs.get('size')
         self.warmup_epochs = kwargs.get('warmup_epochs')
+        self.size = kwargs.get('size')
+        resample_points = int(((self.size**2)//self.num_seg)**0.5)*4
+        self.resample_points = resample_points
+        
+        if self.coeff == -1: # use all coefficients
+            kwargs['coeff'] = resample_points-1
+            self.coeff = resample_points-1
+        else:
+            assert resample_points-1 >= self.coeff
         input_dim = get_input_dim(kwargs)
         # Generator that produces the HeatMap
-        self.supert = SP_SWIN(input_dim, self.tfm_hp[2], self.tfm_hp[0], self.tfm_hp[1],
+        self.supert = SP_SWIN(input_dim, self.tfm_hp[3], self.tfm_hp[0], self.tfm_hp[2],
                                self.dropout, self.dropout_edge, self.kernels, self.window_size, int(self.num_seg**0.5))
         self.iteration = 0
         self.test_iteration = 0
@@ -42,8 +51,8 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         inp = torch.randn([1, self.num_seg, input_dim+2])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
-        print(kwargs['parameters'], kwargs['flops'])
-        assert(0)
+        # print(kwargs['parameters'], kwargs['flops'])
+        # assert(0)
         # self.mixup = MixupSaliency(
         #     cutmix_alpha=1.0, cutmix_minmax=None,
         #     prob=1.0,  mode='batch',
@@ -104,7 +113,22 @@ class SP_SWIN_Wrapper(pl.LightningModule):
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-
+        first = input[:, :, :8]
+        second_amp = input[:, :, 8:8+self.resample_points]
+        second_phase = input[:, :, 8+self.resample_points:-10]
+        if self.coeff%2!=0: # coeff is odd
+            second_amp_front = second_amp[:, :, 1:2+(self.coeff//2)]
+            second_amp_back = second_amp[:, :, -(self.coeff//2):]
+            second_phase_front = second_phase[:, :, 1:2+(self.coeff//2)]
+            second_phase_back = second_phase[:, :, -(self.coeff//2):]
+        else:
+            second_amp_front = second_amp[:, :, 1:1+self.coeff//2]
+            second_amp_back = second_amp[:, :, -self.coeff//2:]
+            second_phase_front = second_phase[:, :, 1:1+self.coeff//2]
+            second_phase_back = second_phase[:, :, -self.coeff//2:]
+        third = input[:, :, -10:]
+        input = torch.cat((first, second_amp_front, second_amp_back, second_phase_front, second_phase_back, third), dim=2)
+        
         pred = self.supert(input)
 
         return pred

@@ -1,4 +1,36 @@
-# from typing import Callable, Optional, Union
+import torch
+
+def init_t_xy(end_x: int, end_y: int, zero_center=False):
+    t = torch.arange(end_x * end_y, dtype=torch.float32)
+    t_x = (t % end_x).float()
+    t_y = torch.div(t, end_x, rounding_mode='floor').float()
+    
+    return t_x, t_y
+
+a, b = init_t_xy(7, 7)
+print(a, b)
+
+
+# from PIL import Image
+# import os
+# import numpy as np
+# train_dir = '/mnt/f/Datasets/HRSOD_release/HRSOD_release/HRSOD_train/'
+
+# hs = []
+# ws = []
+# for file in os.listdir(train_dir):
+#     file_path = os.path.join(train_dir, file)
+#     img = Image.open(file_path)
+#     np_img = np.array(img)
+#     hs.append(np_img.shape[0])
+#     ws.append(np_img.shape[1])
+
+# print(np.max(hs), np.max(ws))
+
+
+
+
+#from typing import Callable, Optional, Union
 # from einops import rearrange
 # import torch
 # from torch import Tensor
@@ -321,10 +353,103 @@
     
 #-------------------------------------------------------------------------------------------
 
+
+
+# import os
+# from PIL import Image
+# import numpy as np
+# from tqdm import tqdm
+# from torchvision.datasets import ImageFolder
+# from torch.utils.data import DataLoader
+# from torchvision import transforms
+# imagenet_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TR/Image'
+# # dataset = ImageFolder(imagenet_dir, transform=transforms.Compose([transforms.ToTensor()]))
+# # loader = DataLoader(dataset, batch_size=1, num_workers=20)
+# all_heights = []
+# all_widths = []
+
+# for img in os.listdir(imagenet_dir):
+#     img_path = os.path.join(imagenet_dir, img)
+#     img = np.array(Image.open(img_path).convert('RGB'))
+#     height, width, c = img.shape
+#     all_heights.append(height)
+#     all_widths.append(width)
+
+# # for images, labels in tqdm(loader):
+# #     _, _, height, width = images.size()
+# #     all_heights.append(height)
+# #     all_widths.append(width)
+    
+
+# print(np.mean(all_heights))
+# print(np.mean(all_widths))
+
+
+
+#-----------------------------------------------------------------------------
+
+# import os
+# import numpy as np
+# import matplotlib.pyplot as plt
+# main_dir = '/mnt/dragon/Datasets/sp_train'
+# files = os.listdir(main_dir)
+# count = 0
+# coeffs = np.zeros([55])
+# for file in files:
+#     if 'target' not in file:
+#         features = np.load(os.path.join(main_dir, file))
+        
+#         amplitude = features[:, 9:9+55]
+#         coeffs += amplitude.sum(0)
+#         count += amplitude.shape[0]
+
+# print(coeffs/count)
+# plt.bar(list(range(55)), coeffs/count)
+# plt.show()
+
+        
+
+# -----------------------------------------------------------
+
 # import torch
-# ln = torch.nn.LayerNorm(3)
+# for _ in range(1000):
+#     pred = torch.rand(30, 1024).cuda()
+#     mask = torch.rand(30, 1024).cuda()
 
-# a = torch.tensor([[0, 1, 2], [1, 2, 3], [2, 3, 4]]).float()
-# b = ln(a)
-# print(b)
+#     prec, recall = torch.zeros(pred.size(0), 10).cuda(), torch.zeros(pred.size(0), 10).cuda()
 
+#     thlist = torch.linspace(0, 1 - 1e-10, 10).cuda()
+#     for j in range(10):
+#         y_temp = (pred >= thlist[j]).float()
+#         tp = (y_temp * mask).sum(dim=-1)
+#         # avoid prec becomes 0
+#         prec[:, j], recall[:, j] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
+                
+#     prec_mean = prec.mean(0)
+#     prec_sum = prec.sum(0)/30
+#     recall_mean = recall.mean(0)
+#     recall_sum = recall.sum(0)/30      
+
+
+#     beta_square = 0.3
+#     f_score_mean = (1 + beta_square) * prec_mean * recall_mean / (beta_square * prec_mean + recall_mean)
+#     f_score_sum = (1 + beta_square) * prec_sum * recall_sum / (beta_square * prec_sum + recall_sum)
+
+#     print(torch.sum(torch.abs(f_score_mean-f_score_sum)))
+
+
+# -------------------------------------------------
+# import torch
+
+# a = torch.zeros(100, 2)
+# ind = 0 
+# for i in range(0, 10):
+#     for j in range(0, 10):
+#         a[ind] = torch.tensor([i, j])
+#         ind +=1
+# print(a)
+# b = torch.nn.LayerNorm(2)
+# c = b(a)
+# print(c)
+
+        

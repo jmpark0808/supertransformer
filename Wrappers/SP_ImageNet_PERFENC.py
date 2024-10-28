@@ -12,7 +12,7 @@ from util.optimizers import SoftTargetCrossEntropy
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingWarmRestarts
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 # from Blocks.performer import Performer
-from Blocks.performer_diffpool import ViPEnc
+from Blocks.performer2 import ViPEnc
 import torch.nn as nn
 
 class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
@@ -38,6 +38,8 @@ class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
         self.heads = kwargs.get('heads')
         self.dims = kwargs.get('dims')
         self.depths = kwargs.get('depths')
+        self.mlp_ratio = kwargs.get('mlp_ratio')
+        self.dp = kwargs.get('drop_path')
         
         input_dim = get_input_dim(kwargs)
         self.res = (int(self.num_seg**0.5), int(self.num_seg**0.5))
@@ -45,8 +47,8 @@ class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
         
         self.classes= 1000
         self.supert = ViPEnc(image_size=self.res[0], patch_size=1,  dims=self.dims, heads=self.heads,
-                          mlp_ratio=4, channels=16, depths=self.depths, dropout=self.dropout_edge, emb_dropout=self.dropout
-                          )
+                          mlp_ratio=self.mlp_ratio, channels=input_dim, depths=self.depths, dropout=self.dropout_edge, emb_dropout=self.dropout
+                          , drop_path_rate=self.dp)
         # self.supert = Performer(input_dim, self.tfm_hp[2], self.tfm_hp[0], self.tfm_hp[1], 1000, attn_dropout=self.dropout_edge,
         #                         dropout=self.dropout, mlp_ratio=4)
 
@@ -58,6 +60,7 @@ class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
         # from fvcore.nn import FlopCountAnalysis, flop_count_table
         # inp = torch.randn([1, input_dim+2, 32, 32])
         # flops = FlopCountAnalysis(self.supert, inp)
+        # print(flop_count_table(flops, max_depth=10))
         # print(kwargs['parameters'], kwargs['flops'])
         # assert(0)
         
@@ -75,8 +78,8 @@ class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
         self.loss_fn = SoftTargetCrossEntropy()
         self.iteration = 0
         self.test_iteration = 0
+        self.start_training_flag = False
         self.save_hyperparameters()
-        self.switch_flag = True
         
 
     def loss(self, pred, label):
@@ -92,13 +95,36 @@ class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
         Choose what optimizers and learning-rate schedulers to use in your optimization.
         """
           
-        # optimizer = torch.optim.SGD(self.parameters(), lr=self.lr, momentum=0.9, weight_decay=0.00004)
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+        skip_list = {'absolute_pos_embed'}
+        skip_keywords = {'relative_position_bias_table'}
+        has_decay = []
+        no_decay = []
+
+        def check_keywords_in_name(name, keywords=()):
+            isin = False
+            for keyword in keywords:
+                if keyword in name:
+                    isin = True
+            return isin
+
+        for name, param in self.supert.named_parameters():
+            if not param.requires_grad:
+                continue  # frozen weights
+            if len(param.shape) == 1 or name.endswith(".bias") or (name in skip_list) or \
+                    check_keywords_in_name(name, skip_keywords):
+                no_decay.append(param)
+                # print(f"{name} has no weight decay")
+            else:
+                has_decay.append(param)
+        parameters = [{'params': has_decay},
+                {'params': no_decay, 'weight_decay': 0.}]
+        optimizer = torch.optim.AdamW(parameters, lr=self.lr, weight_decay=0.05)
+
 
         self.trainer.fit_loop.setup_data()
         dataset= self.trainer.train_dataloader
         self.scheduler = CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
-                                                      1, 5e-8)
+                                                      1, 5e-6)
         
         # self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.1, patience=self.es_patience, min_lr = 5e-8)
         return optimizer
@@ -144,10 +170,12 @@ class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
         logging resources:
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
-        # if self.trainer.current_epoch >= self.warmup_epochs and self.switch_flag:
-        #     self.trainer.optimizers[0] = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=0.00005)
-        #     self.scheduler = ReduceLROnPlateau(self.trainer.optimizers[0], mode='max', factor=0.1, patience=self.es_patience, min_lr = 5e-8)
-        #     self.switch_flag = False
+        if not self.start_training_flag and self.global_step != 0:
+            self.trainer.fit_loop.setup_data()
+            dataset= self.trainer.train_dataloader
+            for _ in range(self.global_step-len(dataset)*self.warmup_epochs):
+                self.scheduler.step()
+            self.start_training_flag  = True
 
 
         features, target = batch
@@ -219,6 +247,7 @@ class SP_ImageNet_PERFENC_Wrapper(pl.LightningModule):
         self.log('Final Test Accuracy', acc, sync_dist=True)
 
     def on_test_start(self):
+        self.supert.fix_projection_matrices_()
         self.test_acc = 0
         self.test_num_samples = 0
 

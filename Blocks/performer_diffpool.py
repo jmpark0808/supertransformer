@@ -6,7 +6,7 @@ from einops.layers.torch import Rearrange
 from math import ceil
 from functools import partial
 from contextlib import contextmanager
-from Blocks.swin_common import PatchMerging, PatchExpand
+from Blocks.merge import PatchMerging, PatchExpand
 from Blocks.TransformerBlocks import Transformer as TFM
 from Blocks.TransformerBlocks import CrossAttention as CA
 from Blocks.TransformerBlocks import Attention as Att
@@ -420,7 +420,7 @@ class TransformerEncoderToken(nn.Module):
     
 
 class TFMDecoder(nn.Module):
-    def __init__(self, q_dim, kv_dim, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0.):
+    def __init__(self, q_dim, kv_dim, depth, heads, dim_head, mlp_dim, resolution, dropout = 0., attn_dropout=0.):
         super().__init__()
         self.layers = nn.ModuleList([])
         for _ in range(depth):
@@ -430,7 +430,10 @@ class TFMDecoder(nn.Module):
             ]))
         
         if q_dim != kv_dim:
-            self.dim_lower = nn.Linear(kv_dim, q_dim)
+            self.dim_lower = nn.Sequential(nn.Linear(kv_dim, q_dim*4), 
+                                           Rearrange('b (h w) (c n m) -> b (h n w m) c', n=2, m=2, w=resolution))
+            # self.dim_lower = nn.Sequential(nn.Linear(kv_dim, q_dim*2), 
+            #                                Rearrange('b (h w) (c n) -> b (h w n) c', n=2, w=resolution))
         else:
             self.dim_lower = nn.Identity()
         # if downsample:
@@ -444,11 +447,11 @@ class TFMDecoder(nn.Module):
         kv = self.dim_lower(kv)
 
         for attn, ff in self.layers:
-            q = attn(q, kv) + q
-            q = ff(q) + q
+            kv = attn(q, kv) + kv
+            kv = ff(kv) + kv
 
         
-        return q
+        return kv
 
 class PerformerEncoderToken(nn.Module):
     def __init__(self, dim, out_dim, nodes, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0., downsample=False):
@@ -523,14 +526,14 @@ class PerformerEncoderToken(nn.Module):
     
 
 class TransformerDecoder(nn.Module):
-    def __init__(self, dim, out_dim, depth, heads, dim_head, mlp_dim, dropout = 0., attn_dropout=0.):
+    def __init__(self, dim, out_dim, depth, heads, dim_head, mlp_dim, resolution, dropout = 0., attn_dropout=0.):
         super().__init__()
         self.layers = nn.ModuleList([])
         local_attn_heads = 0
         local_window_size = 256
         causal = False
         nb_features = None
-        generalized_attention = False
+        generalized_attention = True
         kernel_fn = nn.ReLU()
         # attn_dropout = 0.
         no_projection = False
@@ -545,17 +548,21 @@ class TransformerDecoder(nn.Module):
                                                  attn_out_bias = attn_out_bias)),
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
             ]))
-
-        self.dim_lower = nn.Linear(out_dim, dim)
+        self.dim_lower = nn.Sequential(nn.Linear(out_dim, dim*4), 
+                                       Rearrange('b (h w) (c n m) -> b (h n w m) c', n = 2, m=2, w = resolution))
+        
+        # self.dim_lower = nn.Sequential(nn.Linear(out_dim, dim*2), 
+        #                                Rearrange('b (h w) (c n) -> b (h w n) c', n = 2, w = resolution))
 
         
     def forward(self, x, context):
+        
         context = self.dim_lower(context)
         
         for attn, ff in self.layers:
-            x = attn(x, context) + x
-            x = ff(x) + x
-        return x
+            context = attn(x, context) + context
+            context = ff(context) + context
+        return context
 
 
 class ViP(nn.Module):
@@ -752,7 +759,6 @@ class ViPEnc(nn.Module):
             # Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
             nn.LayerNorm(patch_dim),
             nn.Linear(patch_dim, dims[0]),
-            nn.LayerNorm(dims[0]),
         )
 
         # self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))

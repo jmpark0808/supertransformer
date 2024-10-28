@@ -37,9 +37,9 @@ class Mlp(nn.Module):
 
 def dilated_partition(x, window_size):
     B, H, W, C = x.shape
-    x = x.view(B, H // window_size, window_size, W // window_size, window_size, C)
+    x = x.view(B, window_size, H // window_size, window_size, W // window_size, C)
     
-    windows = x.permute(0, 2, 4, 1, 3, 5).contiguous().view(-1, H //window_size, W //window_size, C)
+    windows = x.permute(0, 2, 4, 1, 3, 5).contiguous().view(-1, window_size, window_size, C)
     return windows
 
 def window_partition(x, window_size):
@@ -124,7 +124,7 @@ def dilation_reverse(windows, window_size, H, W):
     """
 
     B = int(windows.shape[0] / (window_size * window_size))
-    x = windows.view(B, window_size, window_size, H // window_size, W // window_size,  -1)
+    x = windows.view(B, H // window_size, W // window_size, window_size, window_size,   -1)
     x = x.permute(0, 3, 1, 4, 2, 5).contiguous().view(B, H, W, -1)
     return x
 

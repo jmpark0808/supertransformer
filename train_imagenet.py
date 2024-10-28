@@ -105,12 +105,13 @@ if __name__ == "__main__":
     parser.add_argument('--num_seg', help='Approximate number of segmentations', default=600, type=int)
     parser.add_argument('--dropout', help='Dropout for Transformers', default=0., type=float)
     parser.add_argument('--dropout_edge', help='Dropout edge for Transformers', default=0., type=float)
+    parser.add_argument('--drop_path', help='Dropout rate for drop path', default=0., type=float)
     parser.add_argument('--seed', help='Seed for reproduceability', 
                         default=42, type=int)
     parser.add_argument('--clip_grad_norm', help='Clipping gradient norm, 0 means no clipping', type=float, default=0.)
     parser.add_argument('--tag', help='Tag for differentiating runs on CC', default='', type=str)
-    parser.add_argument('--tfmhp', default=[8, 6, 128], 
-                    nargs=3, metavar=('Heads', 'Number of Layers', 'Embed dim'),
+    parser.add_argument('--tfmhp', default=[8, 4, 6, 128, 32], 
+                    nargs=5, metavar=('Heads', 'local heads', 'Number of Layers', 'Embed dim', 'Head dim'),
                     type=int, help='Hyperparameters for Transformer')
     parser.add_argument('--coeff', help='Number of coefficients for fft', type=int, default=10)
     parser.add_argument('--compactness', help='Compactness for SLIC', type=float, default=10)
@@ -132,6 +133,7 @@ if __name__ == "__main__":
     parser.add_argument('--depths', default=[2, 2, 6], 
                     nargs="*", 
                     type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
+    parser.add_argument('--mlp_ratio', help='Mlp ratio for FF networks', default=4, type=float)
 
 
 
@@ -177,6 +179,11 @@ if __name__ == "__main__":
     
     lr_monitor = LearningRateMonitor(logging_interval='step')
     logger = TensorBoardLogger(save_dir=dict_args['logdir'], version=now+'_'+dict_args["tag"], name='lightning_logs', log_graph=True)
+    if 'PERF' in dict_args['model']:
+        precision = 32
+    else:
+        precision = '16-mixed'
+    # precision =32
     trainer = pl.Trainer(
         callbacks=[checkpoint_callback, lr_monitor],
         val_check_interval=dict_args['val_freq'],
@@ -187,7 +194,7 @@ if __name__ == "__main__":
         log_every_n_steps=10,
         gradient_clip_val=dict_args['clip_grad_norm'],
         devices=-1,
-        precision="16-mixed"
+        precision=precision
     ) 
 
     # Trainer: train model

@@ -1,25 +1,10 @@
-# --------------------------------------------------------
-# Swin Transformer
-# Copyright (c) 2021 Microsoft
-# Licensed under The MIT License [see LICENSE for details]
-# Written by Ze Liu
-# --------------------------------------------------------
-
 import torch
 import torch.nn as nn
-import torch.utils.checkpoint as checkpoint
-from timm.models.layers import DropPath, to_2tuple, trunc_normal_
-import math
-from Blocks.merge import  BasicLayerUpsampleMA, PatchMerging, UMixDecoder
-from Blocks.swin_common import PatchEmbed, BasicLayer
-from Blocks.performer2 import TransformerDecoder
-WindowProcess = None
-WindowProcessReverse = None
-print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
+from timm.models.layers import trunc_normal_
+from Blocks.swin_common import PatchEmbed
+from Blocks.swin_rope import BasicLayerRoPE, PatchMergingRoPE
 
-
-    
-class SwinUTransformer(nn.Module):
+class SwinTransformer(nn.Module):
     r""" Swin Transformer
         A PyTorch impl of : `Swin Transformer: Hierarchical Vision Transformer using Shifted Windows`  -
           https://arxiv.org/pdf/2103.14030
@@ -43,6 +28,7 @@ class SwinUTransformer(nn.Module):
         ape (bool): If True, add absolute position embedding to the patch embedding. Default: False
         patch_norm (bool): If True, add normalization after patch embedding. Default: True
         use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False
+        fused_window_process (bool, optional): If True, use one kernel to fused window shift & window partition for acceleration, similar for the reversed part. Default: False
     """
 
     def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000,
@@ -52,27 +38,26 @@ class SwinUTransformer(nn.Module):
                  norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
                  use_checkpoint=False, fused_window_process=False, **kwargs):
         super().__init__()
-        self.img_size = img_size
+
         self.num_classes = num_classes
         self.num_layers = len(depths)
         self.embed_dim = embed_dim[0]
         self.ape = ape
         self.patch_norm = patch_norm
+        self.num_features = embed_dim[-1]
         self.mlp_ratio = mlp_ratio
 
         # split image into non-overlapping patches
+
         self.patch_embed = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=16, embed_dim=embed_dim[0],
+            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim[0],
             norm_layer=norm_layer if self.patch_norm else None)
-        img_size = to_2tuple(img_size)
-        patch_size = to_2tuple(patch_size)
-        patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
-        self.patch_size = patch_size
+        num_patches = self.patch_embed.num_patches
+        patches_resolution = self.patch_embed.patches_resolution
         self.patches_resolution = patches_resolution
-        self.num_patches = patches_resolution[0] * patches_resolution[1]
 
         # absolute position embedding
-
+ 
 
         self.pos_drop = nn.Dropout(p=drop_rate)
 
@@ -81,11 +66,9 @@ class SwinUTransformer(nn.Module):
 
         # build layers
         self.layers = nn.ModuleList()
-        resolutions = []
-        embed_dims = []
         for i_layer in range(self.num_layers):
-            layer = BasicLayer(dim=embed_dim[i_layer],
-                                   out_dim=embed_dim[i_layer+1] if i_layer < self.num_layers-1 else None,
+            layer = BasicLayerRoPE(dim=embed_dim[i_layer],
+                                  out_dim=embed_dim[i_layer+1] if i_layer < self.num_layers-1 else None,
                                input_resolution=(patches_resolution[0] // (2 ** i_layer),
                                                  patches_resolution[1] // (2 ** i_layer)),
                                depth=depths[i_layer],
@@ -96,29 +79,15 @@ class SwinUTransformer(nn.Module):
                                drop=drop_rate, attn_drop=attn_drop_rate,
                                drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
                                norm_layer=norm_layer,
-                               downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
-                               use_checkpoint=use_checkpoint)
+                               downsample=PatchMergingRoPE if (i_layer < self.num_layers - 1) else None,
+                               use_checkpoint=use_checkpoint,
+                               fused_window_process=fused_window_process)
             self.layers.append(layer)
-            resolutions.append(patches_resolution[0] // (2 ** i_layer))
-            embed_dims.append(embed_dim[i_layer])
-        # resolutions.append(patches_resolution[0] // (2 ** i_layer))
-        embed_dims.reverse()
-            
-            
-        depths.reverse()
-        num_heads.reverse()
-        embed_dim.reverse()
-        self.decoder_linear = nn.Linear(embed_dim[0], embed_dim[-1])
-        self.upsample_layers = nn.ModuleList()
-        for i_layer in range(6):
-            self.upsample_layers.append(UMixDecoder(embed_dim[-1], num_heads[-1], mlp_ratio, qkv_bias, qk_scale, attn_drop_rate, drop_rate))
-            # self.upsample_layers.append(TransformerDecoder(embed_dim[i_layer], embed_dim[i_layer] if i_layer == 0 else embed_dim[i_layer-1],
-            #                                                 None, depths[i_layer], num_heads[i_layer],
-            #                                                   embed_dim[i_layer]//num_heads[i_layer], embed_dim[i_layer]*mlp_ratio,
-            #                                         drop_rate, attn_drop_rate))
-        self.sod_head = nn.Linear(embed_dim[-1], 1)
-        self.locations = nn.Sequential(*[nn.Linear(22, embed_dim[-1]), nn.ReLU(), nn.Linear(embed_dim[-1], embed_dim[-1])])
-        
+
+        self.norm = norm_layer(self.num_features)
+        self.avgpool = nn.AdaptiveAvgPool1d(1)
+        self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
+
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -138,41 +107,23 @@ class SwinUTransformer(nn.Module):
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
 
-    def forward_features(self, x, pos):
+    def forward_features(self, x):
+        centroids = x[:, :2, :, : ]
+        x = x[:, 2:, :, :]
+
         x = self.patch_embed(x)
-        
+ 
         x = self.pos_drop(x)
-        x = x + pos
 
-        ft = []
-        
         for layer in self.layers:
-            ds, x = layer(x)
-            
-            ft.append(ds)
+            ds, x, centroids = layer(x, centroids)
 
-        x = self.decoder_linear(x)
-        query = ft[0]
-        
-        for idx, layer in enumerate(self.upsample_layers):
-            query = layer(query, x)
-            
-        return query
-
-
+        x = self.norm(x)  # B L C
+        x = self.avgpool(x.transpose(1, 2))  # B C 1
+        x = torch.flatten(x, 1)
+        return x
 
     def forward(self, x):
-        centroids = x[:, :2, :, :]
-        fft = x[:, 8:-10, :, :]
-        lbp = x[:, -10:, :, :]
-        color = x[:, 2:8, :, :]
-        x = torch.cat((color, lbp), dim=1)
-        locations = torch.cat((centroids, fft), dim=1).permute(0, 2, 3, 1)
-        locations = self.locations(locations)
-        locations = locations.reshape(locations.size(0), -1, locations.size(3))
-        x = self.forward_features(x, locations)
-        x = self.sod_head(x)
-
+        x = self.forward_features(x)
+        x = self.head(x)
         return x
- 
-

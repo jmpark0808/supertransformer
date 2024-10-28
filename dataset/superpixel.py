@@ -30,8 +30,7 @@ class Resize(object):
 
     def __call__(self, sample):
         img, mask = sample['image'], sample['mask']
-        img, mask = img.resize((self.size, self.size), resample=Image.BILINEAR), mask.resize((self.size, self.size),
-                                                                                             resample=Image.BILINEAR)
+        img = img.resize((self.size, self.size), resample=Image.BILINEAR)
         
         return {'image': img, 'mask': mask}
     
@@ -147,7 +146,7 @@ class ToTensorSP(object):
         # label_onehot = F.one_hot(segments, self.num_seg).float()
         segments = slic(img_np, n_segments=self.num_seg,
             compactness=self.compactness,
-            max_num_iter=10,
+            max_num_iter=1,
             convert2lab=True,
             enforce_connectivity=False,
             slic_zero=False)-1

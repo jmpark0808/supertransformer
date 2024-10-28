@@ -57,19 +57,28 @@ class ImageNetDataset(data.Dataset):
         res = int(features_np.shape[0]**0.5)
 
         if self.augmentation:
-            features_np = horizontal_flip(features_np, self.resample_points, 0.5, self.size, (res, res))
-            features_np = rotate(features_np, self.resample_points, 15, 0.5, (self.size, self.size))
+            features_np = horizontal_flip(features_np, self.coeff, 0.5, self.size, (res, res))
+            features_np = rotate(features_np, self.coeff, 15, 0.5, (self.size, self.size))
 
 
         features = torch.tensor(features_np).float()
         if self.augmentation:
-
+            
             randaug = RandAugment(5)
+            erase = transforms.RandomErasing(0.25)
             color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
-            color_space = (color_space*255).to(torch.uint8)
-            color_space = randaug(color_space).float()
-            color_space /= 255.
-            # plt.imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
+            # fig, ax = plt.subplots(1, 2)
+            # ax[0].imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
+            # op_names = 'No augment'
+            if np.random.random() < 0.5:
+                color_space = (color_space*255).to(torch.uint8)
+                color_space, op_names = randaug(color_space)
+                color_space = color_space.float()
+                color_space /= 255.
+            color_space = erase(color_space)
+            
+            # ax[1].imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
+            # ax[1].set_title(op_names)
             # plt.show()
             color_space = color_space.reshape(3, res*res).permute(1, 0)
             
@@ -109,9 +118,9 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
             contour_complex.imag = contour_array[:, 1]
             fourier_result = np.fft.fft(contour_complex)
 
-            # fourier_result_front = fourier_result[1:1+coeff//2]
-            # fourier_result_back = fourier_result[-coeff//2:]
-            # fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
+            fourier_result_front = fourier_result[1:1+coeff//2]
+            fourier_result_back = fourier_result[-coeff//2:]
+            fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
 
             amp = abs(fourier_result)
             phase = np.arctan2(fourier_result.imag, fourier_result.real)
@@ -129,6 +138,7 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
             # hist /= (hist.sum() + 1e-7)
             return hist
         self.lbp = lbp
+
 
     def __getitem__(self, index: int):
         """
@@ -202,10 +212,10 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
 
         seq_len = len(regions['label'])
         label = regions['label']
-        features = np.zeros([self.num_seg, 8+(self.resample_points)*2+10])
+        features = np.zeros([self.num_seg, 8+(self.coeff)*2+10])
     
         
-        for i in range(self.resample_points*2):
+        for i in range(self.coeff*2):
             features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
         
@@ -219,7 +229,7 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
         features[label-1, 7] = regions['image_stdev-2']/255.
 
         for ind in range(8+2):
-            features[label-1, ind+8+(self.resample_points)*2] = regions_lbp[f'lbp-{ind}']
+            features[label-1, ind+8+(self.coeff)*2] = regions_lbp[f'lbp-{ind}']
         
 
         

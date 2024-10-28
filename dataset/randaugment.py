@@ -156,16 +156,18 @@ class RandAugment(torch.nn.Module):
                 fill = [float(f) for f in fill]
 
         op_meta = self._augmentation_space(self.num_magnitude_bins, (height, width))
+        op_names = []
         for _ in range(self.num_ops):
             op_index = int(torch.randint(len(op_meta), (1,)).item())
             op_name = list(op_meta.keys())[op_index]
+            op_names.append(op_name)
             magnitudes, signed = op_meta[op_name]
             magnitude = float(magnitudes[self.magnitude].item()) if magnitudes.ndim > 0 else 0.0
             if signed and torch.randint(2, (1,)):
                 magnitude *= -1.0
             img = _apply_op(img, op_name, magnitude, interpolation=self.interpolation, fill=fill)
 
-        return img
+        return img, op_names
 
 
     def __repr__(self) -> str:
