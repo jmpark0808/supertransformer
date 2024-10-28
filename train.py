@@ -54,6 +54,7 @@ from Wrappers.SP_PERF import SP_PERF_Wrapper
 from Wrappers.SP_PERFEncDec import SP_PERFEncDec_Wrapper
 from Wrappers.SP_SWINUP import SP_SWINUP_Wrapper
 from Wrappers.Seg_SOD_PERFU import Seg_PERFUSLIC_Wrapper
+from Wrappers.SP_SWINUM_rope import SP_SWINUM_ROPE_Wrapper
 # from Wrappers.SP_MAMBA import SP_MAMBA_Wrapper
 
 
@@ -116,6 +117,7 @@ MODEL_DIRECTORY = {
     'SP_SWINUU': SP_SWINUU_Wrapper,
     'SP_SWINUM': SP_SWINUM_Wrapper,
     'SP_SWINUP': SP_SWINUP_Wrapper,
+    'SP_SWINUM_ROPE': SP_SWINUM_ROPE_Wrapper,
     # 'SP_MAMBA': SP_MAMBA_Wrapper,
     'SP_SWIN_Kernel': SP_SWIN_Kernel_Wrapper,
     'SP_SWIN_PyG': SP_SWIN_PyG_Wrapper,
@@ -181,6 +183,7 @@ if __name__ == "__main__":
     parser.add_argument('--num_seg', help='Approximate number of segmentations', default=600, type=int)
     parser.add_argument('--dropout', help='Dropout for Transformers', default=0., type=float)
     parser.add_argument('--dropout_edge', help='Dropout for dropout_edge', default=0., type=float)
+    parser.add_argument('--drop_path', help='Dropout rate for drop path', default=0., type=float)
     parser.add_argument('--seed', help='Seed for reproduceability', 
                         default=42, type=int)
     parser.add_argument('--clip_grad_norm', help='Clipping gradient norm, 0 means no clipping', type=float, default=0.)
@@ -190,8 +193,8 @@ if __name__ == "__main__":
     parser.add_argument('--dilation', help='Dilation for local transformer', type=int, default=5)
     parser.add_argument('--downsample', help='Downsample resolution', type=int, default=28)
     parser.add_argument('--tag', help='Tag for differentiating runs on CC', default='', type=str)
-    parser.add_argument('--tfmhp', default=[8, 6, 128], 
-                    nargs=3, metavar=('Heads', 'Number of Layers', 'Embed dim'),
+    parser.add_argument('--tfmhp', default=[8, 4, 6, 128, 16], 
+                    nargs=5, metavar=('Heads', 'local heads', 'Number of Layers', 'Embed dim', 'Head dim'),
                     type=int, help='Hyperparameters for Transformer')
     parser.add_argument('--ignore_phase', help='Whether or not to use phase of FFT'
                         , default=False, action="store_true")
@@ -218,7 +221,8 @@ if __name__ == "__main__":
                         , default=False, action="store_true")
     
     parser.add_argument('--warmup_epochs', help='Number of epochs for warmup', type=int, default=4)
-    parser.add_argument('--factor', help='Factor for hidden dimension in SWIN Transformer', default=1.0, type=float)
+    parser.add_argument('--mlp_ratio', help='Mlp ratio for FF networks', default=4, type=float)
+    parser.add_argument('--encoder_lr_weight', help='Set LR factor for pre-trained encoder weights', default=0.1, type=float)
 
 
     import torch 
@@ -232,16 +236,18 @@ if __name__ == "__main__":
     
     pl.seed_everything(dict_args['seed'], True)
 
-    # Data: load data module
-    assert dict_args['dataloader'] in DATALOADER_DIRECTORY
-    data_module = DATALOADER_DIRECTORY[dict_args['dataloader']](**dict_args)
-
-
     # Initialize model to train
     assert dict_args['model'] in MODEL_DIRECTORY
     model = MODEL_DIRECTORY[dict_args['model']](**dict_args)
     if dict_args['load']:
         model = model.load_from_checkpoint(dict_args['load'])
+
+    # Data: load data module
+    assert dict_args['dataloader'] in DATALOADER_DIRECTORY
+    data_module = DATALOADER_DIRECTORY[dict_args['dataloader']](**dict_args)
+
+
+    
 
     # Initialize logging paths
     now = datetime.datetime.now().strftime('%m%d-%H%M%S')

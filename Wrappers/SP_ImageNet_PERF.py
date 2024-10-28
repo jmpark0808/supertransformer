@@ -44,8 +44,9 @@ class SP_ImageNet_PERF_Wrapper(pl.LightningModule):
         
         
         self.classes= 1000
-        self.supert = ViP(image_size=self.res[0], patch_size=1,  dim=self.tfm_hp[2], heads=self.tfm_hp[0],
-                          mlp_dim=self.tfm_hp[2]*4, channels=16, dim_head=self.tfm_hp[2]//self.tfm_hp[0], depth=self.tfm_hp[1],
+        self.supert = ViP(image_size=self.res[0], patch_size=1,  dim=self.tfm_hp[3], heads=self.tfm_hp[0], local_heads=self.tfm_hp[1],
+                          mlp_dim=self.tfm_hp[3]*4, coeff=self.coeff, window_size=self.window_size, channels=input_dim,
+                            dim_head=self.tfm_hp[4], depth=self.tfm_hp[2],
                           task='cls')
         # self.supert = Performer(input_dim, self.tfm_hp[2], self.tfm_hp[0], self.tfm_hp[1], 1000, attn_dropout=self.dropout_edge,
         #                         dropout=self.dropout, mlp_ratio=4)
@@ -55,6 +56,8 @@ class SP_ImageNet_PERF_Wrapper(pl.LightningModule):
         inp = torch.randn([1, self.num_seg, input_dim+2])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
+        self.log('Flops', kwargs['flops'])
+        self.log('Parameters', kwargs['parameters'])
         # from fvcore.nn import FlopCountAnalysis, flop_count_table
         # inp = torch.randn([1, input_dim+2, 32, 32])
         # flops = FlopCountAnalysis(self.supert, inp)
@@ -169,7 +172,7 @@ class SP_ImageNet_PERF_Wrapper(pl.LightningModule):
         self.train_acc += acc
         self.num_samples += n
 
-        self.log('loss', loss.item(), sync_dist=True)
+        self.log('loss', loss.item(), sync_dist=True, prog_bar=True)
         self.iteration += 1
         if self.current_epoch >= self.warmup_epochs:
             self.scheduler.step()
@@ -218,6 +221,7 @@ class SP_ImageNet_PERF_Wrapper(pl.LightningModule):
         self.log('Final Test Accuracy', acc, sync_dist=True)
 
     def on_test_start(self):
+        self.supert.fix_projection_matrices_()
         self.test_acc = 0
         self.test_num_samples = 0
 

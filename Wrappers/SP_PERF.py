@@ -39,20 +39,14 @@ class SP_PERF_Wrapper(pl.LightningModule):
         self.total_train_epochs = kwargs.get('epoch')
         self.factor = kwargs.get('factor')
         self.size = kwargs.get('size')
-        resample_points = int(((self.size**2)//self.num_seg)**0.5)*4
-        self.resample_points = resample_points
         
-        if self.coeff == -1: # use all coefficients
-            kwargs['coeff'] = resample_points-1
-            self.coeff = resample_points-1
-        else:
-            assert resample_points-1 >= self.coeff
         input_dim = get_input_dim(kwargs)
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
         # SWIN UPerNet Production
-        self.supert = ViP(image_size=res, patch_size=1, dim=self.tfm_hp[2], heads=self.tfm_hp[0], depth=self.tfm_hp[1],
-                           mlp_dim=self.tfm_hp[2]*4, coeff=self.coeff, channels=(input_dim-(self.coeff*2)), dim_head=self.tfm_hp[2], dropout=self.dropout_edge,
+        self.supert = ViP(image_size=res, patch_size=1, dim=self.tfm_hp[3], heads=self.tfm_hp[0], local_heads=self.tfm_hp[1], depth=self.tfm_hp[2],
+                           mlp_dim=self.tfm_hp[3]*4, coeff=self.coeff, window_size=self.window_size, channels=input_dim,
+                             dim_head=self.tfm_hp[4], dropout=self.dropout_edge,
                             emb_dropout=self.dropout, task='sod')
         # self.supert = ViPU(image_size=res, patch_size=1, dim=self.tfm_hp[2], heads=self.tfm_hp[0], depth=self.tfm_hp[1],
         #                    mlp_dim=self.tfm_hp[2]*1, channels=input_dim, dim_head=self.tfm_hp[2]//self.tfm_hp[0], dropout=self.dropout_edge,
@@ -62,11 +56,15 @@ class SP_PERF_Wrapper(pl.LightningModule):
        
 
         kwargs['parameters'] = parameter_count(self.supert)['']
+        
         # print(parameter_count(self.supert))
         # assert(0)
         inp = torch.randn([1, res*res, input_dim+2])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
+        self.flops = kwargs['flops']
+        self.num_parameters = kwargs['parameters']
+       
 
         # print(kwargs['parameters'], kwargs['flops'])
         # assert(0)
@@ -112,9 +110,9 @@ class SP_PERF_Wrapper(pl.LightningModule):
         
         self.trainer.fit_loop.setup_data()
         dataset= self.trainer.train_dataloader
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
-                                                      1, 5e-8)
-        # self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=self.es_patience, min_lr = 5e-8)
+        # self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, len(dataset)*(self.total_train_epochs-self.warmup_epochs),
+        #                                               1, 5e-8)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=self.es_patience, min_lr = 5e-8)
         return optimizer
       
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure):
@@ -137,22 +135,7 @@ class SP_PERF_Wrapper(pl.LightningModule):
         :param adj: adjacent matrix 
         :return: 2D heatmap, 16x3 joint inferences, 2D reconstructed heatmap
         """        
-        first = input[:, :, :8]
-        second_amp = input[:, :, 8:8+self.resample_points]
-        second_phase = input[:, :, 8+self.resample_points:-10]
-        if self.coeff%2!=0: # coeff is odd
-            second_amp_front = second_amp[:, :, 1:2+(self.coeff//2)]
-            second_amp_back = second_amp[:, :, -(self.coeff//2):]
-            second_phase_front = second_phase[:, :, 1:2+(self.coeff//2)]
-            second_phase_back = second_phase[:, :, -(self.coeff//2):]
-        else:
-            second_amp_front = second_amp[:, :, 1:1+self.coeff//2]
-            second_amp_back = second_amp[:, :, -self.coeff//2:]
-            second_phase_front = second_phase[:, :, 1:1+self.coeff//2]
-            second_phase_back = second_phase[:, :, -self.coeff//2:]
-        third = input[:, :, -10:]
-        input = torch.cat((first, second_amp_front, second_amp_back, second_phase_front, second_phase_back, third), dim=2)
-        
+
         pred = self.supert(input)
         pred = pred.reshape(pred.size(0), -1)
         return pred
@@ -160,6 +143,10 @@ class SP_PERF_Wrapper(pl.LightningModule):
     def on_train_epoch_start(self):
         self.train_fscores = 0
         self.num_samples = 0
+
+    def on_train_start(self):
+        self.log('Flops', self.flops)
+        self.log('Parameters', self.num_parameters)
     
     def on_train_epoch_end(self):
         fscores = self.train_fscores/self.num_samples
@@ -175,6 +162,7 @@ class SP_PERF_Wrapper(pl.LightningModule):
         logging resources:
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
+        
         features = batch['features']
         seq_mask = batch['seq_mask']
         segments = batch['segments']
@@ -229,8 +217,8 @@ class SP_PERF_Wrapper(pl.LightningModule):
         self.num_samples += features.size(0)
         self.log('loss', loss.item())
         self.iteration += 1
-        if self.current_epoch >= self.warmup_epochs:
-            self.scheduler.step()
+        # if self.current_epoch >= self.warmup_epochs:
+        #     self.scheduler.step()
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx):
@@ -267,13 +255,14 @@ class SP_PERF_Wrapper(pl.LightningModule):
             samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
             samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
         
-        mae = torch.mean(torch.abs(samples - mask))
+        mae = torch.sum(torch.mean(torch.abs(samples - mask), dim=tuple(range(1, len(samples.size())))))
+        
         if dataloader_idx == 0:
-            self.preds.append(samples)
-            self.masks.append(mask)
+            self.maes += mae
+            self.mean_num += features.size(0)
         elif dataloader_idx == 1:
-            self.preds_test.append(samples)
-            self.masks_test.append(mask)
+            self.maes_test += mae
+            self.mean_num_test += features.size(0)
 
         
         prec, recall = torch.zeros(samples.size(0), self.num_thresholds).cuda(), torch.zeros(samples.size(0), self.num_thresholds).cuda()
@@ -285,64 +274,68 @@ class SP_PERF_Wrapper(pl.LightningModule):
             tp = (y_temp * mask).sum(dim=-1)
             # avoid prec becomes 0
             prec[:, j], recall[:, j] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
+            
+            
         # (batch, threshold)
         if dataloader_idx == 0:
-            self.precs.append(prec)
-            self.recalls.append(recall)
+            self.precs += prec.sum(0)
+            self.recalls += recall.sum(0)
             self.validation_step_outputs.append(mae)
             self.test_iteration += 1
         elif dataloader_idx == 1:
-            self.precs_test.append(prec)
-            self.recalls_test.append(recall)
+            self.precs_test += prec.sum(0)
+            self.recalls_test += recall.sum(0)
         return mae
 
 
     def on_validation_epoch_end(self):
-        prec = torch.cat(self.precs, dim=0).cuda().mean(dim=0)
-        recall = torch.cat(self.recalls, dim=0).cuda().mean(dim=0)
+        prec = self.precs/self.mean_num
+        recall = self.recalls/self.mean_num
+       
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
-        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds).cuda()
+        
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
         self.log('Validation Max F Score', torch.max(f_score))
         self.log('Validation Max F Threshold', thlist[torch.argmax(f_score)])
 
-        pred = torch.cat(self.preds, 0).cuda()
-        mask = torch.cat(self.masks, 0).cuda().round().float()
-        self.log('Validation MAE', torch.mean(torch.abs(pred-mask)))
+        self.log('Validation MAE', self.maes/self.mean_num)
 
-        prec = torch.cat(self.precs_test, dim=0).cuda().mean(dim=0)
-        recall = torch.cat(self.recalls_test, dim=0).cuda().mean(dim=0)
+        prec = self.precs_test/self.mean_num_test
+        recall = self.recalls_test/self.mean_num_test
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
-        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds).cuda()
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
         self.log('Test Max F Score', torch.max(f_score))
         self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
 
-        pred = torch.cat(self.preds_test, 0)
-        mask = torch.cat(self.masks_test, 0).round().float()
-        self.log('Test MAE', torch.mean(torch.abs(pred-mask)))
-        # if self.current_epoch >= self.warmup_epochs:
-        #     self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
+        self.log('Test MAE', self.maes_test/self.mean_num_test)
+        if self.current_epoch >= self.warmup_epochs:
+            self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
         self.validation_step_outputs.clear()
 
     def on_validation_start(self):
-        self.preds = []
-        self.masks = []
-        self.precs = []
-        self.recalls = []
+        self.maes = 0
+        self.mean_num = 0
+        
+        self.precs = torch.zeros(self.num_thresholds).cuda()
+        self.recalls = torch.zeros(self.num_thresholds).cuda()
 
-        self.preds_test = []
-        self.masks_test = []
-        self.precs_test = []
-        self.recalls_test = []
+        self.maes_test = 0
+        self.mean_num_test = 0
+
+        self.precs_test = torch.zeros(self.num_thresholds).cuda()
+        self.recalls_test = torch.zeros(self.num_thresholds).cuda()
 
         self.validation_step_outputs = []
 
     def on_test_start(self):
-        self.preds = []
-        self.masks = []
-        self.precs = []
-        self.recalls = []
+        self.supert.fix_projection_matrices_()
+        self.maes = 0
+        self.mean_num = 0
+        
+        self.precs = torch.zeros(256).cuda()
+        self.recalls = torch.zeros(256).cuda()
         self.test_step_outputs = []
 
 
@@ -354,8 +347,8 @@ class SP_PERF_Wrapper(pl.LightningModule):
         features = batch['features']
         seq_mask = batch['seq_mask']
         segments = batch['segments']
-        mask = batch['mask'].cpu()
-
+        mask = batch['mask']
+        
 
         # forward pass
         res = int(self.num_seg**0.5)
@@ -375,7 +368,7 @@ class SP_PERF_Wrapper(pl.LightningModule):
                 plt_image = masked[labels-1].reshape([img_size, img_size])
                 samples.append(plt_image)
 
-            samples = torch.tensor(np.expand_dims(np.array(samples), 1))
+            samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
         else:
             samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
             samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear').detach().cpu()
@@ -384,37 +377,36 @@ class SP_PERF_Wrapper(pl.LightningModule):
         # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
         # tensorboard.add_images('Test Image', img, self.test_iteration)
 
-        mae = torch.mean(torch.abs(samples - mask))
-        self.preds.append(samples)
-        self.masks.append(mask)
+        mae = torch.sum(torch.mean(torch.abs(samples - mask), dim=tuple(range(1, len(samples.size())))))
+        self.maes += mae
+        self.mean_num += features.size(0)
+
         prec, recall = torch.zeros(samples.size(0), 256).cuda(), torch.zeros(samples.size(0), 256).cuda()
         pred = samples.reshape(samples.size(0), -1)
         mask = mask.reshape(mask.size(0), -1)
-        thlist = torch.linspace(0, 1 - 1e-10, 256)
+        thlist = torch.linspace(0, 1 - 1e-10, 256).cuda()
         for j in range(256):
             y_temp = (pred >= thlist[j]).float()
             tp = (y_temp * mask).sum(dim=-1)
             # avoid prec becomes 0
             prec[:, j], recall[:, j] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
         # (batch, threshold)
-        self.precs.append(prec)
-        self.recalls.append(recall)
+        self.precs += prec.sum(0)
+        self.recalls += recall.sum(0)
         self.test_step_outputs.append(mae)
         self.test_iteration += 1
         return mae
     
     def on_test_epoch_end(self):
-        prec = torch.cat(self.precs, dim=0).cuda().mean(dim=0)
-        recall = torch.cat(self.recalls, dim=0).cuda().mean(dim=0)
+        prec = self.precs/self.mean_num
+        recall = self.recalls/self.mean_num
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
-        thlist = torch.linspace(0, 1 - 1e-10, 256).cuda()
+        thlist = torch.linspace(0, 1 - 1e-10, 256)
         self.log('Final Test Max F Score', torch.max(f_score))
         self.log('Final Test Max F Threshold', thlist[torch.argmax(f_score)])
 
-        pred = torch.cat(self.preds, 0).cuda()
-        mask = torch.cat(self.masks, 0).cuda().round().float()
-        self.log('Final Test MAE', torch.mean(torch.abs(pred-mask)))
+        self.log('Final Test MAE', self.maes/self.mean_num)
         
 
 

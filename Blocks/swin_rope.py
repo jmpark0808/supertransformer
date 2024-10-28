@@ -4,15 +4,63 @@ import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
 from Blocks.swin_common import window_partition, window_reverse, Mlp
+from typing import Any, Optional, Tuple
 
 WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
 
+def init_random_2d_freqs(head_dim: int, num_heads: int, theta: float = 10.0, rotate: bool = True):
+    freqs_x = []
+    freqs_y = []
+    theta = theta
+    mag = 1 / (theta ** (torch.arange(0, head_dim, 4)[: (head_dim // 4)].float() / head_dim))
+    for i in range(num_heads):
+        angles = torch.rand(1) * 2 * torch.pi if rotate else torch.zeros(1)
+        fx = torch.cat([mag * torch.cos(angles), mag * torch.cos(torch.pi/2 + angles)], dim=-1)
+        fy = torch.cat([mag * torch.sin(angles), mag * torch.sin(torch.pi/2 + angles)], dim=-1)
+        freqs_x.append(fx)
+        freqs_y.append(fy)
+    freqs_x = torch.stack(freqs_x, dim=0)
+    freqs_y = torch.stack(freqs_y, dim=0)
+    freqs = torch.stack([freqs_x, freqs_y], dim=0)
+    return freqs
 
 
+def compute_cis(freqs, t_x, t_y):
+    N = t_x.shape[0]
+    # No float 16 for this range
+    with torch.cuda.amp.autocast(enabled=False):
+        freqs_x = (t_x @ freqs[0].unsqueeze(-2))
+        freqs_y = (t_y @ freqs[1].unsqueeze(-2))
+        freqs_cis = torch.polar(torch.ones_like(freqs_x), freqs_x + freqs_y)
+        
+    return freqs_cis
 
-class WindowAttentionRPE(nn.Module):
+def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
+    ndim = x.ndim
+    assert 0 <= 1 < ndim
+    # assert freqs_cis.shape == (x.shape[-2], x.shape[-1])
+    if freqs_cis.shape == (x.shape[-2], x.shape[-1]):
+        shape = [d if i >= ndim-2 else 1 for i, d in enumerate(x.shape)]
+    elif freqs_cis.shape == (x.shape[-3], x.shape[-2], x.shape[-1]):
+        shape = [d if i >= ndim-3 else 1 for i, d in enumerate(x.shape)]
+        
+    return freqs_cis.view(*shape)
+
+def apply_rotary_emb(
+    xq: torch.Tensor,
+    xk: torch.Tensor,
+    freqs_cis: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
+    xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
+    freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
+    xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
+    xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
+    return xq_out.type_as(xq).to(xq.device), xk_out.type_as(xk).to(xk.device)
+
+class WindowAttentionRoPE(nn.Module):
     r""" Window based multi-head self attention (W-MSA) module with relative position bias.
     It supports both of shifted and non-shifted window.
 
@@ -26,7 +74,7 @@ class WindowAttentionRPE(nn.Module):
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
 
-    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0., rope_theta = 10.0):
 
         super().__init__()
         self.dim = dim
@@ -36,22 +84,6 @@ class WindowAttentionRPE(nn.Module):
         self.head_dim = head_dim
         self.scale = qk_scale or head_dim ** -0.5
 
-        # # define a parameter table of relative position bias
-        # self.relative_position_bias_table = nn.Parameter(
-        #     torch.zeros((2 * window_size[0] - 1) * (2 * window_size[1] - 1), num_heads))  # 2*Wh-1 * 2*Ww-1, nH
-
-        # # get pair-wise relative position index for each token inside the window
-        # coords_h = torch.arange(self.window_size[0])
-        # coords_w = torch.arange(self.window_size[1])
-        # coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
-        # coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
-        # relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
-        # relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
-        # relative_coords[:, :, 0] += self.window_size[0] - 1  # shift to start from 0
-        # relative_coords[:, :, 1] += self.window_size[1] - 1
-        # relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
-        # relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
-        # self.register_buffer("relative_position_index", relative_position_index)
 
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
@@ -62,8 +94,13 @@ class WindowAttentionRPE(nn.Module):
         # trunc_normal_(self.relative_position_bias_table, std=.02)
         self.softmax = nn.Softmax(dim=-1)
 
-        self.pos_linear_k = nn.Linear(2, head_dim)
-        self.pos_linear_v = nn.Linear(2, head_dim)
+        
+
+        freqs = init_random_2d_freqs(
+            head_dim=self.dim // self.num_heads, num_heads=self.num_heads, theta=rope_theta, 
+            rotate=self.rope_mixed
+        )
+        self.rope_freqs = nn.Parameter(freqs, requires_grad=True)
 
     def forward(self, x, centroids, mask=None):
         """
@@ -79,12 +116,17 @@ class WindowAttentionRPE(nn.Module):
 
         q = q * self.scale
 
-        rpe = centroids.unsqueeze(2) - centroids.unsqueeze(1) # B, N, N, 2
-        rpe_k = self.pos_linear_k(rpe) # B, N, N, D
-        
-        rpe_v = self.pos_linear_v(rpe) # B, N, N, D
+        t_x = centroids[:, :, 0] - centroids[:, 0, 0]
+        t_y = centroids[:, :, 1] - centroids[:, 0, 1]
 
-        attn = (q @ k.transpose(-2, -1)) + (q.transpose(1, 2) @ rpe_k.permute(0, 1, 3, 2)).permute(0, 2, 1, 3)
+
+        freqs_cis = compute_cis(self.rope_freqs, t_x, t_y)
+
+        q, k = apply_rotary_emb(q, k, freqs_cis)
+
+       
+
+        attn = (q @ k.transpose(-2, -1))
 
 
         # relative_position_bias = self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
@@ -113,7 +155,7 @@ class WindowAttentionRPE(nn.Module):
 
    
 
-class SwinTransformerBlockRPE(nn.Module):
+class SwinTransformerBlockRoPE(nn.Module):
     r""" Swin Transformer Block.
 
     Args:
@@ -151,7 +193,7 @@ class SwinTransformerBlockRPE(nn.Module):
         assert 0 <= self.shift_size < self.window_size, "shift_size must in 0-window_size"
 
         self.norm1 = norm_layer(dim)
-        self.attn = WindowAttentionRPE(
+        self.attn = WindowAttentionRoPE(
             dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
             qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
 
@@ -251,7 +293,7 @@ class SwinTransformerBlockRPE(nn.Module):
 
 
 
-class PatchMergingRPE(nn.Module):
+class PatchMergingRoPE(nn.Module):
     r""" Patch Merging Layer.
 
     Args:
@@ -303,7 +345,7 @@ class PatchMergingRPE(nn.Module):
     
 
 
-class BasicLayerRPE(nn.Module):
+class BasicLayerRoPE(nn.Module):
     """ A basic Swin Transformer layer for one stage.
 
     Args:
@@ -337,7 +379,7 @@ class BasicLayerRPE(nn.Module):
 
         # build blocks
         self.blocks = nn.ModuleList([
-            SwinTransformerBlockRPE(dim=dim, input_resolution=input_resolution,
+            SwinTransformerBlockRoPE(dim=dim, input_resolution=input_resolution,
                                  num_heads=num_heads, window_size=window_size,
                                  shift_size=0 if (i % 2 == 0) else window_size // 2,
                                  mlp_ratio=mlp_ratio,

@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from timm.models.layers import trunc_normal_
 from Blocks.swin_common import PatchEmbed, BasicLayer, PatchMerging
+from Blocks.performer2 import LineMerging
 
 class SwinTransformer(nn.Module):
     r""" Swin Transformer
@@ -49,8 +50,8 @@ class SwinTransformer(nn.Module):
         # split image into non-overlapping patches
 
         self.patch_embed = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=in_chans-(coeff*2), embed_dim=embed_dim[0],
-            norm_layer=norm_layer if self.patch_norm else None)
+            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim[0],
+            norm_layer= None) #norm_layer if self.patch_norm else
         num_patches = self.patch_embed.num_patches
         patches_resolution = self.patch_embed.patches_resolution
         self.patches_resolution = patches_resolution
@@ -65,27 +66,46 @@ class SwinTransformer(nn.Module):
 
         # build layers
         self.layers = nn.ModuleList()
+        self.resolutions = []
+        self.embed_dims = []
         for i_layer in range(self.num_layers):
+            if (i_layer < self.num_layers - 1):
+                merge = PatchMerging
+                resolution = (patches_resolution[0]// (2 ** i_layer),
+                                                 patches_resolution[1] // (2 ** i_layer))
+            else:
+                merge = None
+                resolution = (patches_resolution[0]// (2 ** i_layer),
+                                                 patches_resolution[1] // (2 ** i_layer))
+            # if (i_layer < self.num_layers - 1):
+            #     merge = LineMerging 
+            #     resolution = (patches_resolution[0],
+            #                                      patches_resolution[1] // (2 ** i_layer))
+            # else:
+            #     merge = None
+            #     resolution = (patches_resolution[0],
+            #                                      patches_resolution[1] // (2 ** i_layer))
             layer = BasicLayer(dim=embed_dim[i_layer],
                                out_dim=embed_dim[i_layer+1] if i_layer < self.num_layers-1 else None,
-                               input_resolution=(patches_resolution[0] // (2 ** i_layer),
-                                                 patches_resolution[1] // (2 ** i_layer)),
+                               input_resolution=resolution,
                                depth=depths[i_layer],
                                num_heads=num_heads[i_layer],
-                               window_size=window_size,
+                               window_size=[window_size,window_size],
                                mlp_ratio=self.mlp_ratio,
                                qkv_bias=qkv_bias, qk_scale=qk_scale,
                                drop=drop_rate, attn_drop=attn_drop_rate,
                                drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
                                norm_layer=norm_layer,
-                               downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
+                               downsample=merge,
                                use_checkpoint=use_checkpoint,
                                fused_window_process=fused_window_process)
+            self.resolutions.append(resolution)
+            self.embed_dims.append(embed_dim[i_layer])
             self.layers.append(layer)
 
-        self.locations = nn.Sequential(*[nn.Linear(2+(coeff*2), embed_dim[0]), nn.ReLU(), nn.Linear(embed_dim[0], embed_dim[0])])
+        self.locations = nn.Sequential(*[nn.Linear(2, embed_dim[0])])
         
-        self.norm = norm_layer(self.num_features)
+        # self.norm = norm_layer(self.num_features)
         self.avgpool = nn.AdaptiveAvgPool1d(1)
         self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
 
@@ -117,8 +137,10 @@ class SwinTransformer(nn.Module):
         for layer in self.layers:
             ds, x = layer(x)
 
-        x = self.norm(x)  # B L C
-        x = self.avgpool(x.transpose(1, 2))  # B C 1
+
+        x = self.avgpool(x.transpose(1, 2)).transpose(1, 2)  # B C 1
+        # x = self.norm(x)  # B L C
+        
         x = torch.flatten(x, 1)
         return x
 
@@ -127,8 +149,8 @@ class SwinTransformer(nn.Module):
         fft = x[:, 8:-10, :, :]
         lbp = x[:, -10:, :, :]
         color = x[:, 2:8, :, :]
-        x = torch.cat((color, lbp), dim=1)
-        locations = torch.cat((centroids, fft), dim=1).permute(0, 2, 3, 1)
+        x = torch.cat((color, lbp, fft), dim=1)
+        locations = centroids.permute(0, 2, 3, 1)
         locations = self.locations(locations)
         locations = locations.reshape(locations.size(0), -1, locations.size(3))
         x = self.forward_features(x, locations)

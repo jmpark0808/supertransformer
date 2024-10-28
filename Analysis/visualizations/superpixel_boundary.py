@@ -12,11 +12,14 @@ import time
 from fast_slic.avx2 import SlicAvx2
 import torch
 from torch_geometric.utils import scatter
+import torch.nn.functional as F
+from torch_scatter import scatter_std
 
 dataset_images = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Image'
 masks = '/mnt/hdd/Datasets/DUTS/DUTS-TR/Mask'
-segment_numbers = [32, 56, 112]# , 300
+# segment_numbers = [224, 448]# , 300
 # segment_numbers = [100, 200, 300, 400, 500, 600, 800, 1000, 1500, 3000, 10000, 45000, 90000]
+segment_numbers = [1024]
 compactness = [10]
 d= {}
 d['segment_numbers'] = segment_numbers
@@ -28,7 +31,7 @@ from dataset.superpixel import SPDataset
 from torch.utils.data import DataLoader
 
 import os
-train_dir = '/mnt/dragon/Datasets/EORSSD/TE/'
+train_dir = '/mnt/wsl/PHYSICALDRIVE2p1/Datasets/DUTS/DUTS-TR/'
 
 batch_size = 1
 num_workers = 20
@@ -67,9 +70,11 @@ for compact in tqdm(compactness):
     for seg in segment_numbers:
         IoUs = []
         maes = []
-        dataset = SPDataset(tr_image_list, tr_mask_list, seg*seg, 224, compact, False, dataloader, coeff, ignore_phase)
+        dataset = SPDataset(tr_image_list, tr_mask_list, seg, 224, compact, False, dataloader, coeff, ignore_phase)
         dl = DataLoader(dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
         # for file in tqdm(os.listdir(dataset_images)[:num_images]):
+        all_stds = 0
+        count = 0
         for batch in tqdm(dl):
             # name = file.split('.jpg')[0]
             # image = os.path.join(dataset_images, name+'.jpg')
@@ -135,33 +140,48 @@ for compact in tqdm(compactness):
             # plt_image = seq_mask[segments-1].reshape([img.shape[0], img.shape[1]])
             # plt_image = np.ravel(plt_image)
 
+            img = batch['features'].cuda()
             segments = batch['segments']
             msk = batch['mask'].detach().numpy()
 
             # ax[0].imshow(batch['features'].squeeze().permute(1, 2, 0).detach().cpu().numpy())
             # ax[1].imshow(mark_boundaries(batch['features'].squeeze().permute(1, 2, 0).detach().cpu().numpy(), segments.squeeze().detach().cpu().numpy()))
             # plt.show()
-
+            
             with torch.no_grad():
 
                 
                 seg_ = segments.cuda().reshape(-1).long()
-                mask = torch.tensor(msk, device='cuda').reshape(-1)
+                mask = torch.tensor(msk, device='cuda')
+                mask = F.interpolate(mask, (segments.size(1), segments.size(2)))
+                mask = mask.reshape(-1)
+                red = img[0, 0, :, :].reshape(-1)
+                green = img[0, 1, :, :].reshape(-1)
+                blue = img[0, 2, :, :].reshape(-1)
     
                 
 
                 seq_mask = scatter(mask, seg_, reduce='mean')
+                red_std = scatter_std(red, seg_)
+                green_std = scatter_std(green, seg_)
+                blue_std = scatter_std(blue, seg_)
+
+            all_stds += torch.mean(red_std) + torch.mean(green_std) + torch.mean(blue_std)
+            count +=1
             
             
             
-            
+            # seq_mask = seq_mask.reshape(1, segments.size(1), segments.size(2))
+            # seq_mask = 
             seq_mask = seq_mask.reshape(-1)
+            
             
     
         
-            plt_image = seq_mask.detach().cpu().numpy().reshape(-1)[segments.reshape(-1)].reshape([msk.shape[2], msk.shape[3]])
+            plt_image = seq_mask.reshape(-1)[segments.reshape(-1)].reshape([1, 1, segments.shape[1], segments.shape[2]])
+            plt_image = F.interpolate(plt_image, (msk.shape[2], msk.shape[3])).detach().cpu().numpy()
             plt_image = np.ravel(plt_image)
-                
+            
 
             msk = np.ravel(msk)
             y_temp = (plt_image >= 0.5).astype(np.float)
@@ -176,6 +196,9 @@ for compact in tqdm(compactness):
             IoUs.append(f_score)
             maes.append(mae)
 
+        all_stds /= count
+        print(all_stds)
+        assert(0)
         all_ious.append(np.mean(IoUs))
         all_maes.append(np.mean(maes))
   
