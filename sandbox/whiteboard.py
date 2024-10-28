@@ -1,21 +1,31 @@
+import torch
+
+def init_t_xy(end_x: int, end_y: int, zero_center=False):
+    t = torch.arange(end_x * end_y, dtype=torch.float32)
+    t_x = (t % end_x).float()
+    t_y = torch.div(t, end_x, rounding_mode='floor').float()
+    
+    return t_x, t_y
+
+a, b = init_t_xy(7, 7)
+print(a, b)
 
 
+# from PIL import Image
+# import os
+# import numpy as np
+# train_dir = '/mnt/f/Datasets/HRSOD_release/HRSOD_release/HRSOD_train/'
 
-from PIL import Image
-import os
-import numpy as np
-train_dir = '/mnt/f/Datasets/HRSOD_release/HRSOD_release/HRSOD_train/'
+# hs = []
+# ws = []
+# for file in os.listdir(train_dir):
+#     file_path = os.path.join(train_dir, file)
+#     img = Image.open(file_path)
+#     np_img = np.array(img)
+#     hs.append(np_img.shape[0])
+#     ws.append(np_img.shape[1])
 
-hs = []
-ws = []
-for file in os.listdir(train_dir):
-    file_path = os.path.join(train_dir, file)
-    img = Image.open(file_path)
-    np_img = np.array(img)
-    hs.append(np_img.shape[0])
-    ws.append(np_img.shape[1])
-
-print(np.max(hs), np.max(ws))
+# print(np.max(hs), np.max(ws))
 
 
 
