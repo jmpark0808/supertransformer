@@ -791,3 +791,5 @@ class SwinASPP(nn.Module):
 
         return features.view(B, H, W, self.out_dim)
     
+
+

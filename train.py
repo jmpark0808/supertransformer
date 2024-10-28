@@ -54,6 +54,7 @@ from Wrappers.SP_PERF import SP_PERF_Wrapper
 from Wrappers.SP_PERFEncDec import SP_PERFEncDec_Wrapper
 from Wrappers.SP_SWINUP import SP_SWINUP_Wrapper
 from Wrappers.Seg_SOD_PERFU import Seg_PERFUSLIC_Wrapper
+from Wrappers.SP_SWINUM_rope import SP_SWINUM_ROPE_Wrapper
 # from Wrappers.SP_MAMBA import SP_MAMBA_Wrapper
 
 
@@ -116,6 +117,7 @@ MODEL_DIRECTORY = {
     'SP_SWINUU': SP_SWINUU_Wrapper,
     'SP_SWINUM': SP_SWINUM_Wrapper,
     'SP_SWINUP': SP_SWINUP_Wrapper,
+    'SP_SWINUM_ROPE': SP_SWINUM_ROPE_Wrapper,
     # 'SP_MAMBA': SP_MAMBA_Wrapper,
     'SP_SWIN_Kernel': SP_SWIN_Kernel_Wrapper,
     'SP_SWIN_PyG': SP_SWIN_PyG_Wrapper,

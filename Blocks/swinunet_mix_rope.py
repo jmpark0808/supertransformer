@@ -11,7 +11,7 @@ import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
 from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA, BasicLayer, PatchMerging
-from Blocks.swin_encoder_ape import SwinTransformer
+from Blocks.swin_encoder_rope import SwinTransformer
 WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
@@ -49,21 +49,10 @@ class SwinUTransformer(nn.Module):
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
-                 use_checkpoint=False, fused_window_process=False, mode=1, **kwargs):
+                 use_checkpoint=False, fused_window_process=False, **kwargs):
         super().__init__()
-        if mode == 1: # Just Colour
-            in_chans = 6
-        elif mode == 2: # Colour + learnable PE
-            
-        elif mode == 3: # Colour + RoPE
 
-        elif mode == 4: # Colour + Centroid PE
-            pass
-            # Do PE stuff here
-        elif mode == 5: # Colour + Centroid PE + FFT
-        else:
-            assert 0, 'Mode is not recognized'
-        self.mode = mode
+
         swinencoder = SwinTransformer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, num_classes=num_classes,
                                       embed_dim=embed_dim, depths=depths, num_heads=num_heads,
                                       window_size=window_size, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
@@ -92,9 +81,7 @@ class SwinUTransformer(nn.Module):
 
         self.pos_drop = nn.Dropout(p=drop_rate)
 
-        # stochastic depth
-        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
-
+        
         # build layers
         self.layers = swinencoder.layers
         # resolutions.append(patches_resolution[0] // (2 ** i_layer))
@@ -121,22 +108,6 @@ class SwinUTransformer(nn.Module):
         self.upsample = nn.Upsample(size=img_size[0])
         self.sod_head = nn.Linear(sum(embed_dim), 1)
 
-
-        self.locations = swinencoder.locations
-
-        if mode == 1: # Just Colour
-            pass
-        elif mode == 2: # Colour + learnable PE
-            self.locations = nn.Parameter(torch.randn(1, img_size*img_size, embed_dim[0]))
-        elif mode == 3: # Colour + RoPE
-            self.locations = None
-        elif mode == 4: # Colour + Centroid PE
-            pass
-            # Do PE stuff here
-        elif mode == 5: # Colour + Centroid PE + FFT
-            pass
-        else:
-            assert 0, 'Mode is not recognized'
         
         self.apply(self._init_weights)
        
@@ -162,26 +133,19 @@ class SwinUTransformer(nn.Module):
         return {'relative_position_bias_table'}
 
     def forward_features(self, x, pos):
-        x = self.patch_embed(x)
-        
-        x = self.pos_drop(x)
-        if self.mode == 1:
-            pass
-        elif self.mode == 2 or self.mode == 3 or self.mode == 4:
-            x = x + pos
 
+        centroids = x[:, :2, :, : ]
+        x = x[:, 2:, :, :]
+
+        x = self.patch_embed(x)
+ 
+        x = self.pos_drop(x)
         ft = []
-        
         for layer in self.layers:
-            ds, x = layer(x)
-            
+            ds, x, centroids = layer(x, centroids)
             ft.append(ds)
 
-        # res = int(math.sqrt(x.size(1)))
-        # x_ = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
-        # x_ = self.upsample(x_).permute(0, 2, 3, 1)
-        # x_ = x_.reshape(x_.size(0), self.img_size**2, -1)
-        # up_ft = [x_]
+
         up_ft = []
         for idx, layer in enumerate(self.upsample_layers):
             x = layer(ft[len(ft)-idx-1], ft)
@@ -199,29 +163,7 @@ class SwinUTransformer(nn.Module):
 
 
     def forward(self, x):
-        centroids = x[:, :2, :, :]
-        fft = x[:, 8:-10, :, :]
-        lbp = x[:, -10:, :, :]
-        color = x[:, 2:8, :, :]
-        if self.mode == 1: # Just colour
-            x = color
-        elif self.mode == 2: # Colour + learnable PE
-            x = color
-            locations = self.locations
-        elif self.mode == 3: # Colour + RoPE
-            x = color
-            locations = self.locations
-        elif self.mode == 4: # Colour + Centroid PE
-            x = color
-            locations = centroids.permute(0, 2, 3, 1)
-            locations = self.locations(locations)
-            locations = locations.reshape(locations.size(0), -1, locations.size(3))
-        elif self.mode == 5: # Colour + Centroid PE + FFT
-            assert 0, 'This is already done'
-        
-        
-        
-        x = self.forward_features(x, locations)
+        x = self.forward_features(x)
         x = self.sod_head(x)
 
         return x
