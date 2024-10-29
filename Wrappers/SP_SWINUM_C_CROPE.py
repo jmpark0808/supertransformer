@@ -51,10 +51,11 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
 
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
+        rope_div_factor = self.size//res
         self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
                                        embed_dim=self.dims, depths=self.depths,
                                          num_heads=self.heads, mlp_ratio=self.mlp_ratio, attn_drop_rate=self.dropout_edge, drop_rate=self.dropout,
-                                         drop_path_rate=self.dp)
+                                         drop_path_rate=self.dp, rope_div_factor=rope_div_factor)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
         kwargs['parameters'] = parameter_count(self.supert)['']

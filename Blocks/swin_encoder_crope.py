@@ -36,7 +36,7 @@ class SwinTransformer(nn.Module):
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
-                 use_checkpoint=False, fused_window_process=False, **kwargs):
+                 use_checkpoint=False, fused_window_process=False, rope_div_factor=1, **kwargs):
         super().__init__()
 
         self.num_classes = num_classes
@@ -83,7 +83,8 @@ class SwinTransformer(nn.Module):
                                norm_layer=norm_layer,
                                downsample=PatchMergingRoPE if (i_layer < self.num_layers - 1) else None,
                                use_checkpoint=use_checkpoint,
-                               fused_window_process=fused_window_process)
+                               fused_window_process=fused_window_process,
+                               rope_div_factor = rope_div_factor * (2 ** i_layer))
             resolution = (patches_resolution[0]// (2 ** i_layer),
                                                  patches_resolution[1] // (2 ** i_layer))
             self.resolutions.append(resolution)

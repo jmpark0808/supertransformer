@@ -5,6 +5,9 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
 from Blocks.swin_common import window_partition, window_reverse, Mlp
 from typing import Any, Optional, Tuple
+import matplotlib.pyplot as plt
+import numpy as np
+
 
 WindowProcess = None
 WindowProcessReverse = None
@@ -82,7 +85,7 @@ class WindowAttentionRoPE(nn.Module):
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
 
-    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0., rope_theta = 10.0):
+    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0., rope_div_factor=1, rope_theta = 10.0):
 
         super().__init__()
         self.dim = dim
@@ -91,6 +94,7 @@ class WindowAttentionRoPE(nn.Module):
         head_dim = dim // num_heads
         self.head_dim = head_dim
         self.scale = qk_scale or head_dim ** -0.5
+        self.rdf = rope_div_factor
 
 
 
@@ -124,9 +128,21 @@ class WindowAttentionRoPE(nn.Module):
 
         q = q * self.scale
 
-        t_x = centroids[:, :, 0] - centroids[:, 0:1, 0]
-        t_y = centroids[:, :, 1] - centroids[:, 0:1, 1]
+        t_x = (centroids[:, :, 1] - centroids[:, 0:1, 1])/self.rdf
+        t_y = (centroids[:, :, 0] - centroids[:, 0:1, 0])/self.rdf
 
+        
+
+        # if not self.training:
+        #     print(torch.min(t_x), torch.max(t_x), torch.min(t_y), torch.max(t_y))
+        #     for i in range(t_x.size(0)):
+
+        #         plt.scatter(t_x[i].detach().cpu().numpy(), t_y[i].detach().cpu().numpy())
+        #         for x, y, t in zip(t_x[i].detach().cpu().numpy(), t_y[i].detach().cpu().numpy(), [str(o) for o in range(len(np.squeeze(t_x[i].detach().cpu().numpy())))]):
+        #             plt.text(x, y, t)
+        #     plt.title(f'{self.dim}')
+        #     plt.show()
+        
 
         freqs_cis = compute_cis(self.rope_freqs, t_x, t_y)
 
@@ -186,7 +202,7 @@ class SwinTransformerBlockRoPE(nn.Module):
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm,
-                 fused_window_process=False):
+                 fused_window_process=False, rope_div_factor=1):
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
@@ -203,7 +219,7 @@ class SwinTransformerBlockRoPE(nn.Module):
         self.norm1 = norm_layer(dim)
         self.attn = WindowAttentionRoPE(
             dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
-            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
+            qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop, rope_div_factor=rope_div_factor)
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -377,7 +393,7 @@ class BasicLayerRoPE(nn.Module):
     def __init__(self, dim, out_dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False,
-                 fused_window_process=False):
+                 fused_window_process=False, rope_div_factor=1):
 
         super().__init__()
         self.dim = dim
@@ -395,7 +411,8 @@ class BasicLayerRoPE(nn.Module):
                                  drop=drop, attn_drop=attn_drop,
                                  drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                                  norm_layer=norm_layer,
-                                 fused_window_process=fused_window_process)
+                                 fused_window_process=fused_window_process,
+                                 rope_div_factor = rope_div_factor)
             for i in range(depth)])
 
         # patch merging layer

@@ -402,6 +402,7 @@ class SPDataset(data.Dataset):
             
 
         features = torch.tensor(features).float()
+        
         if self.data_augmentation:
             randaug = RandAugment(5)
             res = int(self.num_seg**0.5)
