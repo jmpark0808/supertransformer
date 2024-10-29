@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from timm.models.layers import trunc_normal_
 from Blocks.swin_common import PatchEmbed
-from Blocks.swin_rope import BasicLayerRoPE, PatchMergingRoPE
+from Blocks.swin_crope import BasicLayerRoPE, PatchMergingRoPE
 
 class SwinTransformer(nn.Module):
     r""" Swin Transformer
@@ -114,14 +114,15 @@ class SwinTransformer(nn.Module):
         return {'relative_position_bias_table'}
 
     def forward_features(self, x):
-        x = x[:, 2:8, :, :]
+        centroids = x[:, :2, :, : ]
+        x = x[:, 2:, :, :]
 
         x = self.patch_embed(x)
  
         x = self.pos_drop(x)
 
         for layer in self.layers:
-            ds, x = layer(x)
+            ds, x, centroids = layer(x, centroids)
 
         x = self.norm(x)  # B L C
         x = self.avgpool(x.transpose(1, 2))  # B C 1

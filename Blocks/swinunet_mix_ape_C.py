@@ -11,7 +11,7 @@ import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
 from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA, BasicLayer, PatchMerging
-from Blocks.swin_encoder_rope import SwinTransformer
+from Blocks.swin_encoder_ape import SwinTransformer
 WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
@@ -81,7 +81,9 @@ class SwinUTransformer(nn.Module):
 
         self.pos_drop = nn.Dropout(p=drop_rate)
 
-        
+        # stochastic depth
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
+
         # build layers
         self.layers = swinencoder.layers
         # resolutions.append(patches_resolution[0] // (2 ** i_layer))
@@ -107,7 +109,7 @@ class SwinUTransformer(nn.Module):
 
         self.upsample = nn.Upsample(size=img_size[0])
         self.sod_head = nn.Linear(sum(embed_dim), 1)
-
+        self.locations = swinencoder.locations
         
         self.apply(self._init_weights)
        
@@ -132,18 +134,24 @@ class SwinUTransformer(nn.Module):
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
 
-    def forward_features(self, x):
-        x = x[:, 2:8, :, :]
-
+    def forward_features(self, x, pos):
         x = self.patch_embed(x)
- 
+        
         x = self.pos_drop(x)
+        x = x + pos
+
         ft = []
+        
         for layer in self.layers:
             ds, x = layer(x)
+            
             ft.append(ds)
 
-
+        # res = int(math.sqrt(x.size(1)))
+        # x_ = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
+        # x_ = self.upsample(x_).permute(0, 2, 3, 1)
+        # x_ = x_.reshape(x_.size(0), self.img_size**2, -1)
+        # up_ft = [x_]
         up_ft = []
         for idx, layer in enumerate(self.upsample_layers):
             x = layer(ft[len(ft)-idx-1], ft)
@@ -161,7 +169,13 @@ class SwinUTransformer(nn.Module):
 
 
     def forward(self, x):
-        x = self.forward_features(x)
+        centroids = x[:, :2, :, :]
+        color = x[:, 2:8, :, :]
+        x = color
+        locations = centroids.permute(0, 2, 3, 1)
+        locations = self.locations(locations)
+        locations = locations.reshape(locations.size(0), -1, locations.size(3))
+        x = self.forward_features(x, locations)
         x = self.sod_head(x)
 
         return x
