@@ -49,7 +49,7 @@ class SwinUTransformer(nn.Module):
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
-                 use_checkpoint=False, fused_window_process=False, **kwargs):
+                 use_checkpoint=False, fused_window_process=False, rope_div_factor=1, **kwargs):
         super().__init__()
 
 
@@ -58,7 +58,7 @@ class SwinUTransformer(nn.Module):
                                       window_size=window_size, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                                       drop_rate=drop_rate, attn_drop_rate=attn_drop_rate, drop_path_rate=drop_path_rate,
                                       norm_layer=norm_layer, ape=ape, patch_norm=patch_norm, 
-                                      use_checkpoint=use_checkpoint, fused_window_process=fused_window_process, **kwargs)
+                                      use_checkpoint=use_checkpoint, fused_window_process=fused_window_process, rope_div_factor=rope_div_factor, **kwargs)
         self.img_size = img_size
         self.num_classes = num_classes
         self.num_layers = len(depths)
