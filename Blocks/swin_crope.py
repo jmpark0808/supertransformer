@@ -10,13 +10,6 @@ WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
 
-def init_t_xy(end_x: int, end_y: int, zero_center=False):
-    t = torch.arange(end_x * end_y, dtype=torch.float32)
-    t_x = (t % end_x).float()
-    t_y = torch.div(t, end_x, rounding_mode='floor').float()
-    
-    return t_x, t_y
-
 def init_random_2d_freqs(head_dim: int, num_heads: int, theta: float = 10.0, rotate: bool = True):
     freqs_x = []
     freqs_y = []
@@ -33,20 +26,27 @@ def init_random_2d_freqs(head_dim: int, num_heads: int, theta: float = 10.0, rot
     freqs = torch.stack([freqs_x, freqs_y], dim=0)
     return freqs
 
+
 def compute_cis(freqs, t_x, t_y):
     N = t_x.shape[0]
+    # a = torch.randn(64, 49, 1)
+    # b = torch.randn(64, 3, 1, 8)
+    # c = torch.einsum('bac,bdce->bdae', a, b)
+    # print(c.size())
     # No float 16 for this range
-    with torch.cuda.amp.autocast(enabled=False):
-        freqs_x = (t_x.unsqueeze(-1) @ freqs[0].unsqueeze(-2))
-        freqs_y = (t_y.unsqueeze(-1) @ freqs[1].unsqueeze(-2))
+    # freqs = freqs.repeat(t_x.size(0), 1, 1)
+    b = t_x.size(0)
+    with torch.amp.autocast('cuda', enabled=False):
+        freqs_x = torch.einsum('bac,bdce->bdae',t_x.unsqueeze(-1), freqs[0].unsqueeze(-2).unsqueeze(0).repeat(b, 1, 1, 1)) #(t_x @ freqs[0].unsqueeze(-2))
+        freqs_y = torch.einsum('bac,bdce->bdae',t_y.unsqueeze(-1), freqs[1].unsqueeze(-2).unsqueeze(0).repeat(b, 1, 1, 1)) #(t_y @ freqs[1].unsqueeze(-2))
         freqs_cis = torch.polar(torch.ones_like(freqs_x), freqs_x + freqs_y)
         
     return freqs_cis
 
-
 def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
     ndim = x.ndim
     assert 0 <= 1 < ndim
+
     # assert freqs_cis.shape == (x.shape[-2], x.shape[-1])
     if freqs_cis.shape == (x.shape[-2], x.shape[-1]):
         shape = [d if i >= ndim-2 else 1 for i, d in enumerate(x.shape)]
@@ -55,7 +55,6 @@ def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
         
     return freqs_cis.view(*shape)
 
-
 def apply_rotary_emb(
     xq: torch.Tensor,
     xk: torch.Tensor,
@@ -63,7 +62,8 @@ def apply_rotary_emb(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
     xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
-    freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
+    # print(xq_.size(), freqs_cis.size())
+    # freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
     xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
     xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
     return xq_out.type_as(xq).to(xq.device), xk_out.type_as(xk).to(xk.device)
@@ -104,18 +104,13 @@ class WindowAttentionRoPE(nn.Module):
 
         
 
-        t_x, t_y = init_t_xy(end_x=self.window_size[1], end_y=self.window_size[0])
-        self.register_buffer('rope_t_x', t_x)
-        self.register_buffer('rope_t_y', t_y)
-
         freqs = init_random_2d_freqs(
             head_dim=self.dim // self.num_heads, num_heads=self.num_heads, theta=rope_theta, 
             rotate=True
         )
-        
         self.rope_freqs = nn.Parameter(freqs, requires_grad=True)
 
-    def forward(self, x,  mask=None):
+    def forward(self, x, centroids, mask=None):
         """
         Args:
             x: input features with shape of (num_windows*B, N, C)
@@ -129,11 +124,15 @@ class WindowAttentionRoPE(nn.Module):
 
         q = q * self.scale
 
-        freqs_cis = compute_cis(self.rope_freqs, self.rope_t_x, self.rope_t_y)
+        t_x = centroids[:, :, 0] - centroids[:, 0:1, 0]
+        t_y = centroids[:, :, 1] - centroids[:, 0:1, 1]
 
+
+        freqs_cis = compute_cis(self.rope_freqs, t_x, t_y)
 
         q, k = apply_rotary_emb(q, k, freqs_cis)
 
+       
 
         attn = (q @ k.transpose(-2, -1))
 
@@ -237,7 +236,7 @@ class SwinTransformerBlockRoPE(nn.Module):
         self.register_buffer("attn_mask", attn_mask)
         self.fused_window_process = fused_window_process
 
-    def forward(self, x):
+    def forward(self, x, centroids):
         H, W = self.input_resolution
         B, L, C = x.shape
         assert L == H * W, "input feature has wrong size"
@@ -245,7 +244,7 @@ class SwinTransformerBlockRoPE(nn.Module):
         shortcut = x
         x = self.norm1(x)
         x = x.view(B, H, W, C)
-        
+        centroids = centroids.view(B, 2, H, W).permute(0, 2, 3, 1)
 
         # cyclic shift
         if self.shift_size > 0:
@@ -253,18 +252,24 @@ class SwinTransformerBlockRoPE(nn.Module):
                 shifted_x = torch.roll(x, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
                 # partition windows
                 x_windows = window_partition(shifted_x, [self.window_size, self.window_size])  # nW*B, window_size, window_size, C
+
+                shifted_centroids = torch.roll(centroids, shifts=(-self.shift_size, -self.shift_size), dims=(1, 2))
+                centroid_windows = window_partition(shifted_centroids, [self.window_size, self.window_size]) 
                 # partition windows
             else:
                 x_windows = WindowProcess.apply(x, B, H, W, C, -self.shift_size, self.window_size)
         else:
             shifted_x = x
+            shifted_centroids = centroids
             # partition windows
             x_windows = window_partition(shifted_x, [self.window_size, self.window_size])  # nW*B, window_size, window_size, C
+            centroid_windows = window_partition(shifted_centroids, [self.window_size, self.window_size])
 
         x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
+        centroid_windows = centroid_windows.view(-1, self.window_size*self.window_size, 2)
 
         # W-MSA/SW-MSA
-        attn_windows = self.attn(x_windows,mask=self.attn_mask)  # nW*B, window_size*window_size, C
+        attn_windows = self.attn(x_windows, centroid_windows, mask=self.attn_mask)  # nW*B, window_size*window_size, C
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
@@ -312,7 +317,7 @@ class PatchMergingRoPE(nn.Module):
         self.reduction = nn.Linear(4 * dim, out_dim, bias=False)
         self.norm = norm_layer(4 * dim)
 
-    def forward(self, x):
+    def forward(self, x, centroids):
         """
         x: B, H*W, C
         """
@@ -328,15 +333,19 @@ class PatchMergingRoPE(nn.Module):
         x2 = x[:, 0::2, 1::2, :]  # B H/2 W/2 C
         x3 = x[:, 1::2, 1::2, :]  # B H/2 W/2 C
 
+        c0 = centroids[:, :, 0::2, 0::2]  # B 2, H/2 W/2 
+        c1 = centroids[:, :, 1::2, 0::2]  # B 2, H/2 W/2 
+        c2 = centroids[:, :, 0::2, 1::2]  # B 2, H/2 W/2 
+        c3 = centroids[:, :, 1::2, 1::2]  # B 2, H/2 W/2 
         x = torch.cat([x0, x1, x2, x3], -1)  # B H/2 W/2 4*C
         x = x.view(B, -1, 4 * C)  # B H/2*W/2 4*C
 
-
+        centroids = torch.mean(torch.stack([c0, c1, c2, c3], 1), dim=1) # B, 2, H/2, W/2
 
         x = self.norm(x)
         x = self.reduction(x)
 
-        return x
+        return x, centroids
 
     def extra_repr(self) -> str:
         return f"input_resolution={self.input_resolution}, dim={self.dim}"
@@ -395,16 +404,16 @@ class BasicLayerRoPE(nn.Module):
         else:
             self.downsample = None
 
-    def forward(self, x):
+    def forward(self, x, centroids):
         for blk in self.blocks:
             if self.use_checkpoint:
                 x = checkpoint.checkpoint(blk, x)
             else:
-                x = blk(x)
+                x = blk(x, centroids)
         ds = x
         if self.downsample is not None:
-            x = self.downsample(x)
-        return ds, x
+            x, centroids = self.downsample(x, centroids)
+        return ds, x, centroids
 
     def extra_repr(self) -> str:
         return f"dim={self.dim}, input_resolution={self.input_resolution}, depth={self.depth}"

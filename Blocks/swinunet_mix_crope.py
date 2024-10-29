@@ -11,7 +11,7 @@ import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
 from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA, BasicLayer, PatchMerging
-from Blocks.swin_encoder_rope import SwinTransformer
+from Blocks.swin_encoder_crope import SwinTransformer
 WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
@@ -133,6 +133,8 @@ class SwinUTransformer(nn.Module):
         return {'relative_position_bias_table'}
 
     def forward_features(self, x):
+
+        centroids = x[:, :2, :, : ]
         x = x[:, 2:8, :, :]
 
         x = self.patch_embed(x)
@@ -140,7 +142,7 @@ class SwinUTransformer(nn.Module):
         x = self.pos_drop(x)
         ft = []
         for layer in self.layers:
-            ds, x = layer(x)
+            ds, x, centroids = layer(x, centroids)
             ft.append(ds)
 
 
