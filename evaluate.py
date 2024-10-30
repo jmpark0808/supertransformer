@@ -88,27 +88,29 @@ if __name__ == "__main__":
     dict_args = vars(args)
     checkpoint = torch.load(dict_args['checkpoint'])
     checkpoint_args = checkpoint["hyper_parameters"]
-   
+    checkpoint_args['pretrain'] = None
+    
 
     # Initialize model to train
-    assert dict_args['model'] in MODEL_DIRECTORY
+    assert checkpoint_args['model'] in MODEL_DIRECTORY
     model = MODEL_DIRECTORY[checkpoint_args['model']](**checkpoint_args)
-    model = model.load_from_checkpoint(dict_args['checkpoint'])
+    model.load_state_dict(checkpoint['state_dict'])
+    # model = model
 
     # Data: load data module
-    assert dict_args['dataloader'] in DATALOADER_DIRECTORY
+    assert checkpoint_args['dataloader'] in DATALOADER_DIRECTORY
     checkpoint_args['dataset_test'] = dict_args['dataset']
     checkpoint_args['skip_train'] = True
     data_module = DATALOADER_DIRECTORY[checkpoint_args['dataloader']](**checkpoint_args)
 
     now = datetime.datetime.now().strftime('%m%d-%H%M%S')
-    weight_save_dir = os.path.join(dict_args["logdir"], os.path.join('models', 'state_dict', now+'_'+dict_args["tag"]))
+    weight_save_dir = os.path.join(dict_args["logdir"], os.path.join('models', 'state_dict', now))
     logger = TensorBoardLogger(save_dir=dict_args['logdir'], version=now, name='lightning_logs', log_graph=True)
     trainer = pl.Trainer(accelerator="gpu",
         deterministic=False,
         profiler='simple',
         logger=logger,
-        devices=[dict_args['gpus']],
+        devices=-1,
     ) 
 
     trainer.test(model, datamodule=data_module)
