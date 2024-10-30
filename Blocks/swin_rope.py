@@ -39,6 +39,7 @@ def compute_cis(freqs, t_x, t_y):
     with torch.cuda.amp.autocast(enabled=False):
         freqs_x = (t_x.unsqueeze(-1) @ freqs[0].unsqueeze(-2))
         freqs_y = (t_y.unsqueeze(-1) @ freqs[1].unsqueeze(-2))
+        
         freqs_cis = torch.polar(torch.ones_like(freqs_x), freqs_x + freqs_y)
         
     return freqs_cis
@@ -131,7 +132,16 @@ class WindowAttentionRoPE(nn.Module):
 
         freqs_cis = compute_cis(self.rope_freqs, self.rope_t_x, self.rope_t_y)
 
-
+        # if not self.training:
+            
+            
+        #     import matplotlib.pyplot as plt
+        #     import numpy as np
+        #     plt.scatter(self.rope_t_x.detach().cpu().numpy(), self.rope_t_y.detach().cpu().numpy())
+        #     for x, y, t in zip(self.rope_t_x.detach().cpu().numpy(), self.rope_t_y.detach().cpu().numpy(), [str(o) for o in range(len(np.squeeze(self.rope_t_x.detach().cpu().numpy())))]):
+        #         plt.text(x, y, t)
+        #     plt.title(f'{self.dim}')
+        #     plt.show()
         q, k = apply_rotary_emb(q, k, freqs_cis)
 
 
