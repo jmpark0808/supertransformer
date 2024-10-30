@@ -62,13 +62,21 @@ def apply_rotary_emb(
     xq: torch.Tensor,
     xk: torch.Tensor,
     freqs_cis: torch.Tensor,
+    window_mask: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
     xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
     # print(xq_.size(), freqs_cis.size())
     # freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
-    xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
-    xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
+    if window_mask is not None:
+        window_mask = window_mask.unsqueeze(-1).unsqueeze(1).repeat(xq.size(0)//window_mask.size(0), xq_.size(1), 1, xq_.size(3))
+        xq_out = torch.where(window_mask == 0, xq_ * freqs_cis, xq_)
+        xk_out = torch.where(window_mask == 0, xk_ * freqs_cis, xk_)
+    else:
+        xq_out = xq_ * freqs_cis
+        xk_out = xk_ * freqs_cis
+    xq_out = torch.view_as_real(xq_out).flatten(3)
+    xk_out = torch.view_as_real(xk_out).flatten(3)
     return xq_out.type_as(xq).to(xq.device), xk_out.type_as(xk).to(xk.device)
 
 class WindowAttentionRoPE(nn.Module):
@@ -114,7 +122,7 @@ class WindowAttentionRoPE(nn.Module):
         )
         self.rope_freqs = nn.Parameter(freqs, requires_grad=True)
 
-    def forward(self, x, centroids, mask=None):
+    def forward(self, x, centroids, mask=None, window_mask=None):
         """
         Args:
             x: input features with shape of (num_windows*B, N, C)
@@ -128,25 +136,38 @@ class WindowAttentionRoPE(nn.Module):
 
         q = q * self.scale
 
-        t_x = (centroids[:, :, 1] - centroids[:, 0:1, 1])/self.rdf
-        t_y = (centroids[:, :, 0] - centroids[:, 0:1, 0])/self.rdf
+        if window_mask is not None:
+            window_mask_centroids = window_mask.repeat(q.size(0)//window_mask.size(0), 1)
+            
+            centroids_x = torch.where(window_mask_centroids == 0, centroids[:, :, 1], 1e9)
+            centroids_y = torch.where(window_mask_centroids == 0, centroids[:, :, 0], 1e9)
 
-        
+            min_centroids_x = torch.min(centroids_x, dim=1, keepdim=True).values
+            min_centroids_y = torch.min(centroids_y, dim=1, keepdim=True).values
+            
+            t_x = (centroids_x - min_centroids_x)/self.rdf
+            t_y = (centroids_y - min_centroids_y)/self.rdf
+        else:
+            min_centroids_x = torch.min(centroids[:, :, 1], dim=1, keepdim=True).values
+            min_centroids_y = torch.min(centroids[:, :, 0], dim=1, keepdim=True).values
+            t_x = (centroids[:, :, 1] - min_centroids_x)/self.rdf
+            t_y = (centroids[:, :, 0] - min_centroids_y)/self.rdf
+
 
         # if not self.training:
-        #     print(torch.min(t_x), torch.max(t_x), torch.min(t_y), torch.max(t_y))
-        #     for i in range(t_x.size(0)):
+        #     print(torch.min(t_x),  torch.min(t_y))
+            # for i in range(5):
 
-        #         plt.scatter(t_x[i].detach().cpu().numpy(), t_y[i].detach().cpu().numpy())
-        #         for x, y, t in zip(t_x[i].detach().cpu().numpy(), t_y[i].detach().cpu().numpy(), [str(o) for o in range(len(np.squeeze(t_x[i].detach().cpu().numpy())))]):
-        #             plt.text(x, y, t)
-        #     plt.title(f'{self.dim}')
-        #     plt.show()
+            #     plt.scatter(t_x[i].detach().cpu().numpy(), t_y[i].detach().cpu().numpy())
+            #     for x, y, t in zip(t_x[i].detach().cpu().numpy(), t_y[i].detach().cpu().numpy(), [str(o) for o in range(len(np.squeeze(t_x[i].detach().cpu().numpy())))]):
+            #         plt.text(x, y, t)
+            # plt.title(f'{self.dim}')
+            # plt.show()
         
 
         freqs_cis = compute_cis(self.rope_freqs, t_x, t_y)
 
-        q, k = apply_rotary_emb(q, k, freqs_cis)
+        q, k = apply_rotary_emb(q, k, freqs_cis, window_mask)
 
        
 
@@ -248,7 +269,9 @@ class SwinTransformerBlockRoPE(nn.Module):
             attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
         else:
             attn_mask = None
+            mask_windows = None
 
+        self.register_buffer("mask", mask_windows)
         self.register_buffer("attn_mask", attn_mask)
         self.fused_window_process = fused_window_process
 
@@ -285,7 +308,7 @@ class SwinTransformerBlockRoPE(nn.Module):
         centroid_windows = centroid_windows.view(-1, self.window_size*self.window_size, 2)
 
         # W-MSA/SW-MSA
-        attn_windows = self.attn(x_windows, centroid_windows, mask=self.attn_mask)  # nW*B, window_size*window_size, C
+        attn_windows = self.attn(x_windows, centroid_windows, mask=self.attn_mask, window_mask=self.mask)  # nW*B, window_size*window_size, C
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.window_size, self.window_size, C)
