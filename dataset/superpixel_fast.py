@@ -485,7 +485,7 @@ class SPFDataModule(pl.LightningDataModule):
             for batch in tqdm(dummy_val_loader):
                 pass
 
-        del dummy_val, dummy_val_loader
+            del dummy_val, dummy_val_loader
 
         self.test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'Image'))])
         self.test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'Mask'))])
