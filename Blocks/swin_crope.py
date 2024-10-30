@@ -136,9 +136,11 @@ class WindowAttentionRoPE(nn.Module):
 
         q = q * self.scale
 
+        
         if window_mask is not None:
             window_mask_centroids = window_mask.repeat(q.size(0)//window_mask.size(0), 1)
             
+            # Push all the centroids that we don't care about to 1e9 (part of the shifted window)
             centroids_x = torch.where(window_mask_centroids == 0, centroids[:, :, 1], 1e9)
             centroids_y = torch.where(window_mask_centroids == 0, centroids[:, :, 0], 1e9)
 
@@ -155,14 +157,33 @@ class WindowAttentionRoPE(nn.Module):
 
 
         # if not self.training:
-        #     print(torch.min(t_x),  torch.min(t_y))
-            # for i in range(5):
+            
+        #     altered_t_x = torch.where(t_x<1e6, t_x, -1e9)
+        #     altered_t_y = torch.where(t_y<1e6, t_y, -1e9)
+        #         # print('shifted', torch.min(t_x), torch.max(altered_t_x), torch.min(t_y), torch.max(altered_t_y))
 
-            #     plt.scatter(t_x[i].detach().cpu().numpy(), t_y[i].detach().cpu().numpy())
-            #     for x, y, t in zip(t_x[i].detach().cpu().numpy(), t_y[i].detach().cpu().numpy(), [str(o) for o in range(len(np.squeeze(t_x[i].detach().cpu().numpy())))]):
-            #         plt.text(x, y, t)
-            # plt.title(f'{self.dim}')
+
+        #     if len(torch.argwhere(torch.max(altered_t_x, dim=1).values>10).squeeze()) >0:
+        #         indices = torch.argwhere(torch.max(altered_t_x, dim=1).values>10).squeeze()
+        #         for ind in indices:
+        #             plt.scatter(altered_t_x[ind].detach().cpu().numpy(), altered_t_y[ind].detach().cpu().numpy())
+        #             plt.show()
+            # t_x_mins = torch.min(t_x, dim=1).values
+            # t_x_maxs = torch.max(altered_t_x, dim=1).values
+            # t_y_mins = torch.min(t_y, dim=1).values
+            # t_y_maxs = torch.max(altered_t_y, dim=1).values
+
+            # plt.scatter(t_x_mins.detach().cpu().numpy(), t_y_mins.detach().cpu().numpy())
+            # plt.scatter(t_x_maxs.detach().cpu().numpy(), t_y_maxs.detach().cpu().numpy())
             # plt.show()
+            # if torch.max(t_x) > 10:
+            #     for i in range(t_x.size(0)):
+
+            #         plt.scatter(t_x[i].detach().cpu().numpy(), t_y[i].detach().cpu().numpy())
+            #         # for x, y, t in zip(t_x[i].detach().cpu().numpy(), t_y[i].detach().cpu().numpy(), [str(o) for o in range(len(np.squeeze(t_x[i].detach().cpu().numpy())))]):
+            #         #     plt.text(x, y, t)
+            #     plt.title(f'{self.dim}')
+            #     plt.show()
         
 
         freqs_cis = compute_cis(self.rope_freqs, t_x, t_y)
@@ -379,8 +400,17 @@ class PatchMergingRoPE(nn.Module):
         x = torch.cat([x0, x1, x2, x3], -1)  # B H/2 W/2 4*C
         x = x.view(B, -1, 4 * C)  # B H/2*W/2 4*C
 
-        centroids = torch.mean(torch.stack([c0, c1, c2, c3], 1), dim=1) # B, 2, H/2, W/2
+        centroids_stack = torch.stack([c0, c1, c2, c3], 1)
 
+        mask = centroids_stack < 1e6
+        # import matplotlib.pyplot as plt
+
+        # fig, ax = plt.subplots(1, 2)
+        # ax[0].scatter(centroids[0, 1, :, :].detach().cpu().numpy(), centroids[0, 0, :, :].detach().cpu().numpy())
+        
+        centroids = (mask*centroids_stack).sum(dim=1) / mask.sum(dim=1)
+        # ax[1].scatter(centroids[0, 1, :, :].detach().cpu().numpy(), centroids[0, 0, :, :].detach().cpu().numpy())
+        # plt.show()
         x = self.norm(x)
         x = self.reduction(x)
 
