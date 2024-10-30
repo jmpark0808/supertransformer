@@ -168,7 +168,8 @@ class ToTensorSPFFT(object):
             max_num_iter=10,
             convert2lab=True,
             enforce_connectivity=False,
-            slic_zero=False)
+            slic_zero=False,
+            min_size_factor=0,)
 
         # plt.imshow(mark_boundaries(img_np, segments))
         # plt.show()
@@ -188,7 +189,7 @@ class ToTensorSPFFT(object):
 
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
                                                                                     'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
-
+        
         seq_len = len(regions['label'])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
@@ -440,62 +441,70 @@ class SPFDataModule(pl.LightningDataModule):
         self.compactness = kwargs.get('compactness')
         self.ignore_phase = kwargs.get('ignore_phase')
         self.debug = kwargs.get('debug', False)
-     
+        self.skip_train = kwargs.get('skip_train')
         
-        self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
-        self.mask_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.train_dir, 'Mask'))]))
+        if not self.skip_train:
+            self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
+            self.mask_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.train_dir, 'Mask'))]))
 
-        indices = np.array(list(range(len(self.image_list))))
-        np.random.shuffle(indices)
+            indices = np.array(list(range(len(self.image_list))))
+            np.random.shuffle(indices)
+            
+            self.val_image_list = self.image_list[indices[int(len(self.image_list)*0.95):]]
+            self.val_mask_list = self.mask_list[indices[int(len(self.mask_list)*0.95):]]
         
-        self.val_image_list = self.image_list[indices[int(len(self.image_list)*0.95):]]
-        self.val_mask_list = self.mask_list[indices[int(len(self.mask_list)*0.95):]]
-    
-        self.tr_image_list = self.image_list[indices[:int(len(self.image_list)*0.95)]]
-        self.tr_mask_list = self.mask_list[indices[:int(len(self.mask_list)*0.95)]]
+            self.tr_image_list = self.image_list[indices[:int(len(self.image_list)*0.95)]]
+            self.tr_mask_list = self.mask_list[indices[:int(len(self.mask_list)*0.95)]]
+            if self.debug:
+                self.val_image_list = self.val_image_list[:100]
+                self.val_mask_list = self.val_mask_list[:100]
+
+                self.tr_image_list = self.tr_image_list[:100]
+                self.tr_mask_list = self.tr_mask_list[:100]
+
+            dummy_tr = SPDatasetExport(self.tr_image_list, self.tr_mask_list, self.num_seg,
+                                self.res, self.compactness, self.dataloader,
+                                  self.coeff, self.ignore_phase)
+            dummy_tr_loader = DataLoader(
+                    dummy_tr, batch_size=1, 
+                    num_workers=self.num_workers, shuffle=False, pin_memory=False)
+            
+            for batch in tqdm(dummy_tr_loader):
+                pass
+
+            del dummy_tr, dummy_tr_loader
+
+            dummy_val = SPDatasetExport(self.val_image_list, self.val_mask_list, self.num_seg,
+                                self.res, self.compactness, self.dataloader, 
+                                    self.coeff, self.ignore_phase)
+            
+            dummy_val_loader = DataLoader(
+                dummy_val, batch_size=1, 
+                num_workers=self.num_workers, pin_memory=False)
+            
+            for batch in tqdm(dummy_val_loader):
+                pass
+
+        del dummy_val, dummy_val_loader
 
         self.test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'Image'))])
         self.test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'Mask'))])
 
+        
         if self.debug:
-            self.val_image_list = self.val_image_list[:100]
-            self.val_mask_list = self.val_mask_list[:100]
-
-            self.tr_image_list = self.tr_image_list[:100]
-            self.tr_mask_list = self.tr_mask_list[:100]
-
             self.test_image_list = self.test_image_list[:100]
             self.test_mask_list = self.test_mask_list[:100]
 
-        dummy_tr = SPDatasetExport(self.tr_image_list, self.tr_mask_list, self.num_seg,
-                                self.res, self.compactness, self.dataloader,
-                                  self.coeff, self.ignore_phase)
-        dummy_tr_loader = DataLoader(
-                dummy_tr, batch_size=1, 
-                num_workers=self.num_workers, shuffle=False, pin_memory=False)
-        
-        for batch in tqdm(dummy_tr_loader):
-            pass
-
-        del dummy_tr, dummy_tr_loader
-
-        dummy_val = SPDatasetExport(self.val_image_list, self.val_mask_list, self.num_seg,
-                              self.res, self.compactness, self.dataloader, 
-                                self.coeff, self.ignore_phase)
+       
         dummy_test = SPDatasetExport(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.dataloader, 
                                self.coeff, self.ignore_phase)
-        dummy_val_loader = DataLoader(
-                dummy_val, batch_size=1, 
-                num_workers=self.num_workers, pin_memory=False)
+        
         dummy_test_loader = DataLoader(
                 dummy_test, batch_size=1, 
                 num_workers=self.num_workers, pin_memory=False)
         
-        for batch in tqdm(dummy_val_loader):
-            pass
-
-        del dummy_val, dummy_val_loader
+        
 
         for batch in tqdm(dummy_test_loader):
             pass

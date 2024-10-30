@@ -260,7 +260,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         f_score = f_score.sum(dim=0)
         self.train_fscores += f_score
         self.num_samples += features.size(0)
-        self.log('loss', loss.item())
+        self.log('loss', loss.item(), prog_bar=True)
         self.iteration += 1
         if self.current_epoch >= self.warmup_epochs:
             self.scheduler.step()

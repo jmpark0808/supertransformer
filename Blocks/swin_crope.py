@@ -69,7 +69,7 @@ def apply_rotary_emb(
     # print(xq_.size(), freqs_cis.size())
     # freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
     if window_mask is not None:
-        window_mask = window_mask.unsqueeze(-1).unsqueeze(1).repeat(xq.size(0)//window_mask.size(0), xq_.size(1), 1, xq_.size(3))
+        window_mask = window_mask.unsqueeze(-1).unsqueeze(1).repeat(1, xq_.size(1), 1, xq_.size(3))
         xq_out = torch.where(window_mask == 0, xq_ * freqs_cis, xq_)
         xk_out = torch.where(window_mask == 0, xk_ * freqs_cis, xk_)
     else:
@@ -149,7 +149,10 @@ class WindowAttentionRoPE(nn.Module):
             
             t_x = (centroids_x - min_centroids_x)/self.rdf
             t_y = (centroids_y - min_centroids_y)/self.rdf
+
+            window_mask_centroids = torch.where(centroids[:, :, 0] == 1e9, 10, window_mask_centroids)
         else:
+            window_mask_centroids = torch.where(centroids[:, :, 0] == 1e9, 10, 0)
             min_centroids_x = torch.min(centroids[:, :, 1], dim=1, keepdim=True).values
             min_centroids_y = torch.min(centroids[:, :, 0], dim=1, keepdim=True).values
             t_x = (centroids[:, :, 1] - min_centroids_x)/self.rdf
@@ -188,8 +191,9 @@ class WindowAttentionRoPE(nn.Module):
 
         freqs_cis = compute_cis(self.rope_freqs, t_x, t_y)
 
-        q, k = apply_rotary_emb(q, k, freqs_cis, window_mask)
-
+        q, k = apply_rotary_emb(q, k, freqs_cis, window_mask_centroids)
+        if torch.sum(torch.isnan(q))> 0 or torch.sum(torch.isnan(k))> 0:
+            assert 0, 'Applying rotary caused NaNs'
        
 
         attn = (q @ k.transpose(-2, -1))
@@ -408,9 +412,10 @@ class PatchMergingRoPE(nn.Module):
         # fig, ax = plt.subplots(1, 2)
         # ax[0].scatter(centroids[0, 1, :, :].detach().cpu().numpy(), centroids[0, 0, :, :].detach().cpu().numpy())
         
-        centroids = (mask*centroids_stack).sum(dim=1) / mask.sum(dim=1)
-        # ax[1].scatter(centroids[0, 1, :, :].detach().cpu().numpy(), centroids[0, 0, :, :].detach().cpu().numpy())
-        # plt.show()
+        centroids = torch.where(mask.sum(dim=1) == 0, 1e9, (mask*centroids_stack).sum(dim=1) / mask.sum(dim=1))
+        if torch.sum(torch.isnan(centroids))> 0:
+            assert 0, 'Merging centroids cause NaNs'
+        
         x = self.norm(x)
         x = self.reduction(x)
 
