@@ -1,76 +1,58 @@
-import torch
-from typing import Any, Optional, Tuple
+import os
+from skimage.segmentation import slic, mark_boundaries
+from skimage.measure import regionprops_table
+import numpy as np
+import matplotlib.pyplot as plt
+import PIL
+from fast_slic.avx2 import SlicAvx2
+for image in os.listdir('/home/eddie/DUTS/DUTS-TE/Image/'):
 
-def init_t_xy(end_x: int, end_y: int, zero_center=False):
-    t = torch.arange(end_x * end_y, dtype=torch.float32)
-    t_x = (t % end_x).float()
-    t_y = torch.div(t, end_x, rounding_mode='floor').float()
+
+
+    img = PIL.Image.open(os.path.join('/home/eddie/DUTS/DUTS-TE/Image/' ,image))
+    img = img.resize((448, 448))
+    img_np = np.array(img)
+    fig, ax = plt.subplots(1, 2)
+    # segments = slic(img_np, n_segments=3136,
+    #             compactness=10,
+    #             max_num_iter=1,
+    #             convert2lab=True,
+    #             enforce_connectivity=False,
+    #             slic_zero=False)
+    slic = SlicAvx2(num_components=3136, compactness=10, min_size_factor=0.)
+    segments = slic.iterate(img_np, max_iter=1)
+
     
-    return t_x, t_y
 
-def init_random_2d_freqs(head_dim: int, num_heads: int, theta: float = 10.0, rotate: bool = True):
-    freqs_x = []
-    freqs_y = []
-    theta = theta
-    mag = 1 / (theta ** (torch.arange(0, head_dim, 4)[: (head_dim // 4)].float() / head_dim))
-    for i in range(num_heads):
-        angles = torch.rand(1) * 2 * torch.pi if rotate else torch.zeros(1)
-        fx = torch.cat([mag * torch.cos(angles), mag * torch.cos(torch.pi/2 + angles)], dim=-1)
-        fy = torch.cat([mag * torch.sin(angles), mag * torch.sin(torch.pi/2 + angles)], dim=-1)
-        freqs_x.append(fx)
-        freqs_y.append(fy)
-    freqs_x = torch.stack(freqs_x, dim=0)
-    freqs_y = torch.stack(freqs_y, dim=0)
-    freqs = torch.stack([freqs_x, freqs_y], dim=0)
-    return freqs
+    regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid'))
 
-def compute_cis(freqs, t_x, t_y):
-    N = t_x.shape[0]
-    # No float 16 for this range
-    with torch.amp.autocast('cuda',enabled=False):
-        freqs_x = (t_x.unsqueeze(-1) @ freqs[0].unsqueeze(-2))
-        freqs_y = (t_y.unsqueeze(-1) @ freqs[1].unsqueeze(-2))
-        freqs_cis = torch.polar(torch.ones_like(freqs_x), freqs_x + freqs_y)
-        
-    return freqs_cis
+   
 
+    ax[0].imshow(mark_boundaries(img_np, segments))
+    for x, y, s in zip(regions['centroid-1'], regions['centroid-0'], [str(t) for t in regions['label']]):
+        ax[0].text(x, y, s)
+    ax[0].set_title(str(regions['label'].shape))
 
-def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
-    ndim = x.ndim
-    assert 0 <= 1 < ndim
-    # assert freqs_cis.shape == (x.shape[-2], x.shape[-1])
-    if freqs_cis.shape == (x.shape[-2], x.shape[-1]):
-        shape = [d if i >= ndim-2 else 1 for i, d in enumerate(x.shape)]
-    elif freqs_cis.shape == (x.shape[-3], x.shape[-2], x.shape[-1]):
-        shape = [d if i >= ndim-3 else 1 for i, d in enumerate(x.shape)]
-        
-    return freqs_cis.view(*shape)
+    # segments = slic(img_np, n_segments=3136,
+    #             compactness=10,
+    #             max_num_iter=10,
+    #             convert2lab=True,
+    #             enforce_connectivity=False,
+    #             slic_zero=False)
+    slic = SlicAvx2(num_components=3136, compactness=10, min_size_factor=0.)
+    segments = slic.iterate(img_np, max_iter=10)
 
-def apply_rotary_emb(
-    xq: torch.Tensor,
-    xk: torch.Tensor,
-    freqs_cis: torch.Tensor,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
-    xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
-    print(freqs_cis.size())
-    freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
-    print(freqs_cis.size())
-    xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
-    xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
-    return xq_out.type_as(xq).to(xq.device), xk_out.type_as(xk).to(xk.device)
+    regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid'))
 
+   
 
-t_x, t_y = init_t_xy(end_x=7, end_y=7)
-freqs = init_random_2d_freqs(
-            head_dim=16, num_heads=8, theta=10, 
-            rotate=True
-        )
+    ax[1].imshow(mark_boundaries(img_np, segments))
+    for x, y, s in zip(regions['centroid-1'], regions['centroid-0'], [str(t) for t in regions['label']]):
+        ax[1].text(x, y, s)
+    ax[1].set_title(str(regions['label'].shape))
 
-freqs_cis = compute_cis(freqs, t_x, t_y)#.unsqueeze(0).repeat(32, 1, 1, 1)
-q = torch.randn(32, 8, 49, 16)
-k = torch.randn(32, 8, 49, 16)
-q, k = apply_rotary_emb(q, k, freqs_cis)
+    plt.show()
+
 
 # from PIL import Image
 # import os
