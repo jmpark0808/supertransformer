@@ -170,7 +170,7 @@ class SwinUTransformer(nn.Module):
 
     def forward(self, x):
         centroids = x[:, :2, :, :]
-        color = x[:, 2:-10, :, :]
+        color = x[:, 2:8, :, :]
         x = color
         locations = centroids.permute(0, 2, 3, 1)
         locations = self.locations(locations)
