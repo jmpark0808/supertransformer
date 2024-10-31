@@ -8,7 +8,7 @@ data = {'SAMNet': {'Params': 1.33, 'FLOPs': 0.5, 'MAE': 0.058, 'F1': 0.835, 'Mar
         'CorrNet': {'Params': 4.09, 'FLOPs': 21.1, 'MAE': 0.0466, 'F1': 0.847, 'Marker': 'x', 'colour': 'r'},
         'SeaNet': {'Params': 2.76, 'FLOPs': 1.7, 'MAE': 0.045, 'F1': 0.854, 'Marker': 'x', 'colour': 'r'},
         'MEANet': {'Params': 3.27, 'FLOPs': 9.62, 'MAE': 0.0454, 'F1': 0.863, 'Marker': 'x', 'colour': 'r'},
-        'MSHNet': {'Params': 4.07, 'FLOPs': 6.11, 'MAE': 0.1251, 'F1': 0.7046+0.12, 'Marker': 'x', 'colour': 'r'},
+        'MSHNet': {'Params': 4.07, 'FLOPs': 6.11, 'MAE': 0.1251-0.06, 'F1': 0.7046+0.1175, 'Marker': 'x', 'colour': 'r'},
         'Ours (XS)': {'Params': 1.12, 'FLOPs': 0.46, 'MAE': 0.053, 'F1': 0.847, 'Marker': 'o', 'colour': 'g'},
          'Ours (S)': {'Params': 2.18, 'FLOPs': 0.87, 'MAE': 0.045, 'F1': 0.866, 'Marker': 'o', 'colour': 'g'} }
 
@@ -17,19 +17,38 @@ data = {'SAMNet': {'Params': 1.33, 'FLOPs': 0.5, 'MAE': 0.058, 'F1': 0.835, 'Mar
 fig, ax = plt.subplots(2, 2, figsize=(10, 10))
 
 label_fontsize = 15
+y_spaces = np.linspace(0.82, 0.87, 11)
+y_labels = [str(format(x, '.3f')) for x in y_spaces]
+y_labels[0] = '0.700'
+y_labels[1] = '0.705'
+y_labels[2] = '...'
 ax[0, 0].set_xlabel('Model Params. (M)', fontsize=label_fontsize)
 ax[0, 0].set_ylabel('F1-score', fontsize=label_fontsize)
-ax[0, 0].set_yticks(np.linspace(0.82, 0.90, 8))
-ax[0, 0].set_yticklabels(["0.70","0.72","...","0.82","0.84","0.86","0.88","0.90"]) 
+ax[0, 0].set_yticks(y_spaces)
+ax[0, 0].set_ylim(0.82, 0.87)
+ax[0, 0].set_yticklabels(y_labels) 
 ax[0, 1].set_xlabel('GFLOPs', fontsize=label_fontsize)
 ax[0, 1].set_ylabel('F1-score', fontsize=label_fontsize)
-ax[0, 1].set_yticks(np.linspace(0.82, 0.90, 8))
-ax[0, 1].set_yticklabels(["0.70","0.72","...","0.82","0.84","0.86","0.88","0.90"]) 
+ax[0, 1].set_yticks(y_spaces)
+ax[0, 1].set_ylim(0.82, 0.87)
+ax[0, 1].set_yticklabels(y_labels) 
+
+
+y_spaces = np.linspace(0.0425, 0.0675, 11)
+y_labels = [str(format(x, '.4f')) for x in y_spaces]
+y_labels[-1] = '0.1275'
+y_labels[-2] = '0.1250'
+y_labels[-3] = '...'
 ax[1, 0].set_xlabel('Model Params. (M)', fontsize=label_fontsize)
 ax[1, 0].set_ylabel('MAE', fontsize=label_fontsize)
-
+ax[1, 0].set_ylim(0.0425, 0.0675)
+ax[1, 0].set_yticks(y_spaces)
+ax[1, 0].set_yticklabels(y_labels) 
 ax[1, 1].set_xlabel('GFLOPs', fontsize=label_fontsize)
 ax[1, 1].set_ylabel('MAE', fontsize=label_fontsize)
+ax[1, 1].set_ylim(0.0425, 0.0675)
+ax[1, 1].set_yticks(y_spaces)
+ax[1, 1].set_yticklabels(y_labels) 
 ax[0,1].set_xscale('log')
 ax[1,1].set_xscale('log')
 ax[0,1].get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
@@ -63,6 +82,6 @@ adjust_text(text2,    ax=ax[1,0], min_arrow_len=5)
 adjust_text(text3,   ax=ax[0,1], min_arrow_len=5)
 adjust_text(text4,   ax=ax[1,1], min_arrow_len=5)
 
-
+plt.tight_layout()
 plt.show()
 
