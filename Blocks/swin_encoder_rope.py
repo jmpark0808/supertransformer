@@ -90,7 +90,7 @@ class SwinTransformer(nn.Module):
             self.embed_dims.append(embed_dim[i_layer])
             self.layers.append(layer)
 
-        self.locations = nn.Sequential(*[nn.Linear(2, embed_dim[0])])
+        # self.locations = nn.Sequential(*[nn.Linear(2, embed_dim[0])])
 
         self.norm = norm_layer(self.num_features)
         self.avgpool = nn.AdaptiveAvgPool1d(1)
