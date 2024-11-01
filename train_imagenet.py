@@ -29,6 +29,8 @@ from Wrappers.SP_ImageNet_PERF import SP_ImageNet_PERF_Wrapper
 from Wrappers.SP_ImageNet_TFM import SP_ImageNet_TFM_Wrapper
 from Wrappers.SP_ImageNet_PERFENC import SP_ImageNet_PERFENC_Wrapper
 from Wrappers.SP_ImageNet_MAMBA import SP_ImageNet_MAMBA_Wrapper
+from Wrappers.SP_ImageNet_SWIN_APE_ROPE import SP_ImageNet_OGSWIN_APE_ROPE_Wrapper
+from Wrappers.SP_ImageNet_SWIN_APE_CROPE import SP_ImageNet_OGSWIN_APE_CROPE_Wrapper
 
 # Import dataset modules
 from dataset.imagenet import SPImageNetDataModule
@@ -55,6 +57,8 @@ MODEL_DIRECTORY = {
     'SP_ImageNet_SWIN': SP_ImageNet_SWIN_Wrapper,
     'SP_ImageNet_OGSWIN_APE': SP_ImageNet_OGSWIN_APE_Wrapper,
     'SP_ImageNet_OGSWIN_RPE': SP_ImageNet_OGSWIN_RPE_Wrapper,
+    'SP_ImageNet_OGSWIN_APE_ROPE': SP_ImageNet_OGSWIN_APE_ROPE_Wrapper,
+    'SP_ImageNet_OGSWIN_APE_CROPE': SP_ImageNet_OGSWIN_APE_CROPE_Wrapper,
     'SWIN': ImageNet_SWIN_Wrapper,
     'SP_ImageNet_MBNET': SP_ImageNet_MBNET_Wrapper,
     'SP_ImageNet_MBVIT': SP_ImageNet_MBVIT_Wrapper,
