@@ -59,6 +59,7 @@ from Wrappers.SP_SWINUM_C_LPE import SP_SWINUM_C_LPE_Wrapper
 from Wrappers.SP_SWINUM_C_ROPE import SP_SWINUM_C_ROPE_Wrapper
 from Wrappers.SP_SWINUM_C_CPE import SP_SWINUM_C_CPE_Wrapper
 from Wrappers.SP_SWINUM_C_CROPE import SP_SWINUM_C_CROPE_Wrapper
+from Wrappers.SP_SWINUM_WOGMask import SP_SWINUM_WOGMASK_Wrapper
 # from Wrappers.SP_MAMBA import SP_MAMBA_Wrapper
 
 
@@ -66,11 +67,12 @@ from Wrappers.SP_SWINUM_C_CROPE import SP_SWINUM_C_CROPE_Wrapper
 from dataset.superpixel import DUTSDataModule,  SPDataModule
 from dataset.superpixel_pyg import SPGDataModule
 from dataset.superpixel_pyg_image import SPGIDataModule
-from dataset.superpixel_fast import SPFDataModule
+from dataset.superpixel_fast import SPFDataModule, SPFRSDataModule
 from dataset.superpixel_fast_cnn import SPFCDataModule
 from dataset.youtube_davis import YDDataModule
 from dataset.youtube_davis_swin_pyg import YDGDataModule
 from dataset.superpixel_pyg_swin import SPGSWINDataModule
+
 
 
 # Metric logging
@@ -126,6 +128,7 @@ MODEL_DIRECTORY = {
     'SP_SWINUM_C_ROPE': SP_SWINUM_C_ROPE_Wrapper,
     'SP_SWINUM_C_CPE': SP_SWINUM_C_CPE_Wrapper,
     'SP_SWINUM_C_CROPE': SP_SWINUM_C_CROPE_Wrapper,
+    'SP_SWINUM_WOGMASK': SP_SWINUM_WOGMASK_Wrapper,
     # 'SP_MAMBA': SP_MAMBA_Wrapper,
     'SP_SWIN_Kernel': SP_SWIN_Kernel_Wrapper,
     'SP_SWIN_PyG': SP_SWIN_PyG_Wrapper,
@@ -150,6 +153,7 @@ DATALOADER_DIRECTORY = {
     'SPGFFT': SPGDataModule,
     'SPG': SPGDataModule,
     'SPGIFFT': SPGIDataModule,
+    'SPFRS': SPFRSDataModule,
     'SPGI': SPGIDataModule,
     'SPF': SPFDataModule,
     'SPFFFT': SPFDataModule,
