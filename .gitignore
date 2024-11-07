@@ -139,3 +139,5 @@ demo/
 .vscode
 
 Models/SP_MAMBA.py
+
+sp_sl_swinum.sh

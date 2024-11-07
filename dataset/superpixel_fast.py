@@ -357,7 +357,7 @@ class SPDatasetExport(data.Dataset):
 
 class SPDataset(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, 
-                  dataloader, data_augmentation=True, coeff=None):
+                  dataloader, data_augmentation=False, coeff=None):
         self.image_list = image_list
         self.mask_list = mask_list
         self.resize_mask = ResizeMask(size)
