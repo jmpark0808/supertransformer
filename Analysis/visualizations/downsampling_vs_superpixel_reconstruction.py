@@ -118,9 +118,9 @@ else:
     plt.hist(sp_maes, label='Superpixel', bins=bins)
     plt.hist(ds_maes, label='Downsample', bins=bins)
     plt.xlabel('MAE', fontsize=20)
-    plt.ylabel('Count', fontsize=20)
+    plt.ylabel('Number of Images', fontsize=20)
     plt.legend(fontsize=20)
-    # plt.savefig(f'./hist_sp.pdf', format='pdf')
+    plt.savefig(f'/mnt/d/Figures/SuperFormer/hist_sp.pdf', format='pdf')
     
   
    

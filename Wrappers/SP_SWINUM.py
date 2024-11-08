@@ -11,6 +11,7 @@ from dataset.constants import *
 from util.util import get_input_dim
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 from dataset.mixup import MixupSaliency
+import cv2
 
 class SP_SWINUM_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
@@ -77,7 +78,10 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
         if self.pretrain:
             checkpoint = torch.load(self.pretrain)
             for key in list(checkpoint['state_dict'].keys()):
-                checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
+                if 'attn_mask' in key:
+                    checkpoint['state_dict'].pop(key)
+                else:
+                    checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
             
             self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
         
@@ -215,10 +219,10 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
 
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
-        features, seq_mask = self.mixup(features, seq_mask)
+        # seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
+        # features, seq_mask = self.mixup(features, seq_mask)
         
-        seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
+        # seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
 
         # forward pass
         
@@ -299,7 +303,7 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
             samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
             samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
         
-        mae = torch.sum(torch.mean(torch.abs(samples - mask), dim=tuple(range(1, len(samples.size())))))
+        mae = torch.sum(torch.mean(torch.abs((samples > 0.5).float() - mask), dim=tuple(range(1, len(samples.size())))))
         
         if dataloader_idx == 0:
             self.maes += mae
@@ -391,6 +395,7 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
         seq_mask = batch['seq_mask']
         segments = batch['segments']
         mask = batch['mask']
+        names = batch['file_name']
 
 
         # forward pass
@@ -419,8 +424,13 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
 
         # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
         # tensorboard.add_images('Test Image', img, self.test_iteration)
+        # for sample, name in zip(samples, names):
+        #     name = name.split('/')[-1]
+        #     sample = (sample.permute(1, 2, 0).detach().cpu().numpy()*255).astype(np.uint8)
+ 
+        #     cv2.imwrite('/home/eddie/Qualitative/SF/DUTS-TE/'+name, sample)
 
-        mae = torch.sum(torch.mean(torch.abs(samples - mask), dim=tuple(range(1, len(samples.size())))))
+        mae = torch.sum(torch.mean(torch.abs((samples > 0.5).float() - mask), dim=tuple(range(1, len(samples.size())))))
         self.maes += mae
         self.mean_num += features.size(0)
 
