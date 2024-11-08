@@ -51,7 +51,8 @@ adjust_text(text1,   ax=ax[0], min_arrow_len=5) #arrowprops=dict(arrowstyle="-",
 adjust_text(text3,   ax=ax[1], min_arrow_len=5)
 
 plt.tight_layout()
-plt.savefig('/mnt/d/Figures/SuperFormer/scatter_f1.pdf', format='pdf')
+# plt.savefig('/mnt/d/Figures/SuperFormer/scatter_f1.pdf', format='pdf')
+plt.show()
 
 fig, ax = plt.subplots(1, 2, figsize=(10, 5))
 
@@ -96,4 +97,5 @@ adjust_text(text4,   ax=ax[1], min_arrow_len=5)
 
 
 plt.tight_layout()
-plt.savefig('/mnt/d/Figures/SuperFormer/scatter_mae.pdf', format='pdf')
+# plt.savefig('/mnt/d/Figures/SuperFormer/scatter_mae.pdf', format='pdf')
+plt.show()

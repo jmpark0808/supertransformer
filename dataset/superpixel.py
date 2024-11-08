@@ -31,6 +31,7 @@ class Resize(object):
     def __call__(self, sample):
         img, mask = sample['image'], sample['mask']
         img = img.resize((self.size, self.size), resample=Image.BILINEAR)
+        mask = mask.resize((self.size, self.size), resample=Image.BILINEAR)
         
         return {'image': img, 'mask': mask}
     
@@ -376,14 +377,14 @@ class ToTensorSPFFT(object):
 
         # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
             
-        slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
-        segments = slic.iterate(img_np)+1
-        # segments = slic(img_np, n_segments=self.num_seg,
-        #     compactness=self.compactness,
-        #     max_num_iter=10,
-        #     convert2lab=True,
-        #     enforce_connectivity=False,
-        #     slic_zero=False)
+        # slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
+        # segments = slic.iterate(img_np)+1
+        segments = slic(img_np, n_segments=self.num_seg,
+            compactness=self.compactness,
+            max_num_iter=10,
+            convert2lab=True,
+            enforce_connectivity=False,
+            slic_zero=False)
 
         # plt.imshow(mark_boundaries(img_np, segments))
         # plt.show()
@@ -401,7 +402,8 @@ class ToTensorSPFFT(object):
         seq_len = len(regions['label'])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
-        features = np.zeros([self.num_seg, 8+(self.coeff)*2])
+        features = np.zeros([self.num_seg, 8+(self.coeff)*2+10])
+        
         if self.ignore_phase:
             features = np.zeros([self.num_seg, 8+self.coeff])
             for i in range(self.coeff):
@@ -421,7 +423,6 @@ class ToTensorSPFFT(object):
         features[label-1, 6] = regions['image_stdev-1']/255.
         features[label-1, 7] = regions['image_stdev-2']/255.
 
-        
         for ind, coord in zip(regions['label'], regions['coords']):
             seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
 
@@ -598,7 +599,7 @@ class SPDataset(data.Dataset):
         
         if dataloader == 'SP':
             totensor = ToTensorSP(num_seg, compactness, size)
-        elif dataloader == 'SPFFT':
+        elif dataloader == 'SPFFT' or dataloader == 'SPRS':
             totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase)
         elif dataloader == 'SPLAP':
             totensor = ToTensorSPLAP(num_seg, compactness)
@@ -849,3 +850,57 @@ class DUTSDataModule(pl.LightningDataModule):
         return DataLoader(
                 data_test, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=True) 
+
+
+
+
+
+class SPRSDataModule(pl.LightningDataModule):
+
+    def __init__(self, **kwargs):
+        super().__init__()
+
+        self.train_dir = kwargs.get('dataset_tr')
+        self.test_dir = kwargs.get('dataset_test')
+        self.batch_size = kwargs.get('batch_size')
+        self.num_workers = kwargs.get('num_workers', 0)
+        self.num_seg = kwargs.get('num_seg', 600)
+        self.res = kwargs.get('size')
+        self.dataloader = kwargs.get('dataloader')
+        self.coeff = kwargs.get('coeff')
+        self.compactness = kwargs.get('compactness')
+        self.ignore_phase = kwargs.get('ignore_phase')
+
+        self.image_list = np.array(sorted([os.path.join('{}/Image'.format(self.train_dir), f) for f in os.listdir('{}/Image'.format(self.train_dir))]))
+        self.mask_list = np.array(sorted([os.path.join('{}/Mask'.format(self.train_dir), f) for f in os.listdir('{}/Mask'.format(self.train_dir))]))
+
+    
+        self.tr_image_list = self.image_list
+        self.tr_mask_list = self.mask_list
+
+        self.test_image_list = sorted([os.path.join('{}/Image'.format(self.test_dir), f) for f in os.listdir('{}/Image'.format(self.test_dir))])
+        self.test_mask_list = sorted([os.path.join('{}/Mask'.format(self.test_dir), f) for f in os.listdir('{}/Mask'.format(self.test_dir))])
+        
+
+        
+    def train_dataloader(self):
+        data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg, self.res, self.compactness, True, self.dataloader, self.coeff, self.ignore_phase)
+        return DataLoader(
+                data_train, batch_size=self.batch_size, 
+                num_workers=self.num_workers, shuffle=True, pin_memory=True, drop_last=True)
+
+    def val_dataloader(self):
+        data_test = SPDataset(self.test_image_list, self.test_mask_list,  self.num_seg, self.res,  self.compactness, False, self.dataloader, self.coeff, self.ignore_phase)
+        val_dataloader = DataLoader(
+                data_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=True)
+        test_dataloader = DataLoader(
+                data_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=True)
+        return [val_dataloader, test_dataloader]
+
+    def test_dataloader(self):
+        data_test = SPDataset(self.test_image_list, self.test_mask_list,  self.num_seg, self.res,  self.compactness, False, self.dataloader, self.coeff, self.ignore_phase)
+        return DataLoader(
+                data_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=True)

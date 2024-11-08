@@ -306,7 +306,7 @@ class SPDatasetExport(data.Dataset):
         self.size = size
         self.coeff = coeff
         
-        if dataloader == 'SPFFFT':
+        if dataloader == 'SPFFFT' or dataloader == 'SPFRS':
             totensor = ToTensorSPFFT(num_seg, compactness, coeff, size, ignore_phase)
         else:
             totensor = ToTensorSP(num_seg, compactness)
@@ -530,6 +530,106 @@ class SPFDataModule(pl.LightningDataModule):
                                self.coeff)
         val_dataloader = DataLoader(
                 data_val, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=True)
+        test_dataloader = DataLoader(
+                data_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=True)
+        return [val_dataloader, test_dataloader]
+
+    def test_dataloader(self):
+        data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
+                               self.res, self.dataloader, False,
+                                 self.coeff)
+        return DataLoader(
+                data_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=True)
+    
+
+
+class SPFRSDataModule(pl.LightningDataModule):
+
+    def __init__(self, **kwargs):
+        super().__init__()
+
+        self.train_dir = kwargs.get('dataset_tr')
+        self.test_dir = kwargs.get('dataset_test')
+        self.batch_size = kwargs.get('batch_size')
+        self.num_workers = kwargs.get('num_workers', 0)
+        self.num_seg = kwargs.get('num_seg', 600)
+        self.res = kwargs.get('size')
+        self.dataloader = kwargs.get('dataloader')
+        self.coeff = kwargs.get('coeff')
+        self.compactness = kwargs.get('compactness')
+        self.ignore_phase = kwargs.get('ignore_phase')
+        self.debug = kwargs.get('debug', False)
+        self.skip_train = kwargs.get('skip_train')
+        
+        if not self.skip_train:
+            self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
+            self.mask_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.train_dir, 'Mask'))]))
+
+            self.tr_image_list = self.image_list
+            self.tr_mask_list = self.mask_list
+            if self.debug:
+ 
+
+                self.tr_image_list = self.tr_image_list[:100]
+                self.tr_mask_list = self.tr_mask_list[:100]
+
+            dummy_tr = SPDatasetExport(self.tr_image_list, self.tr_mask_list, self.num_seg,
+                                self.res, self.compactness, self.dataloader,
+                                  self.coeff, self.ignore_phase)
+            dummy_tr_loader = DataLoader(
+                    dummy_tr, batch_size=1, 
+                    num_workers=self.num_workers, shuffle=False, pin_memory=False)
+            
+            for batch in tqdm(dummy_tr_loader):
+                pass
+
+            del dummy_tr, dummy_tr_loader
+
+        
+
+        self.test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'Image'))])
+        self.test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'Mask'))])
+
+        
+        if self.debug:
+            self.test_image_list = self.test_image_list[:100]
+            self.test_mask_list = self.test_mask_list[:100]
+
+       
+        dummy_test = SPDatasetExport(self.test_image_list, self.test_mask_list, self.num_seg,
+                               self.res,  self.compactness, self.dataloader, 
+                               self.coeff, self.ignore_phase)
+        
+        dummy_test_loader = DataLoader(
+                dummy_test, batch_size=1, 
+                num_workers=self.num_workers, pin_memory=False)
+        
+        
+
+        for batch in tqdm(dummy_test_loader):
+            pass
+
+        del dummy_test, dummy_test_loader, batch
+           
+
+        
+    def train_dataloader(self):
+        data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg,
+                                self.res, self.dataloader, True,
+                                  self.coeff)
+        return DataLoader(
+                data_train, batch_size=self.batch_size, 
+                num_workers=self.num_workers, shuffle=True, pin_memory=True, drop_last=True)
+
+    def val_dataloader(self):
+        data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
+                               self.res,  self.dataloader, False, 
+                               self.coeff)
+        val_dataloader = DataLoader(
+                data_test, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=True)
         test_dataloader = DataLoader(
                 data_test, batch_size=self.batch_size, 

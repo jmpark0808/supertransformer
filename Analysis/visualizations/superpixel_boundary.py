@@ -27,7 +27,7 @@ num_images = 3000
 use_pickle = False
 
 
-fig, ax = plt.subplots(1, 2, figsize=(10, 10))
+# fig, ax = plt.subplots(1, 2, figsize=(10, 10))
 
 for compact in tqdm(compactness):
     all_ious = []
@@ -43,10 +43,10 @@ for compact in tqdm(compactness):
             image = os.path.join(dataset_images, name+'.jpg')
             mask = os.path.join(masks, name+'.png')
 
-            img = Image.open(image).resize((448, 448))
-            msk = Image.open(mask).resize((448, 448))
-            img = img.convert('RGB')
-            msk = msk.convert('L')
+            img = Image.open(image)
+            msk = Image.open(mask)
+            img = img.convert('RGB').resize((448, 448))
+            msk = msk.convert('L').resize((448, 448))
             img = np.array(img)
             msk = np.array(msk)
             
@@ -70,7 +70,7 @@ for compact in tqdm(compactness):
             max_num_iter=10,
             convert2lab=True,
             enforce_connectivity=False,
-            slic_zero=False)
+            slic_zero=True)
             # slic = SlicAvx2(num_components=num_seg, compactness=compact, min_size_factor=0.)
             # segments = slic.iterate(img)
 
@@ -99,7 +99,7 @@ for compact in tqdm(compactness):
             # assert len(regions['label']) == max(regions['label']), 'Wrong number of labels'
 
             for ind, coord in zip(regions['label'], regions['coords']):
-                seq_mask[ind-1] = np.sum(msk[coord[:, 0], coord[:, 1]])/len(coord[:, 0])
+                seq_mask[ind-1] = 1 if np.sum(msk[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
 
 
 
@@ -115,13 +115,15 @@ for compact in tqdm(compactness):
             prec, recall = (tp + 1e-10) / (np.sum(y_temp) + 1e-10), (tp + 1e-10) / (np.sum(msk) + 1e-10)
             beta_square = 0.3
             f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
-            # if f_score < 0.9:
-            #     fig, ax = plt.subplots(1, 2)
-            #     ax[0].imshow(np.squeeze(plt_image_skip), cmap='gray')
-            #     ax[1].imshow(np.squeeze(msk_skip), cmap='gray')
-            #     plt.show()
-            mae = np.mean(np.abs(plt_image-msk))
             
+            mae = np.mean(np.abs(y_temp-msk))
+            if mae > 0.002:
+                fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+                ax[0].imshow(np.squeeze(plt_image_skip), cmap='gray')
+                ax[1].imshow(np.squeeze(msk_skip), cmap='gray')
+                ax[2].imshow(img)
+                ax[0].set_title(str(mae))
+                plt.show()
             IoUs.append(f_score)
             maes.append(mae)
             

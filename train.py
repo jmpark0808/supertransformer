@@ -63,14 +63,16 @@ from Wrappers.SP_SWINUM_C_CROPE import SP_SWINUM_C_CROPE_Wrapper
 
 
 # Import dataset modules
-from dataset.superpixel import DUTSDataModule,  SPDataModule
+from dataset.superpixel import DUTSDataModule,  SPDataModule, SPRSDataModule
 from dataset.superpixel_pyg import SPGDataModule
 from dataset.superpixel_pyg_image import SPGIDataModule
-from dataset.superpixel_fast import SPFDataModule
+from dataset.superpixel_fast import SPFDataModule, SPFRSDataModule
 from dataset.superpixel_fast_cnn import SPFCDataModule
 from dataset.youtube_davis import YDDataModule
 from dataset.youtube_davis_swin_pyg import YDGDataModule
 from dataset.superpixel_pyg_swin import SPGSWINDataModule
+
+
 
 
 # Metric logging
@@ -156,7 +158,9 @@ DATALOADER_DIRECTORY = {
     'SPFC': SPFCDataModule,
     'YD': YDDataModule,
     'YDG':  YDGDataModule,
-    'SPGSWIN': SPGSWINDataModule
+    'SPGSWIN': SPGSWINDataModule,
+    'SPFRS': SPFRSDataModule,
+    'SPRS': SPRSDataModule
 
 } 
 
