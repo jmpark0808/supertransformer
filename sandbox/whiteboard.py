@@ -1,57 +1,65 @@
-import os
-from skimage.segmentation import slic, mark_boundaries
-from skimage.measure import regionprops_table
 import numpy as np
-import matplotlib.pyplot as plt
-import PIL
-from fast_slic.avx2 import SlicAvx2
-for image in os.listdir('/home/eddie/DUTS/DUTS-TE/Image/'):
+
+features = np.load('/home/eddie/Datasets/ILSVRC2012_test_00000004_features.npy')
+print(np.max(features[:, 0]), np.max(features[:, 1]))
 
 
 
-    img = PIL.Image.open(os.path.join('/home/eddie/DUTS/DUTS-TE/Image/' ,image))
-    img = img.resize((448, 448))
-    img_np = np.array(img)
-    fig, ax = plt.subplots(1, 2)
-    # segments = slic(img_np, n_segments=3136,
-    #             compactness=10,
-    #             max_num_iter=1,
-    #             convert2lab=True,
-    #             enforce_connectivity=False,
-    #             slic_zero=False)
-    slic = SlicAvx2(num_components=3136, compactness=10, min_size_factor=0.)
-    segments = slic.iterate(img_np, max_iter=1)
+
+# import os
+# from skimage.segmentation import slic, mark_boundaries
+# from skimage.measure import regionprops_table
+# import numpy as np
+# import matplotlib.pyplot as plt
+# import PIL
+# from fast_slic.avx2 import SlicAvx2
+# for image in os.listdir('/home/eddie/DUTS/DUTS-TE/Image/'):
+
+
+
+#     img = PIL.Image.open(os.path.join('/home/eddie/DUTS/DUTS-TE/Image/' ,image))
+#     img = img.resize((448, 448))
+#     img_np = np.array(img)
+#     fig, ax = plt.subplots(1, 2)
+#     # segments = slic(img_np, n_segments=3136,
+#     #             compactness=10,
+#     #             max_num_iter=1,
+#     #             convert2lab=True,
+#     #             enforce_connectivity=False,
+#     #             slic_zero=False)
+#     slic = SlicAvx2(num_components=3136, compactness=10, min_size_factor=0.)
+#     segments = slic.iterate(img_np, max_iter=1)
 
     
 
-    regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid'))
+#     regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid'))
 
    
 
-    ax[0].imshow(mark_boundaries(img_np, segments))
-    for x, y, s in zip(regions['centroid-1'], regions['centroid-0'], [str(t) for t in regions['label']]):
-        ax[0].text(x, y, s)
-    ax[0].set_title(str(regions['label'].shape))
+#     ax[0].imshow(mark_boundaries(img_np, segments))
+#     for x, y, s in zip(regions['centroid-1'], regions['centroid-0'], [str(t) for t in regions['label']]):
+#         ax[0].text(x, y, s)
+#     ax[0].set_title(str(regions['label'].shape))
 
-    # segments = slic(img_np, n_segments=3136,
-    #             compactness=10,
-    #             max_num_iter=10,
-    #             convert2lab=True,
-    #             enforce_connectivity=False,
-    #             slic_zero=False)
-    slic = SlicAvx2(num_components=3136, compactness=10, min_size_factor=0.)
-    segments = slic.iterate(img_np, max_iter=10)
+#     # segments = slic(img_np, n_segments=3136,
+#     #             compactness=10,
+#     #             max_num_iter=10,
+#     #             convert2lab=True,
+#     #             enforce_connectivity=False,
+#     #             slic_zero=False)
+#     slic = SlicAvx2(num_components=3136, compactness=10, min_size_factor=0.)
+#     segments = slic.iterate(img_np, max_iter=10)
 
-    regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid'))
+#     regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid'))
 
    
 
-    ax[1].imshow(mark_boundaries(img_np, segments))
-    for x, y, s in zip(regions['centroid-1'], regions['centroid-0'], [str(t) for t in regions['label']]):
-        ax[1].text(x, y, s)
-    ax[1].set_title(str(regions['label'].shape))
+#     ax[1].imshow(mark_boundaries(img_np, segments))
+#     for x, y, s in zip(regions['centroid-1'], regions['centroid-0'], [str(t) for t in regions['label']]):
+#         ax[1].text(x, y, s)
+#     ax[1].set_title(str(regions['label'].shape))
 
-    plt.show()
+#     plt.show()
 
 
 # from PIL import Image
