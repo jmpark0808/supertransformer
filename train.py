@@ -278,7 +278,7 @@ if __name__ == "__main__":
 
     # Callback: model checkpoint strategy
     checkpoint_callback = ModelCheckpoint(
-        dirpath=weight_save_dir, save_top_k=5, verbose=True, monitor="Validation MAE", mode="min"
+        dirpath=weight_save_dir, save_top_k=5, verbose=True, save_last=True, monitor="Validation MAE", mode="min"
     )
 
     
