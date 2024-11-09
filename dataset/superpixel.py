@@ -333,18 +333,22 @@ class ToTensorSPLAP(object):
 
 
 class ToTensorSPFFT(object):
-    def __init__(self, num_seg, compactness, coeff, ignore_phase):
+    def __init__(self, num_seg, compactness, coeff, size, ignore_phase):
         self.tensor = transforms.ToTensor()
         self.num_seg = num_seg
         self.coeff = coeff
         self.compactness = compactness
         self.ignore_phase = ignore_phase
+        self.size = size
+        
+        resample_points = int(((size**2)//num_seg)**0.5)*4
+        self.resample_points = resample_points
         
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
             contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
             points = contour[0][:, 0, :]
-            xi, yi = resample_2d(points, RESAMPLE_POINTS)
+            xi, yi = resample_2d(points, resample_points)
             contour_array = np.stack((xi, yi), axis=1)
 
 
@@ -600,7 +604,7 @@ class SPDataset(data.Dataset):
         if dataloader == 'SP':
             totensor = ToTensorSP(num_seg, compactness, size)
         elif dataloader == 'SPFFT' or dataloader == 'SPRS':
-            totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase)
+            totensor = ToTensorSPFFT(num_seg, compactness, coeff, size, ignore_phase)
         elif dataloader == 'SPLAP':
             totensor = ToTensorSPLAP(num_seg, compactness)
         elif dataloader == 'SPCNN':
@@ -614,7 +618,7 @@ class SPDataset(data.Dataset):
             [RandomFlip(0.5),
              RandomCrop(size, int(size*1.14)),
              RandomAffine(15, 0.1, 0.1),
-            #  RandomColorJitter(0.2, 0.2, 0.2, 0.2),
+             RandomColorJitter(0.2, 0.2, 0.2, 0.2),
              Resize(size),
              totensor])
         if not data_augmentation:
