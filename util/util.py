@@ -154,16 +154,15 @@ def get_input_dim(args):
         return 3
     elif d == 'SPF' or d == 'DUTS':
         return 3
-    elif d == 'SPFFFT' or d== 'SPGFFT' or d == 'ImageNet' or \
-        d == 'YD' or d == 'SPGSWIN' or d == 'YDG' \
-            or d == 'ImageNet_SWIN' or d == 'SpeedLimits' or \
-                d == 'SPSpeedLimits' or d == 'SPFRS' or d == 'SPRS':
+    elif d in ['SPFFFT','SPGFFT','ImageNet',
+                'YD', 'SPGSWIN', 'YDG',
+              'ImageNet_SWIN',  'SpeedLimits', 
+                'SPSpeedLimits',  'SPFRS', 'SPRS', 'SPFFT' ]:
         if args.get('ignore_phase'):
             return 6+(args.get('coeff'))+10
         else:
             return 6+(args.get('coeff')*2)+10
-    elif d == 'SPFFT'  or \
-    d== 'SPGIFFT' or d == 'ImageNet_PyG':
+    elif d== 'SPGIFFT' or d == 'ImageNet_PyG':
         if args.get('ignore_phase'):
             return 6+(args.get('coeff'))
         else:
