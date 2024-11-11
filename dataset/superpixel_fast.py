@@ -422,6 +422,76 @@ class SPDataset(data.Dataset):
         return {'features': features, 'seq_mask': torch.tensor(seq_mask),
                  'segments': torch.tensor(segments), 'mask': mask, 
                    'file_name':self.image_list[item]}
+    
+
+class SPOGMaskDataset(data.Dataset):
+    def __init__(self, image_list, mask_list, num_seg, size, 
+                  dataloader, data_augmentation=True, coeff=None):
+        self.image_list = image_list
+        self.mask_list = mask_list
+        self.resize_mask = ResizeMask(size)
+        self.num_seg = num_seg
+        self.dataloader = dataloader
+        self.size = size
+        self.coeff = coeff
+        self.data_augmentation = data_augmentation
+        self.resample_points = int(((size**2)//num_seg)**0.5)*4
+            
+
+    def __len__(self):
+        return len(self.image_list)
+
+    def __getitem__(self, item):
+        
+        sp_file_name_features = self.image_list[item].split('/')[-1].split('.')[0]+'_features.npy'
+        sp_file_name_edge_attr = self.image_list[item].split('/')[-1].split('.')[0]+'_edge_attr.npy.npz'
+        sp_file_name_seq_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_seq_mask.npy'
+        sp_file_name_segments = self.image_list[item].split('/')[-1].split('.')[0]+'_segments.npy'
+        sp_file_name_mask = self.image_list[item].split('/')[-1].split('.')[0]+'_mask.npy'
+
+
+
+
+        sp_file_path_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_features )
+        sp_file_path_edge_attr = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_attr )
+        sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_seq_mask )
+        sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_segments )
+        sp_file_path_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_mask)           
+        
+        features = np.load(sp_file_path_features)
+        seq_mask = np.load(sp_file_path_seq_mask)
+        segments = np.load(sp_file_path_segments)
+        mask =  Image.open(self.mask_list[item])
+        mask = torch.tensor(np.array(mask.convert('L')))/255.
+ 
+        mask = (mask > 0.5).float().unsqueeze(0)
+        
+        
+        if self.data_augmentation:
+            features, seq_mask = horizontal_flip(features, self.coeff, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
+            features = rotate(features, self.coeff, 15, 0.5, (self.size, self.size))
+            
+
+        features = torch.tensor(features).float()
+        
+        if self.data_augmentation:
+            randaug = RandAugment(5)
+            res = int(self.num_seg**0.5)
+            color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
+            if np.random.random() < 0.5:
+                color_space = (color_space*255).to(torch.uint8)
+                color_space, _ = randaug(color_space)
+                color_space = color_space.float()
+                color_space /= 255.
+            # plt.imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
+            # plt.show()
+            color_space = color_space.reshape(3, self.num_seg).permute(1, 0)
+            
+            features[:, 2:5] = color_space
+    
+        return {'features': features, 'seq_mask': torch.tensor(seq_mask),
+                 'segments': torch.tensor(segments), 'mask': mask, 
+                   'file_name':self.image_list[item]}
 
 
 
@@ -625,21 +695,24 @@ class SPFRSDataModule(pl.LightningDataModule):
                 num_workers=self.num_workers, shuffle=True, pin_memory=True, drop_last=True)
 
     def val_dataloader(self):
-        data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
+        data_val = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
+                               self.res,  self.dataloader, False, 
+                               self.coeff)
+        data_test = SPOGMaskDataset(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.dataloader, False, 
                                self.coeff)
         val_dataloader = DataLoader(
-                data_test, batch_size=self.batch_size, 
+                data_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=True)
         test_dataloader = DataLoader(
-                data_test, batch_size=self.batch_size, 
+                data_test, batch_size=1, 
                 num_workers=self.num_workers, pin_memory=True)
         return [val_dataloader, test_dataloader]
 
     def test_dataloader(self):
-        data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
+        data_test = SPOGMaskDataset(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res, self.dataloader, False,
                                  self.coeff)
         return DataLoader(
-                data_test, batch_size=self.batch_size, 
+                data_test, batch_size=1, 
                 num_workers=self.num_workers, pin_memory=True)
