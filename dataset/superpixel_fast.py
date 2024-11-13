@@ -607,7 +607,7 @@ class SPFDataModule(pl.LightningDataModule):
         return [val_dataloader, test_dataloader]
 
     def test_dataloader(self):
-        data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
+        data_test = SPOGMaskDataset(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res, self.dataloader, False,
                                  self.coeff)
         return DataLoader(
