@@ -2,7 +2,7 @@ import os
 import matplotlib.pyplot as plt
 import cv2
 from skimage import io
-from skimage.segmentation import mark_boundaries, slic
+from skimage.segmentation import mark_boundaries, slic, quickshift
 from skimage.measure import regionprops_table
 import numpy as np
 from PIL import Image
@@ -27,7 +27,7 @@ num_images = 3000
 use_pickle = False
 
 
-# fig, ax = plt.subplots(1, 2, figsize=(10, 10))
+fig, ax = plt.subplots(1, 2, figsize=(10, 10))
 
 for compact in tqdm(compactness):
     all_ious = []
@@ -71,6 +71,8 @@ for compact in tqdm(compactness):
             convert2lab=True,
             enforce_connectivity=False,
             slic_zero=True)
+            
+            segments = quickshift(img, kernel_size=3, max_dist=6, ratio=0.5)
             # slic = SlicAvx2(num_components=num_seg, compactness=compact, min_size_factor=0.)
             # segments = slic.iterate(img)
 
@@ -101,7 +103,7 @@ for compact in tqdm(compactness):
             for ind, coord in zip(regions['label'], regions['coords']):
                 seq_mask[ind-1] = 1 if np.sum(msk[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
 
-
+            print(regions['label'].shape)
 
             plt_image = seq_mask[segments-1].reshape([img.shape[0], img.shape[1]])
             plt_image_skip = np.copy(plt_image)
@@ -117,13 +119,13 @@ for compact in tqdm(compactness):
             f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
             
             mae = np.mean(np.abs(y_temp-msk))
-            if mae > 0.002:
-                fig, ax = plt.subplots(1, 3, figsize=(15, 5))
-                ax[0].imshow(np.squeeze(plt_image_skip), cmap='gray')
-                ax[1].imshow(np.squeeze(msk_skip), cmap='gray')
-                ax[2].imshow(img)
-                ax[0].set_title(str(mae))
-                plt.show()
+            # if mae > 0.002:
+            #     fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+            #     ax[0].imshow(np.squeeze(plt_image_skip), cmap='gray')
+            #     ax[1].imshow(np.squeeze(msk_skip), cmap='gray')
+            #     ax[2].imshow(img)
+            #     ax[0].set_title(str(mae))
+            #     plt.show()
             IoUs.append(f_score)
             maes.append(mae)
             

@@ -611,7 +611,7 @@ class SPFDataModule(pl.LightningDataModule):
                                self.res, self.dataloader, False,
                                  self.coeff)
         return DataLoader(
-                data_test, batch_size=self.batch_size, 
+                data_test, batch_size=1, 
                 num_workers=self.num_workers, pin_memory=True)
     
 
