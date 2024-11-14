@@ -15,7 +15,7 @@ from torch_geometric.utils import scatter
 import torch.nn.functional as F
 from torch_scatter import scatter_std
 
-load_data = True
+load_data = False
 if not load_data:
 
 
@@ -47,13 +47,21 @@ if not load_data:
 
         img_downsample = img.resize((32, 32))
         img_upsample = img_downsample.resize((img_array.shape[1], img_array.shape[0]))
-        plt.imshow(img_upsample)
-        plt.hlines(list(range(img_array.shape[1]//32, img_array.shape[1], img_array.shape[1]//32)), xmin=0, xmax=img_array.shape[1]-1,colors='y')
-        plt.vlines(list(range(img_array.shape[0]//32, img_array.shape[0], img_array.shape[0]//32)), ymin=0, ymax=img_array.shape[0]-1, colors='y')
-        plt.axis('off')
-        plt.savefig(f'./{name}ds.pdf', format='pdf')
+
+        fig, ax = plt.subplots(1, 3, figsize=(12, 4))
+        ax[0].imshow(np.array(img))
+        ax[0].set_title('Original')
+        ax[1].imshow(img_upsample)
+        ax[1].set_title('Downsample Reconstruction')
+        ax[1].hlines(list(range(img_array.shape[1]//32, img_array.shape[1], img_array.shape[1]//32)), xmin=0, xmax=img_array.shape[1]-1,colors='y')
+        ax[1].vlines(list(range(img_array.shape[0]//32, img_array.shape[0], img_array.shape[0]//32)), ymin=0, ymax=img_array.shape[0]-1, colors='y')
+        # plt.imshow(img_upsample)
+        # plt.hlines(list(range(img_array.shape[1]//32, img_array.shape[1], img_array.shape[1]//32)), xmin=0, xmax=img_array.shape[1]-1,colors='y')
+        # plt.vlines(list(range(img_array.shape[0]//32, img_array.shape[0], img_array.shape[0]//32)), ymin=0, ymax=img_array.shape[0]-1, colors='y')
+        # plt.axis('off')
+        # plt.savefig(f'./{name}ds.pdf', format='pdf')
         
-        plt.show()
+        # plt.show()
 
         
 
@@ -91,10 +99,17 @@ if not load_data:
 
         reconstruct_sp_image = seq_mask[segments-1, :].reshape([img_array.shape[0], img_array.shape[1], 3])
         print(np.max(reconstruct_sp_image))
-        plt.imshow(mark_boundaries(reconstruct_sp_image/255., segments))
-        plt.axis('off')
-        plt.savefig(f'./{name}sp.pdf', format='pdf')
-        
+        ax[2].set_title('Superpixel Reconstruction')
+        ax[2].imshow(mark_boundaries(reconstruct_sp_image/255., segments))
+
+        ax[0].axis('off')
+        ax[1].axis('off')
+        ax[2].axis('off')
+        # plt.imshow(mark_boundaries(reconstruct_sp_image/255., segments))
+        # plt.axis('off')
+        # plt.savefig(f'./{name}sp.pdf', format='pdf')
+        fig.tight_layout()
+        fig.savefig(f'./{name}sp.pdf', format='pdf')
         plt.show()
         sp_mae = np.mean(np.abs(img_array-reconstruct_sp_image))
         

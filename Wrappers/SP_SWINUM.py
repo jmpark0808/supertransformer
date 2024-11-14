@@ -304,7 +304,7 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
             samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
             samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
         
-        mae = torch.sum(torch.mean(torch.abs(samples - mask), dim=tuple(range(1, len(samples.size())))))
+        mae = torch.sum(torch.mean(torch.abs((samples >= 0.5).float() - mask), dim=tuple(range(1, len(samples.size())))))
         
         if dataloader_idx == 0:
             self.maes += mae
@@ -428,11 +428,12 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
         # tensorboard.add_images('Test Image', img, self.test_iteration)
         # for sample, name in zip(samples, names):
         #     name = name.split('/')[-1]
-        #     sample = (sample.permute(1, 2, 0).detach().cpu().numpy()*255).astype(np.uint8)
+        #     sample = ((sample > 0.5).float().permute(1, 2, 0).detach().cpu().numpy()*255).astype(np.uint8)
+            
  
         #     cv2.imwrite('/home/eddie/Qualitative/SF/DUTS-TE/'+name, sample)
 
-        mae = torch.sum(torch.mean(torch.abs(samples - mask), dim=tuple(range(1, len(samples.size())))))
+        mae = torch.sum(torch.mean(torch.abs((samples >= 0.5).float() - mask), dim=tuple(range(1, len(samples.size())))))
         self.maes += mae
         self.mean_num += features.size(0)
 

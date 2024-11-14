@@ -37,6 +37,7 @@ corrnet_dir = '/home/eddie/Qualitative/CorrNet/DUTS-TE/'
 seanet_dir = '/home/eddie/Qualitative/SeaNet/DUTS-TE/'
 meanet_dir = '/home/eddie/Qualitative/MEANet/DUTS-TE/'
 mshnet_dir = '/home/eddie/Qualitative/MSHNet/DUTS-TE/'
+isaanet_dir =  '/home/eddie/Qualitative/ISAANet/DUTS-TE/'
 sf_dir = '/home/eddie/Qualitative/SF/DUTS-TE/'
 
 samnet_file_names = os.listdir(samnet_dir)
@@ -45,14 +46,15 @@ corrnet_file_names = os.listdir(corrnet_dir)
 seanet_file_names = os.listdir(seanet_dir)
 meanet_file_names = os.listdir(meanet_dir)
 mshnet_file_names = os.listdir(mshnet_dir)
+isaanet_file_names = os.listdir(mshnet_dir)
 sfnet_file_names = os.listdir(sf_dir)
 
 
 skip_files = ['ILSVRC2012_test_00028731.png']
 
-num_rows = 4
+num_rows = 8
 
-fig, ax = plt.subplots(num_rows, 9, figsize = (9*2,num_rows*2))
+fig, ax = plt.subplots(num_rows, 10, figsize = (10*2,num_rows*2))
 ind = 0
 for file in os.listdir(mask_dir):
     if ind == num_rows:
@@ -74,39 +76,45 @@ for file in os.listdir(mask_dir):
     mask = np.array(mask.resize((300, 300)))/255.
     
     try:
-        samnet_img = Image.open(os.path.join(samnet_dir, file))
+        samnet_img = Image.open(os.path.join(samnet_dir, file)).convert('L')
     except:
-        samnet_img = Image.open(os.path.join(samnet_dir, other_format))
+        samnet_img = Image.open(os.path.join(samnet_dir, other_format)).convert('L')
     samnet_img = np.array(samnet_img.resize((300, 300)))/255.
     try:
-        hvpnet_img = Image.open(os.path.join(hvpnet_dir, file))
+        hvpnet_img = Image.open(os.path.join(hvpnet_dir, file)).convert('L')
     except:
-        hvpnet_img = Image.open(os.path.join(hvpnet_dir, other_format))
+        hvpnet_img = Image.open(os.path.join(hvpnet_dir, other_format)).convert('L')
     hvpnet_img = np.array(hvpnet_img.resize((300, 300)))/255.
     try:
-        corrnet_img = Image.open(os.path.join(corrnet_dir, file))
+        corrnet_img = Image.open(os.path.join(corrnet_dir, file)).convert('L')
     except:
-        corrnet_img = Image.open(os.path.join(corrnet_dir, other_format))
+        corrnet_img = Image.open(os.path.join(corrnet_dir, other_format)).convert('L')
     corrnet_img = np.array(corrnet_img.resize((300, 300)))/255.
     try:
-        seanet_img = Image.open(os.path.join(seanet_dir, file))
+        seanet_img = Image.open(os.path.join(seanet_dir, file)).convert('L')
     except:
-        seanet_img = Image.open(os.path.join(seanet_dir, other_format))
+        seanet_img = Image.open(os.path.join(seanet_dir, other_format)).convert('L')
     seanet_img = np.array(seanet_img.resize((300, 300)))/255.
     try:
-        meanet_img = Image.open(os.path.join(meanet_dir, file))
+        meanet_img = Image.open(os.path.join(meanet_dir, file)).convert('L')
     except:
-        meanet_img = Image.open(os.path.join(meanet_dir, other_format))
+        meanet_img = Image.open(os.path.join(meanet_dir, other_format)).convert('L')
     meanet_img = np.array(meanet_img.resize((300, 300)))/255.
     try:
-        mshnet_img = Image.open(os.path.join(mshnet_dir, file))
+        mshnet_img = Image.open(os.path.join(mshnet_dir, file)).convert('L')
     except:
-        mshnet_img = Image.open(os.path.join(mshnet_dir, other_format))
+        mshnet_img = Image.open(os.path.join(mshnet_dir, other_format)).convert('L')
     mshnet_img = np.array(mshnet_img.resize((300, 300)))/255.
+
     try:
-        sf_img = Image.open(os.path.join(sf_dir, file))
+        isaanet_img = Image.open(os.path.join(isaanet_dir, file)).convert('L')
     except:
-        sf_img = Image.open(os.path.join(sf_dir, other_format))
+        isaanet_img = Image.open(os.path.join(isaanet_dir, other_format)).convert('L')
+    isaanet_img = np.array(isaanet_img.resize((300, 300)))/255.
+    try:
+        sf_img = Image.open(os.path.join(sf_dir, file)).convert('L')
+    except:
+        sf_img = Image.open(os.path.join(sf_dir, other_format)).convert('L')
     sf_img = np.array(sf_img.resize((300, 300)))/255.
 
     
@@ -116,9 +124,10 @@ for file in os.listdir(mask_dir):
     seanet_mae =  f1score(seanet_img,mask)
     meanet_mae = f1score(meanet_img,mask)
     mshnet_mae =  f1score(mshnet_img,mask)
+    isaanet_mae =  f1score(isaanet_img,mask)
     sf_mae =  f1score(sf_img,mask)
 
-    if np.max(np.array([samnet_mae, hvpnet_mae, corrnet_mae, seanet_mae, meanet_mae, mshnet_mae, sf_mae])) == sf_mae \
+    if np.max(np.array([samnet_mae, hvpnet_mae, corrnet_mae, seanet_mae, meanet_mae, mshnet_mae, sf_mae, isaanet_mae])) == sf_mae \
         and sf_mae > 0.95 and np.mean(mask) < 0.3 and file not in skip_files:
         ax[ind, 0].imshow(img)
         ax[ind, 1].imshow(mask, cmap='gray')
@@ -128,7 +137,8 @@ for file in os.listdir(mask_dir):
         ax[ind, 5].imshow(seanet_img, cmap='gray')
         ax[ind, 6].imshow(meanet_img, cmap='gray')
         ax[ind, 7].imshow(mshnet_img, cmap='gray')
-        ax[ind, 8].imshow(sf_img, cmap='gray')
+        ax[ind, 8].imshow(isaanet_img, cmap='gray')
+        ax[ind, 9].imshow(sf_img, cmap='gray')
         
         print(file)
       
