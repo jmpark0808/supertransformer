@@ -116,7 +116,7 @@ class SwinTransformer(nn.Module):
 
     def forward_features(self, x):
         centroids = x[:, :2, :, : ]
-        x = x[:, 2:-10, :, :]
+        x = x[:, 2:, :, :]
 
         x = self.patch_embed(x)
  
