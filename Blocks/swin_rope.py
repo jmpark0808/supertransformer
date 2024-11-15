@@ -36,7 +36,7 @@ def init_random_2d_freqs(head_dim: int, num_heads: int, theta: float = 10.0, rot
 def compute_cis(freqs, t_x, t_y):
     N = t_x.shape[0]
     # No float 16 for this range
-    with torch.cuda.amp.autocast(enabled=False):
+    with torch.amp.autocast(enabled=False):
         freqs_x = (t_x.unsqueeze(-1) @ freqs[0].unsqueeze(-2))
         freqs_y = (t_y.unsqueeze(-1) @ freqs[1].unsqueeze(-2))
         
