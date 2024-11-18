@@ -215,7 +215,7 @@ class SP_ImageNet_OGSWIN_APE_CROPE_Wrapper(pl.LightningModule):
 
         features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
         if self.dataloader == 'SpeedLimits':
-            target = F.one_hot(target, num_classes=self.classes)
+            target = F.one_hot(target, num_classes=1000)
         else:
             features, target = self.mixup(features, target)
         # features = features.permute(0, 2, 3, 1).reshape(features.size(0), 1024, -1)
@@ -263,7 +263,7 @@ class SP_ImageNet_OGSWIN_APE_CROPE_Wrapper(pl.LightningModule):
         
         pred = self.forward(features)
 
-        loss = self.loss(pred, F.one_hot(label, num_classes=self.classes))
+        loss = self.loss(pred, F.one_hot(label, num_classes=1000))
         
         max_scores, max_idx_class = pred.max(dim=1)
         n = pred.size(0)
@@ -296,7 +296,7 @@ class SP_ImageNet_OGSWIN_APE_CROPE_Wrapper(pl.LightningModule):
         features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
         pred = self.forward(features)
 
-        loss = self.loss(pred, F.one_hot(label, num_classes=self.classes))
+        loss = self.loss(pred, F.one_hot(label, num_classes=1000))
         
         max_scores, max_idx_class = pred.max(dim=1)
 
