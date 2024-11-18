@@ -62,7 +62,7 @@ class SP_ImageNet_OGSWIN_APE_CROPE_Wrapper(pl.LightningModule):
         rope_div_factor = self.size//self.res[0]
         self.supert = SwinTransformer(img_size=self.res[0], coeff=self.coeff, in_chans=input_dim, patch_size=1, window_size=self.window_size,
                                        embed_dim=self.dims, depths=self.depths,
-                                         num_heads=self.heads, mlp_ratio=self.mlp_ratio, num_classes=self.classes, attn_drop_rate=self.dropout_edge, 
+                                         num_heads=self.heads, mlp_ratio=self.mlp_ratio, num_classes=1000, attn_drop_rate=self.dropout_edge, 
                                          qkv_bias=False, drop_path_rate=self.dp, rope_div_factor=rope_div_factor)
         # self.supert = ViPEnc(image_size=self.res[0], patch_size=1,  dims=self.dims, heads=self.heads,
         #                   mlp_ratio=4, channels=input_dim, depths=self.depths, dropout=self.dropout_edge, emb_dropout=self.dropout
