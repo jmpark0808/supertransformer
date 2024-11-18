@@ -50,11 +50,7 @@ class SP_ImageNet_OGSWIN_APE_CROPE_Wrapper(pl.LightningModule):
         self.res = (int(self.num_seg**0.5), int(self.num_seg**0.5))
         
         # Generator that produces the HeatMap
-        if self.dataloader == 'SpeedLimits':
-            self.res = (56, 56)
-            self.classes = 4
-        else:
-            self.classes= 1000
+        
         # UPerNet encoder
         # self.supert = SwinTransformer(img_size=self.res, in_chans=16, patch_size=1, window_size=self.window_size,
         #                                embed_dim=self.tfm_hp[2], depths=[self.tfm_hp[1], self.tfm_hp[1], self.tfm_hp[1]*3, self.tfm_hp[1]],
@@ -63,10 +59,11 @@ class SP_ImageNet_OGSWIN_APE_CROPE_Wrapper(pl.LightningModule):
         #                                             self.tfm_hp[0]*4,
         #                                                 self.tfm_hp[0]*8], mlp_ratio=4, num_classes=self.classes)
         # Mix attention encoder
-        self.supert = SwinTransformer(img_size=self.res, coeff=self.coeff, in_chans=input_dim, patch_size=1, window_size=self.window_size,
+        rope_div_factor = self.size//self.res[0]
+        self.supert = SwinTransformer(img_size=self.res[0], coeff=self.coeff, in_chans=input_dim, patch_size=1, window_size=self.window_size,
                                        embed_dim=self.dims, depths=self.depths,
                                          num_heads=self.heads, mlp_ratio=self.mlp_ratio, num_classes=self.classes, attn_drop_rate=self.dropout_edge, 
-                                         qkv_bias=False, drop_path_rate=self.dp)
+                                         qkv_bias=False, drop_path_rate=self.dp, rope_div_factor=rope_div_factor)
         # self.supert = ViPEnc(image_size=self.res[0], patch_size=1,  dims=self.dims, heads=self.heads,
         #                   mlp_ratio=4, channels=input_dim, depths=self.depths, dropout=self.dropout_edge, emb_dropout=self.dropout
         #                   )
