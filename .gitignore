@@ -141,3 +141,4 @@ demo/
 Models/SP_MAMBA.py
 
 sp_sl_swinum.sh
+slurm_outputs/
