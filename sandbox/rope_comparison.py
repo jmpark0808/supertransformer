@@ -59,7 +59,21 @@ def apply_rotary_emb(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
     xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
+    print(xq_.size())
+    assert(0)
     freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
+    xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
+    xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
+    return xq_out.type_as(xq).to(xq.device), xk_out.type_as(xk).to(xk.device)
+
+def apply_rotary_emb_crope(
+    xq: torch.Tensor,
+    xk: torch.Tensor,
+    freqs_cis: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
+    xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
+    # freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
     xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
     xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
     return xq_out.type_as(xq).to(xq.device), xk_out.type_as(xk).to(xk.device)
@@ -81,47 +95,72 @@ def compute_cis_crope(freqs, t_x, t_y):
     return freqs_cis
 
 t_x, t_y = init_t_xy(end_x=9, end_y=9)
-plt.scatter(t_x, t_y)
-plt.show()
+# plt.scatter(t_x, t_y)
+# plt.show()
 freqs = init_random_2d_freqs(
             head_dim=16, num_heads=2, theta=10, 
             rotate=True
         )
+
 freqs_cis = compute_cis(freqs, t_x, t_y)
-features = np.load('/home/eddie/Datasets/sp_train/n02113624_4906.npy')
 
-centroids = torch.tensor(features[:, :2])
 
-centroids = centroids.reshape(1, 72, 72, 2)
-B, H, W, C = centroids.shape
-centroids = centroids.view(B, H // 9, 9, W // 9, 9, C)
-centroids = centroids.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, 9* 9 , C)
+q = torch.randn((1, 1, 1, 16))
+q = q.repeat(1, 2, 81, 1)
+k = q
 
-min_centroids_x = torch.min(centroids[:, :, 1], dim=1, keepdim=True).values
-min_centroids_y = torch.min(centroids[:, :, 0], dim=1, keepdim=True).values
-t_x = (centroids[:, :, 1] - min_centroids_x)/4
-t_y = (centroids[:, :, 0] - min_centroids_y)/4
-plt.scatter(t_x, t_y)
-plt.show()
+q, k = apply_rotary_emb(q, k, freqs_cis)
 
-freqs_cis_crope = compute_cis_crope(freqs, t_x, t_y)
 
-for head in range(2):
-    for hd in range(8):
-        data = freqs_cis[head,:,hd]
-        x = data.real
-        y = data.imag
-        plt.plot(x, y)
-        for i in range(64):
-            data = freqs_cis_crope[i, head,:,hd]
-            x = data.real
-            y = data.imag
-            plt.plot(x, y)
 
-        plt.show()
+
+
+# freqs_cis_crope = compute_cis_crope(freqs, t_x, t_y)
+
+# features = np.load('/home/eddie/Datasets/sp_train/n02113624_4906.npy')
+
+# centroids = torch.tensor(features[:, :2])
+
+# centroids = centroids.reshape(1, 72, 72, 2)
+# B, H, W, C = centroids.shape
+# centroids = centroids.view(B, H // 9, 9, W // 9, 9, C)
+# centroids = centroids.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, 9* 9 , C)
+
+# min_centroids_x = torch.min(centroids[:, :, 1], dim=1, keepdim=True).values
+# min_centroids_y = torch.min(centroids[:, :, 0], dim=1, keepdim=True).values
+# t_x = (centroids[:, :, 1] - min_centroids_x)/4
+# t_y = (centroids[:, :, 0] - min_centroids_y)/4
+# for i in range(t_x.size(0)):
+#     plt.scatter(t_x[i, :], t_y[i, :])
+# plt.show()
+
+# freqs_cis_crope = compute_cis_crope(freqs, t_x, t_y)
+
+# for head in range(2):
+#     for hd in range(8):
+#         data = freqs_cis[head,:,hd]
+#         x = data.real
+#         y = data.imag
+#         plt.plot(x, y)
+#         for i in range(64):
+#             data = freqs_cis_crope[i, head,:,hd]
+#             x = data.real
+#             y = data.imag
+#             plt.plot(x, y)
+
+#         plt.show()
         
+q = torch.randn((1, 1, 1, 16))
+q = q.repeat(1, 2, 81, 1)
+k = q
+print(freqs_cis.size(), freqs_cis_crope.size())
+q, k = apply_rotary_emb_crope(q, k, freqs_cis_crope)
 
-# q, k = apply_rotary_emb(q, k, freqs_cis)
+print(q.size())
 
-
+matrix = q[:, 0, :, :]
+out = torch.cdist(matrix, matrix)
+for i in range(81):
+    plt.imshow(np.array(out[0, i]).reshape(9, 9), cmap='hot')
+    plt.show()
 
