@@ -95,11 +95,12 @@ ax[1, 0].set_ylabel('Amplitude', fontsize=ylabel_fontsize)
 phase = np.arctan2(fourier_result.imag, fourier_result.real)
 ax[2, 0].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
 ax[2, 0].set_ylabel('Phase', fontsize=ylabel_fontsize)
-print('Original', fourier_result.real[1:])
+print('Original', abs(fourier_result[-1]))
 # plt.scatter(xi[1:], yi[1:], c='blue')
 # plt.scatter(xi[0], yi[0], c='red')
 # plt.show()
-
+orig_amp = abs(fourier_result[1:])
+orig_phase = phase[1:]
 
 # TRANSLATION
 contour_array = np.stack((xi, yi), axis=1)+50
@@ -122,18 +123,19 @@ ax[1, 1].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result
 phase = np.arctan2(fourier_result.imag, fourier_result.real)
 ax[2, 1].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
 
-print('Translated', fourier_result.real[1:])
+
 # SCALED
-contour_array = np.stack((xi*10, yi*10), axis=1)
+scale = 3
+contour_array = np.stack((xi*scale, yi*scale), axis=1)
 contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
 contour_complex.real = contour_array[:, 0]
 contour_complex.imag = contour_array[:, 1]
 fourier_result = np.fft.fft(contour_complex)
-ax[0, 2].scatter(xi[2:]*10, yi[2:]*10, c='blue')
-ax[0, 2].scatter(xi[0]*10, yi[0]*10, c='red', label='Start')
-ax[0, 2].scatter(xi[1]*10, yi[1]*10, c='Green', label='Second')
+ax[0, 2].scatter(xi[2:]*scale, yi[2:]*scale, c='blue')
+ax[0, 2].scatter(xi[0]*scale, yi[0]*scale, c='red', label='Start')
+ax[0, 2].scatter(xi[1]*scale, yi[1]*scale, c='Green', label='Second')
 ax[0, 2].legend()
-ax[0, 2].set_title('Scaled x 10', fontsize=title_fontsize)
+ax[0, 2].set_title('Scaled x 3', fontsize=title_fontsize)
 
 ax[1, 2].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
 # ax[1, 2].plot(fourier_result.real[1:], label='Real')
@@ -142,7 +144,7 @@ ax[1, 2].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result
 
 phase = np.arctan2(fourier_result.imag, fourier_result.real)
 ax[2, 2].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
-print('Scaled', fourier_result.real[1:])
+
 # ROTATION
 
 im = Image.fromarray(rectangle)
@@ -172,7 +174,10 @@ ax[1, 3].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result
 
 phase = np.arctan2(fourier_result.imag, fourier_result.real)
 ax[2, 3].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
-print('Rotated', fourier_result.real[1:])
+print('Rotated', abs(fourier_result[-1]))
+diff = phase[1:] - orig_phase
+
+
 
 # Use less coefficients 
 # xi, yi = resample_2d(points, N)
@@ -241,4 +246,7 @@ fourier_result = np.fft.fft(contour_complex)
 # phase = np.arctan2(fourier_result.imag, fourier_result.real)
 # ax[2, 4].stem(list(range(len(phase[1:]))), phase[1:], 'b', markerfmt=" ", basefmt="-b")
 fig.supxlabel('Frequency (2nd and 3rd row)', fontsize=ylabel_fontsize)
+plt.show()
+
+plt.stem(np.linspace(0, np.pi, len(fourier_result))[1:], diff, 'b', markerfmt=" ", basefmt="-b")
 plt.show()

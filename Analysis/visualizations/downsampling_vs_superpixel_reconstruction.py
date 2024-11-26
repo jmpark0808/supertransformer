@@ -48,11 +48,11 @@ if not load_data:
         img_downsample = img.resize((32, 32))
         img_upsample = img_downsample.resize((img_array.shape[1], img_array.shape[0]))
 
-        fig, ax = plt.subplots(1, 3, figsize=(12, 4))
+        fig, ax = plt.subplots(1, 3, figsize=(12, 5))
         ax[0].imshow(np.array(img))
-        ax[0].set_title('Original')
+        ax[0].set_title('Original', fontsize=15)
         ax[1].imshow(img_upsample)
-        ax[1].set_title('Downsample Reconstruction')
+        ax[1].set_title('Downsample Reconstruction', fontsize=15)
         ax[1].hlines(list(range(img_array.shape[1]//32, img_array.shape[1], img_array.shape[1]//32)), xmin=0, xmax=img_array.shape[1]-1,colors='y')
         ax[1].vlines(list(range(img_array.shape[0]//32, img_array.shape[0], img_array.shape[0]//32)), ymin=0, ymax=img_array.shape[0]-1, colors='y')
         # plt.imshow(img_upsample)
@@ -99,7 +99,7 @@ if not load_data:
 
         reconstruct_sp_image = seq_mask[segments-1, :].reshape([img_array.shape[0], img_array.shape[1], 3])
         print(np.max(reconstruct_sp_image))
-        ax[2].set_title('Superpixel Reconstruction')
+        ax[2].set_title('Superpixel Reconstruction', fontsize=15)
         ax[2].imshow(mark_boundaries(reconstruct_sp_image/255., segments))
 
         ax[0].axis('off')
