@@ -37,6 +37,7 @@ logdir=/home/ashleyc/projects/def-pfieguth/ashleyc/logs/
 
 # Start training
 cd $SLURM_TMPDIR/supertransformer/
+git checkout sp-swinum-H0-R1-C0-M0
 python train.py \
     --model SP_SWINUM \
     --dataloader SPFFFT \
