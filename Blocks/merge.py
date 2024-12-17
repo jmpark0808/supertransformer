@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 from einops import rearrange
-from Blocks.swin_crope import init_random_2d_freqs, compute_cis, reshape_for_broadcast, apply_rotary_emb
+# from Blocks.swin_crope import init_random_2d_freqs, compute_cis, reshape_for_broadcast, apply_rotary_emb
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
