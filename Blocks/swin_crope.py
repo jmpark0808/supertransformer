@@ -190,9 +190,9 @@ class WindowAttentionRoPE(nn.Module):
             #     plt.show()
         
 
-            freqs_cis = compute_cis(self.rope_freqs, t_x, t_y)
+        freqs_cis = compute_cis(self.rope_freqs, t_x, t_y)
 
-            q, k = apply_rotary_emb(q, k, freqs_cis, window_mask_centroids)
+        q, k = apply_rotary_emb(q, k, freqs_cis, window_mask_centroids)
             
 
         attn = (q @ k.transpose(-2, -1))
