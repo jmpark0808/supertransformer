@@ -137,7 +137,7 @@ class SwinUTransformer(nn.Module):
         centroids = x[:, :2, :, : ]
         x = x[:, 2:, :, :]
 
-        centroids = torch.where(torch.logical_and(centroids[:, 0:1, :, :] == 0, centroids[:, 1:2, :, :] == 0), 1e9, centroids)
+        centroids = torch.where(torch.logical_and(centroids[:, 0:1, :, :] == 0, centroids[:, 1:2, :, :] == 0), 1000, centroids)
 
         x = self.patch_embed(x)
  
