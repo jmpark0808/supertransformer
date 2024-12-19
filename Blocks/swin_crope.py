@@ -117,11 +117,12 @@ class WindowAttentionRoPE(nn.Module):
         # if dim < 48:
 
 
-        # freqs = init_random_2d_freqs(
-        #     head_dim=self.dim // self.num_heads, num_heads=self.num_heads, theta=rope_theta, 
-        #     rotate=True
-        # )
-        self.pos = nn.Linear(2, head_dim)
+        freqs = init_random_2d_freqs(
+            head_dim=self.dim // self.num_heads, num_heads=self.num_heads, theta=rope_theta, 
+            rotate=True
+        )
+        self.rope_freqs = nn.Parameter(freqs, requires_grad=True)
+        # self.pos = nn.Linear(2, head_dim)
 
     def forward(self, x, centroids, mask=None, window_mask=None):
         """
@@ -195,15 +196,15 @@ class WindowAttentionRoPE(nn.Module):
         #                 t_y[t_y<500].detach().cpu().numpy())
         #     plt.show()
 
-        # freqs_cis = compute_cis(self.rope_freqs, t_x, t_y)
+        freqs_cis = compute_cis(self.rope_freqs, t_x, t_y)
 
-        # q, k = apply_rotary_emb(q, k, freqs_cis, window_mask_centroids)
-        centroids_feat = torch.stack((t_x, t_y), dim=2) # B, N, 2
+        q, k = apply_rotary_emb(q, k, freqs_cis, window_mask_centroids)
+        # centroids_feat = torch.stack((t_x, t_y), dim=2) # B, N, 2
        
-        centroids_feat = self.pos(centroids_feat).unsqueeze(1) #B, 1, N, D
+        # centroids_feat = self.pos(centroids_feat).unsqueeze(1) #B, 1, N, D
         
-        q = q + centroids_feat
-        k = k + centroids_feat
+        # q = q + centroids_feat
+        # k = k + centroids_feat
         attn = (q @ k.transpose(-2, -1))
 
 
