@@ -149,16 +149,16 @@ class WindowAttentionRoPE(nn.Module):
             min_centroids_x = torch.min(centroids_x, dim=1, keepdim=True).values
             min_centroids_y = torch.min(centroids_y, dim=1, keepdim=True).values
             
-            t_x = (centroids_x - min_centroids_x)
-            t_y = (centroids_y - min_centroids_y)
+            t_x = (centroids_x - min_centroids_x)/self.rdf
+            t_y = (centroids_y - min_centroids_y)/self.rdf
 
             window_mask_centroids = torch.where(centroids[:, :, 0] == 1000, 10, window_mask_centroids)
         else:
             window_mask_centroids = torch.where(centroids[:, :, 0] == 1000, 10, 0)
             min_centroids_x = torch.min(centroids[:, :, 1], dim=1, keepdim=True).values
             min_centroids_y = torch.min(centroids[:, :, 0], dim=1, keepdim=True).values
-            t_x = (centroids[:, :, 1] - min_centroids_x)
-            t_y = (centroids[:, :, 0] - min_centroids_y)
+            t_x = (centroids[:, :, 1] - min_centroids_x)/self.rdf
+            t_y = (centroids[:, :, 0] - min_centroids_y)/self.rdf
 
         
         # if not self.training:
