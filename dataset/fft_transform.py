@@ -34,9 +34,11 @@ def rotate_points(origin, point, angle):
     """
     ox, oy = origin
     px, py = point
-
+    zeros = np.argwhere(np.logical_and(px == 0 , py == 0))
     qx = ox + math.cos(angle) * (px - ox) - math.sin(angle) * (py - oy)
     qy = oy + math.sin(angle) * (px - ox) + math.cos(angle) * (py - oy)
+    qx[zeros] = 0
+    qy[zeros] = 0
     return qx, qy
 
 def rotate(array, coeff, degrees, chance, size):
