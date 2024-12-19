@@ -117,11 +117,11 @@ class WindowAttentionRoPE(nn.Module):
         # if dim < 48:
 
 
-        freqs = init_random_2d_freqs(
-            head_dim=self.dim // self.num_heads, num_heads=self.num_heads, theta=rope_theta, 
-            rotate=True
-        )
-        self.rope_freqs = nn.Parameter(freqs, requires_grad=True)
+        # freqs = init_random_2d_freqs(
+        #     head_dim=self.dim // self.num_heads, num_heads=self.num_heads, theta=rope_theta, 
+        #     rotate=True
+        # )
+        self.pos = nn.Linear(2, head_dim)
 
     def forward(self, x, centroids, mask=None, window_mask=None):
         """
@@ -142,22 +142,22 @@ class WindowAttentionRoPE(nn.Module):
             window_mask_centroids = window_mask.repeat(q.size(0)//window_mask.size(0), 1)
             
             # Push all the centroids that we don't care about to 1e9 (part of the shifted window)
-            centroids_x = torch.where(window_mask_centroids == 0, centroids[:, :, 1], 1e9)
-            centroids_y = torch.where(window_mask_centroids == 0, centroids[:, :, 0], 1e9)
+            centroids_x = torch.where(window_mask_centroids == 0, centroids[:, :, 1], -1)
+            centroids_y = torch.where(window_mask_centroids == 0, centroids[:, :, 0], -1)
 
             min_centroids_x = torch.min(centroids_x, dim=1, keepdim=True).values
             min_centroids_y = torch.min(centroids_y, dim=1, keepdim=True).values
             
-            t_x = (centroids_x - min_centroids_x)/self.rdf
-            t_y = (centroids_y - min_centroids_y)/self.rdf
+            t_x = (centroids_x - min_centroids_x)
+            t_y = (centroids_y - min_centroids_y)
 
-            window_mask_centroids = torch.where(centroids[:, :, 0] == 1e9, 10, window_mask_centroids)
+            window_mask_centroids = torch.where(centroids[:, :, 0] == -1, 10, window_mask_centroids)
         else:
-            window_mask_centroids = torch.where(centroids[:, :, 0] == 1e9, 10, 0)
+            window_mask_centroids = torch.where(centroids[:, :, 0] == -1, 10, 0)
             min_centroids_x = torch.min(centroids[:, :, 1], dim=1, keepdim=True).values
             min_centroids_y = torch.min(centroids[:, :, 0], dim=1, keepdim=True).values
-            t_x = (centroids[:, :, 1] - min_centroids_x)/self.rdf
-            t_y = (centroids[:, :, 0] - min_centroids_y)/self.rdf
+            t_x = (centroids[:, :, 1] - min_centroids_x)
+            t_y = (centroids[:, :, 0] - min_centroids_y)
 
         
         # if not self.training:
@@ -190,11 +190,13 @@ class WindowAttentionRoPE(nn.Module):
             #     plt.show()
         
 
-        freqs_cis = compute_cis(self.rope_freqs, t_x, t_y)
+        # freqs_cis = compute_cis(self.rope_freqs, t_x, t_y)
 
-        q, k = apply_rotary_emb(q, k, freqs_cis, window_mask_centroids)
-            
-
+        # q, k = apply_rotary_emb(q, k, freqs_cis, window_mask_centroids)
+        centroids = torch.stack((t_x, t_y), dim=2) # B, N, 2
+        centroids = self.pos(centroids).unsqueeze(1) #B, 1, N, D
+        q = q + centroids
+        k = k + centroids
         attn = (q @ k.transpose(-2, -1))
 
 
@@ -290,7 +292,7 @@ class SwinTransformerBlockRoPE(nn.Module):
             mask_windows = window_partition(img_mask, [self.window_size, self.window_size])  # nW, window_size, window_size, 1
             mask_windows = mask_windows.view(-1, self.window_size * self.window_size)
             attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
-            attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
+            attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-1e9)).masked_fill(attn_mask == 0, float(0.0))
         else:
             attn_mask = None
             mask_windows = None
@@ -405,13 +407,13 @@ class PatchMergingRoPE(nn.Module):
 
         centroids_stack = torch.stack([c0, c1, c2, c3], 1)
 
-        mask = centroids_stack < 1e6
+        mask = centroids_stack > 0
         # import matplotlib.pyplot as plt
 
         # fig, ax = plt.subplots(1, 2)
         # ax[0].scatter(centroids[0, 1, :, :].detach().cpu().numpy(), centroids[0, 0, :, :].detach().cpu().numpy())
         
-        centroids = torch.where(mask.sum(dim=1) == 0, 1e9, (mask*centroids_stack).sum(dim=1) / mask.sum(dim=1))
+        centroids = torch.where(mask.sum(dim=1) == 0, -1, (mask*centroids_stack).sum(dim=1) / mask.sum(dim=1))
         if torch.sum(torch.isnan(centroids))> 0:
             assert 0, 'Merging centroids cause NaNs'
         
