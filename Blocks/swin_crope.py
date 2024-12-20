@@ -138,7 +138,7 @@ class WindowAttentionRoPE(nn.Module):
 
         q = q * self.scale
         
-        if self.dim < 48:
+        if self.dim < 96:
             if window_mask is not None:
                 window_mask_centroids = window_mask.repeat(q.size(0)//window_mask.size(0), 1)
                 
