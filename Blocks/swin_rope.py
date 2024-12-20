@@ -130,7 +130,7 @@ class WindowAttentionRoPE(nn.Module):
 
         q = q * self.scale
 
-        if self.dim < 48:
+        if self.dim < 96:
 
             freqs_cis = compute_cis(self.rope_freqs, self.rope_t_x, self.rope_t_y)
 
