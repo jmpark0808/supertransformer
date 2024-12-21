@@ -138,27 +138,36 @@ class WindowAttentionRoPE(nn.Module):
 
         q = q * self.scale
         
-        if self.dim < 96:
-            if window_mask is not None:
-                window_mask_centroids = window_mask.repeat(q.size(0)//window_mask.size(0), 1)
-                
-                # Push all the centroids that we don't care about to 1e9 (part of the shifted window)
-                centroids_x = torch.where(window_mask_centroids == 0, centroids[:, :, 1], 1000)
-                centroids_y = torch.where(window_mask_centroids == 0, centroids[:, :, 0], 1000)
+        
+        if window_mask is not None:
+            window_mask_centroids = window_mask.repeat(q.size(0)//window_mask.size(0), 1)
+            
+            # Push all the centroids that we don't care about to 1e9 (part of the shifted window)
+            centroids_x = torch.where(window_mask_centroids == 0, centroids[:, :, 1], 1000)
+            centroids_y = torch.where(window_mask_centroids == 0, centroids[:, :, 0], 1000)
 
-                min_centroids_x = torch.min(centroids_x, dim=1, keepdim=True).values
-                min_centroids_y = torch.min(centroids_y, dim=1, keepdim=True).values
-                
-                t_x = (centroids_x - min_centroids_x)/self.rdf
-                t_y = (centroids_y - min_centroids_y)/self.rdf
+            min_centroids_x = torch.min(centroids_x, dim=1, keepdim=True).values
+            min_centroids_y = torch.min(centroids_y, dim=1, keepdim=True).values
+            
+            t_x = (centroids_x - min_centroids_x)/self.rdf
+            t_y = (centroids_y - min_centroids_y)/self.rdf
 
-                window_mask_centroids = torch.where(centroids[:, :, 0] == 1000, 10, window_mask_centroids)
-            else:
-                window_mask_centroids = torch.where(centroids[:, :, 0] == 1000, 10, 0)
-                min_centroids_x = torch.min(centroids[:, :, 1], dim=1, keepdim=True).values
-                min_centroids_y = torch.min(centroids[:, :, 0], dim=1, keepdim=True).values
-                t_x = (centroids[:, :, 1] - min_centroids_x)/self.rdf
-                t_y = (centroids[:, :, 0] - min_centroids_y)/self.rdf
+            window_mask_centroids = torch.where(centroids[:, :, 0] == 1000, 10, window_mask_centroids)
+        else:
+            window_mask_centroids = torch.where(centroids[:, :, 0] == 1000, 10, 0)
+            min_centroids_x = torch.min(centroids[:, :, 1], dim=1, keepdim=True).values
+            min_centroids_y = torch.min(centroids[:, :, 0], dim=1, keepdim=True).values
+            # if not self.training:
+            #     print(torch.sum(centroids[:, :, 1]>500))
+            #     assert(0)
+            #     plt.scatter(centroids[:, :, 1].detach().cpu().numpy(),
+            #             centroids[:, :, 0].detach().cpu().numpy())
+            #     plt.show()
+            #     print(torch.max(min_centroids_x))
+            #     print(torch.max(min_centroids_y))
+                
+            t_x = (centroids[:, :, 1] - min_centroids_x)/self.rdf
+            t_y = (centroids[:, :, 0] - min_centroids_y)/self.rdf
 
         
         # if not self.training:
@@ -190,15 +199,16 @@ class WindowAttentionRoPE(nn.Module):
         #         plt.title(f'{self.dim}')
         #         plt.show()
         # if not self.training:
-           
-
-        #     plt.scatter(t_x[t_x<500].detach().cpu().numpy(),
-        #                 t_y[t_y<500].detach().cpu().numpy())
+        #     # plt.scatter(t_x[centroids[:, :, 1]!=1000].detach().cpu().numpy(),
+        #     #             t_y[centroids[:, :, 0]!=1000].detach().cpu().numpy())
+            
+        #     plt.scatter(centroids[:, :, 1][centroids[:, :, 1]!=1000].detach().cpu().numpy(),
+        #                 centroids[:, :, 0][centroids[:, :, 0]!=1000].detach().cpu().numpy())
         #     plt.show()
 
-            freqs_cis = compute_cis(self.rope_freqs, t_x, t_y)
+        freqs_cis = compute_cis(self.rope_freqs, t_x, t_y)
 
-            q, k = apply_rotary_emb(q, k, freqs_cis, window_mask_centroids)
+        q, k = apply_rotary_emb(q, k, freqs_cis, window_mask_centroids)
         # centroids_feat = torch.stack((t_x, t_y), dim=2) # B, N, 2
        
         # centroids_feat = self.pos(centroids_feat).unsqueeze(1) #B, 1, N, D
@@ -388,6 +398,7 @@ class PatchMergingRoPE(nn.Module):
         self.input_resolution = input_resolution
         self.dim = dim
         self.reduction = nn.Linear(4 * dim, out_dim, bias=False)
+        self.centroid_reduction = nn.Linear(dim, 1)
         self.norm = norm_layer(4 * dim)
 
     def forward(self, x, centroids):
@@ -411,17 +422,29 @@ class PatchMergingRoPE(nn.Module):
         c2 = centroids[:, :, 0::2, 1::2]  # B 2, H/2 W/2 
         c3 = centroids[:, :, 1::2, 1::2]  # B 2, H/2 W/2 
         x = torch.cat([x0, x1, x2, x3], -1)  # B H/2 W/2 4*C
+        x_stack = torch.stack([x0, x1, x2, x3], -2) # B H/2 W/2 4 C
         x = x.view(B, -1, 4 * C)  # B H/2*W/2 4*C
-
-        centroids_stack = torch.stack([c0, c1, c2, c3], 1)
+        x_stack = self.centroid_reduction(x_stack).reshape(B, H//2, W//2, 4) # B H/2 W/2 4
+        
+        
+        centroids_stack = torch.stack([c0, c1, c2, c3], 1) # B 4 2 H/2 W/2
 
         mask = centroids_stack < 1000
+        mask = torch.where(mask, 0, -1e9)
+        # mask = mask.masked_fill(mask, float(-1e9)).masked_fill(~mask, float(0.0)) # B 4 2 H/2 W/2
+
+        mask = torch.min(mask, 2)[0].permute(0, 2, 3, 1) # B H/2 W/2 4
+
+
+        x_stack = torch.softmax(x_stack+mask, -1).unsqueeze(1).repeat(1, 2, 1, 1, 1) # B 2 H/2 W/2 4
         # import matplotlib.pyplot as plt
 
         # fig, ax = plt.subplots(1, 2)
         # ax[0].scatter(centroids[0, 1, :, :].detach().cpu().numpy(), centroids[0, 0, :, :].detach().cpu().numpy())
         
-        centroids = torch.where(mask.sum(dim=1) == 0, 1000, (mask*centroids_stack).sum(dim=1) / mask.sum(dim=1))
+        # centroids = torch.where(mask.sum(dim=1) == 0, 1000, (mask*centroids_stack).sum(dim=1) / mask.sum(dim=1))
+        
+        centroids = torch.einsum('bchwp,bpchw->bchw', x_stack, centroids_stack) # B 2 H/2 W/2
         if torch.sum(torch.isnan(centroids))> 0:
             assert 0, 'Merging centroids cause NaNs'
         
