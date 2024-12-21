@@ -130,9 +130,9 @@ class WindowAttentionRoPE(nn.Module):
 
         q = q * self.scale
 
-        if self.dim < 96:
+        
 
-            freqs_cis = compute_cis(self.rope_freqs, self.rope_t_x, self.rope_t_y)
+        freqs_cis = compute_cis(self.rope_freqs, self.rope_t_x, self.rope_t_y)
 
         # if not self.training:
             
@@ -144,7 +144,7 @@ class WindowAttentionRoPE(nn.Module):
         #         plt.text(x, y, t)
         #     plt.title(f'{self.dim}')
         #     plt.show()
-            q, k = apply_rotary_emb(q, k, freqs_cis)
+        q, k = apply_rotary_emb(q, k, freqs_cis)
 
 
         attn = (q @ k.transpose(-2, -1))
