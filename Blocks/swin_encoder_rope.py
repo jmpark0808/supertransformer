@@ -90,7 +90,7 @@ class SwinTransformer(nn.Module):
             self.embed_dims.append(embed_dim[i_layer])
             self.layers.append(layer)
 
-        # self.locations = nn.Sequential(*[nn.Linear(2, embed_dim[0])])
+        self.locations = nn.Sequential(*[nn.Linear(2, embed_dim[0])])
 
         self.norm = norm_layer(self.num_features)
         self.avgpool = nn.AdaptiveAvgPool1d(1)
@@ -117,10 +117,15 @@ class SwinTransformer(nn.Module):
 
     def forward_features(self, x):
         x = x[:, 2:, :, :]
+        centroids = x[:, :2, :, :].permute(0, 2, 3, 1)
+        centroids = self.locations(centroids)
+        centroids = centroids.reshape(centroids.size(0), -1, centroids.size(3))
+        
 
         x = self.patch_embed(x)
  
         x = self.pos_drop(x)
+        x = x + centroids
 
         for layer in self.layers:
             ds, x = layer(x)
