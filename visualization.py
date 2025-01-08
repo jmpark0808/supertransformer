@@ -53,6 +53,9 @@ def get_mae_factors(data, metric='MAE'):
                   }
     data_dict['arrow_dict'] = arrow_dict
 
+    data_dict['v_min'] = 0.04
+    data_dict['v_max'] = 0.07
+
     return data_dict
 
 def get_f1_factors(data, metric='F1'):
@@ -80,6 +83,9 @@ def get_f1_factors(data, metric='F1'):
                   'arrow_text': [0.4, 0.863],
                   }
     data_dict['arrow_dict'] = arrow_dict
+
+    data_dict['v_min'] = 0.81
+    data_dict['v_max'] = 0.87
 
     return data_dict
 
@@ -145,8 +151,9 @@ def scatter_plot(metric='MAE', plt_path=None, add_metric=False, add_arrow=True, 
         a.spines['bottom'].set_color('grey')
 
     # Define color palette (single colormap based on F1 score)
+    v_min, v_max = data_dict['min_val'], data_dict['max_val']
     cmap = plt.cm.Blues
-    norm = plt.Normalize(vmin=0.04, vmax=0.07)
+    norm = plt.Normalize(vmin=v_min, vmax=v_max)
 
     # Create scatter plots for both axes with F1-based color intensity
     color_palette_ = []
