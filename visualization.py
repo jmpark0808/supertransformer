@@ -92,14 +92,7 @@ def get_f1_factors(data, metric='F1'):
 def scatter_plot(metric='MAE', plt_path=None, add_metric=False, add_arrow=True, plt_lines=False, plt_cbar=False, _plt=False):
     """
     This function plots the MAE of the models compared. Figure (1) of the SuperFormer paper.
-    Args:
-        plt_path: Path to save the figure.
-        plt_lines: if plot lines?
-        plt_cbar: if plot color bar?
-        _plt: if plot figure?
-
-    Returns:
-
+    Set the metric as either MAE or F1.
     """
 
     if not _plt:
