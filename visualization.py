@@ -233,7 +233,7 @@ def scatter_plot(metric='MAE', plt_path=None, add_metric=False, add_arrow=True, 
     plt.tight_layout()
     plt.savefig(f'{plt_path}/scatter_{metric}.pdf', format='pdf')
     plt.show()
-    print('')
+    print('Well-Done.')
 
 def sf_recos_err(recon_err_sp, recon_err_ds, _plt=False):
 
@@ -267,7 +267,7 @@ def sf_recos_err(recon_err_sp, recon_err_ds, _plt=False):
     plt.savefig(f'{current_directory}/reconstruction_errors.pdf')
     plt.show()
 
-    print('')
+    print('Well-Done.')
 
 
 def resample_2d(points, N):
@@ -477,7 +477,7 @@ def sf_FT(data_file, plt_path=None, _plt=False):
     plt.savefig(f'{plt_path}/ft_vis.pdf')
     plt.show()
 
-    print('')
+    print('Well-Done.')
 
 
 def data_sf():
