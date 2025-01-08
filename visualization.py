@@ -341,6 +341,16 @@ def get_fft(contour_array):
 
 
 def sf_FT(data_file, plt_path=None, _plt=False):
+    """
+    This function plots the Fourier Transform results of the SuperFormer Figure (S.4) of the paper.
+    Args:
+        data_file:
+        plt_path:
+        _plt:
+
+    Returns:
+
+    """
 
     if not _plt:
         return
@@ -468,6 +478,7 @@ def sf_FT(data_file, plt_path=None, _plt=False):
 
 
 def data_sf():
+    """ Get the results values."""
     data = {
         'Ours (XS)': {'Params': 1.12, 'FLOPs': 0.46, 'MAE': 0.0530, 'F1': 0.8470, 'size': 100, },
         'HVPNet':    {'Params': 1.23, 'FLOPs': 1.10, 'MAE': 0.0580, 'F1': 0.8390, 'size': 150, },
