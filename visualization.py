@@ -62,10 +62,6 @@ def get_f1_factors(data, metric='F1'):
 
     data_dict = dict()
 
-    # Get min and max F1 scores
-    min_f1 = 0.817  # min(value['F1'] for value in data.values())
-    max_f1 = 0.88   # max(value['F1'] for value in data.values())
-
     data_dict['min_val'] = (1 - 0.01) * min_val
     data_dict['max_val'] = (1 + 0.005) * max_val
 
