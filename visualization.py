@@ -31,7 +31,6 @@ def get_mae_factors(data, metric='MAE'):
     min_val = min(value[metric] for value in data.values())
     max_val = max(value[metric] for value in data.values())
 
-
     data_dict = dict()
 
     data_dict['min_val'] = (1-0.04) * min_val
@@ -89,7 +88,7 @@ def get_f1_factors(data, metric='F1'):
 
     return data_dict
 
-def scatter_plot(metric='MAE', plt_path=None, add_metric=False, add_arrow=True, plt_lines=False, plt_cbar=False, _plt=False):
+def scatter_plot(data, metric='MAE', plt_path=None, add_metric=False, add_arrow=True, plt_lines=False, plt_cbar=False, _plt=False):
     """
     This function visualizes the MAE or F1 Score scatter plots of the models compared
     as shown by Figure (1) of the SuperFormer paper.
@@ -98,9 +97,6 @@ def scatter_plot(metric='MAE', plt_path=None, add_metric=False, add_arrow=True, 
 
     if not _plt:
         return
-
-
-    data = data_sf()
 
     if metric == 'MAE':
         data_dict = get_mae_factors(data, metric=metric)
@@ -496,7 +492,8 @@ if __name__ == '__main__':
     plt_path = os.path.join(current_directory, 'figs')
     make_directory(plt_path)
 
-    scatter_plot(metric='MAE', plt_path=plt_path, add_metric=False, add_arrow=True, _plt=True)
+    data = data_sf()
+    scatter_plot(data, metric='MAE', plt_path=plt_path, add_metric=False, add_arrow=True, _plt=True)
 
     data_file = f'{current_directory}/sample_sp.npy'
     sf_FT(data_file, plt_path, _plt=True)
