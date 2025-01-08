@@ -225,7 +225,7 @@ def scatter_plot(data, metric='MAE', plt_path=None, add_metric=False, add_arrow=
     plt.show()
     print('Well-Done.')
 
-def sf_recos_err(recon_err_sp, recon_err_ds, _plt=False):
+def sf_recos_err(recon_err_sp, recon_err_ds, plt_path=None, _plt=False):
 
     error_sp = np.load(recon_err_sp)
     error_ds = np.load(recon_err_ds)
@@ -254,7 +254,7 @@ def sf_recos_err(recon_err_sp, recon_err_ds, _plt=False):
 
     plt.legend()
     plt.tight_layout()
-    plt.savefig(f'{current_directory}/reconstruction_errors.pdf')
+    plt.savefig(f'{plt_path}/reconstruction_errors.pdf')
     plt.show()
 
     print('Well-Done.')
@@ -493,12 +493,12 @@ if __name__ == '__main__':
     make_directory(plt_path)
 
     data = data_sf()
-    scatter_plot(data, metric='MAE', plt_path=plt_path, add_metric=False, add_arrow=True, _plt=True)
+    scatter_plot(data, metric='F1', plt_path=plt_path, add_metric=False, add_arrow=True, _plt=True)
 
     data_file = f'{current_directory}/sample_sp.npy'
-    sf_FT(data_file, plt_path, _plt=True)
+    sf_FT(data_file, plt_path=plt_path, _plt=True)
 
 
     recon_err_sp = f'{current_directory}/reconstruction_error_sp.npy'
     recon_err_ds = f'{current_directory}/reconstruction_error_ds.npy'
-    sf_recos_err(recon_err_sp, recon_err_ds, _plt=True)
+    sf_recos_err(recon_err_sp, recon_err_ds, plt_path=plt_path, _plt=True)
