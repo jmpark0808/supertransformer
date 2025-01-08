@@ -83,7 +83,7 @@ def get_f1_factors(data, metric='F1'):
 
     return data_dict
 
-def scatter_plot(metric='MAE', plt_path=None, add_mae=False, add_arrow=True, plt_lines=False, plt_cbar=False, _plt=False):
+def scatter_plot(metric='MAE', plt_path=None, add_metric=False, add_arrow=True, plt_lines=False, plt_cbar=False, _plt=False):
     """
     This function plots the MAE of the models compared. Figure (1) of the SuperFormer paper.
     Args:
@@ -209,7 +209,7 @@ def scatter_plot(metric='MAE', plt_path=None, add_mae=False, add_arrow=True, plt
                 print(f"Skipping {net}")
                 continue
 
-    if add_mae:
+    if add_metric:
         ax[0].text(
             0, value[metric], f'{value[metric]:.3f}',
             ha='right', va='center', fontsize=15, color='black')
@@ -495,7 +495,7 @@ if __name__ == '__main__':
     plt_path = os.path.join(current_directory, 'figs')
     make_directory(plt_path)
 
-    scatter_plot(metric='MAE', plt_path=plt_path, add_mae=False, add_arrow=True, _plt=True)
+    scatter_plot(metric='MAE', plt_path=plt_path, add_metric=False, add_arrow=True, _plt=True)
 
     data_file = f'{current_directory}/sample_sp.npy'
     sf_FT(data_file, plt_path, _plt=True)
