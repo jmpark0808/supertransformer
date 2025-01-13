@@ -114,7 +114,8 @@ class WindowAttentionRoPE(nn.Module):
         # trunc_normal_(self.relative_position_bias_table, std=.02)
         self.softmax = nn.Softmax(dim=-1)
 
-        
+        # if dim < 48:
+
 
         freqs = init_random_2d_freqs(
             head_dim=self.dim // self.num_heads, num_heads=self.num_heads, theta=rope_theta, 
@@ -136,7 +137,7 @@ class WindowAttentionRoPE(nn.Module):
 
         q = q * self.scale
 
-        
+        # if self.dim < 48:
         if window_mask is not None:
             window_mask_centroids = window_mask.repeat(q.size(0)//window_mask.size(0), 1)
             
@@ -158,7 +159,7 @@ class WindowAttentionRoPE(nn.Module):
             t_x = (centroids[:, :, 1] - min_centroids_x)/self.rdf
             t_y = (centroids[:, :, 0] - min_centroids_y)/self.rdf
 
-
+        
         # if not self.training:
             
         #     altered_t_x = torch.where(t_x<1e6, t_x, -1e9)
@@ -192,9 +193,7 @@ class WindowAttentionRoPE(nn.Module):
         freqs_cis = compute_cis(self.rope_freqs, t_x, t_y)
 
         q, k = apply_rotary_emb(q, k, freqs_cis, window_mask_centroids)
-        if torch.sum(torch.isnan(q))> 0 or torch.sum(torch.isnan(k))> 0:
-            assert 0, 'Applying rotary caused NaNs'
-       
+            
 
         attn = (q @ k.transpose(-2, -1))
 

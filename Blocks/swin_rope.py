@@ -36,7 +36,7 @@ def init_random_2d_freqs(head_dim: int, num_heads: int, theta: float = 10.0, rot
 def compute_cis(freqs, t_x, t_y):
     N = t_x.shape[0]
     # No float 16 for this range
-    with torch.amp.autocast(enabled=False):
+    with torch.amp.autocast('cuda', enabled=False):
         freqs_x = (t_x.unsqueeze(-1) @ freqs[0].unsqueeze(-2))
         freqs_y = (t_y.unsqueeze(-1) @ freqs[1].unsqueeze(-2))
         
@@ -104,7 +104,7 @@ class WindowAttentionRoPE(nn.Module):
         self.softmax = nn.Softmax(dim=-1)
 
         
-
+        # if dim < 48:
         t_x, t_y = init_t_xy(end_x=self.window_size[1], end_y=self.window_size[0])
         self.register_buffer('rope_t_x', t_x)
         self.register_buffer('rope_t_y', t_y)
@@ -129,6 +129,8 @@ class WindowAttentionRoPE(nn.Module):
         q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
 
         q = q * self.scale
+
+        # if self.dim < 48:
 
         freqs_cis = compute_cis(self.rope_freqs, self.rope_t_x, self.rope_t_y)
 
