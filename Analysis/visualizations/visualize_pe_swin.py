@@ -2,7 +2,8 @@ import numpy as np
 import os
 import sys
 sys.path.insert(0, '/home/eddie/waterloo/supertransformer')
-from dataset.superpixel_fast import SPDataset as SPFDataset
+# from dataset.superpixel_fast import SPDataset as SPFDataset
+from dataset.superpixel import SPDataset
 from torch_geometric.loader import DataLoader as GDL
 from torch.utils.data import DataLoader as DL
 import torch
@@ -16,7 +17,7 @@ from skimage import segmentation
 import matplotlib.pyplot as plt
 import matplotlib
 
-train_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TR/'
+train_dir = '/home/eddie/Datasets/DUTS/DUTS-TR/'
 
 
 image_list = np.array(sorted([os.path.join('{}/Image'.format(train_dir), f) for f in os.listdir('{}/Image'.format(train_dir))]))
@@ -26,21 +27,21 @@ image_list = image_list[:int(len(image_list)*0.01)]
 mask_list = mask_list[:int(len(mask_list)*0.01)]
 
 
-spg_dataset = SPFDataset(image_list, mask_list, 1024, 320, 10, 'SPFFFT', True, 10, False, False, None, 7, False)
+spg_dataset = SPDataset(image_list, mask_list, 1024, 320, 10, False, 'SPFFT',10, False)
 
 spg_loader = DL(spg_dataset, 1, False, num_workers=4)
 
 
-state_dict = torch.load('/mnt/hdd/Experiments/garbage/models/state_dict/0331-110115_46281259/epoch=556-step=312477.ckpt')
+state_dict = torch.load('/home/eddie/1105-220615_52378818/epoch=296-step=1486188.ckpt')
 
 for key in list(state_dict['state_dict'].keys()):
     state_dict['state_dict'][key.replace('supert.', '')] = state_dict['state_dict'].pop(key)
 
-
+# print(state_dict['state_dict'].keys())
 dummy_linear = nn.Linear(2, 64).cuda()
 # pyg = SP_SWIN(36, 32, 64, 8, 6, 0, 0, [4, 4, 4], 4).cuda()
-dummy_linear.weight = nn.Parameter(state_dict['state_dict']['pos_linear.weight'])
-dummy_linear.bias = nn.Parameter(state_dict['state_dict']['pos_linear.bias'])
+dummy_linear.weight = nn.Parameter(state_dict['state_dict']['locations.0.weight'])
+dummy_linear.bias = nn.Parameter(state_dict['state_dict']['locations.0.bias'])
 dummy_linear.eval()
 
 
@@ -80,25 +81,31 @@ for batch in spg_loader:
     # plt.show()
     # cos = nn.CosineSimilarity(dim=0)
     output = output.reshape(32, 32, -1)
+    centroids_reshape_tensor = centroids.reshape(32, 32, -1)
     import matplotlib.pyplot as plt
     import numpy as np
     # fig, ax = plt.subplots(32, 32)
     count = 0 
-    for k in range(32):
-        for l in range(32):
-            patches = []
-            for i in range(32):
-                for j in range(32):
-                    # patches.append(cos(output[k, l], output[i, j]).detach().cpu().numpy())
-                   patches.append(torch.sqrt(torch.sum(torch.pow(output[k, l]-output[i, j], 2))).detach().cpu().numpy())
-                   
+    l = 16
+    k = 16
+    patches = []
+    for i in range(32):
+        for j in range(32):
+            # patches.append(cos(output[k, l], output[i, j]).detach().cpu().numpy())
+            patches.append(torch.sqrt(torch.sum(torch.pow(output[k, l]-output[i, j], 2))).detach().cpu().numpy())
+            # patches.append(torch.sqrt(torch.sum(torch.pow(centroids_reshape_tensor[k, l]-centroids_reshape_tensor[i, j], 2))).detach().cpu().numpy())
+            
 
-            plt.imshow(np.array(patches).reshape(32, 32), cmap='hot')
-            plt.scatter(l, k, c='green', marker='s')
-            plt.title(f'Seed row {k}, column {l}')
-            plt.savefig(f"/home/eddie/Downloads/gif_pe/{count}.png")
-            plt.clf()
-            count += 1
+    # plt.imshow(np.array(patches).reshape(32, 32), cmap='hot')
+    centroids_reshape = centroids.reshape(32, 32, -1).detach().cpu().numpy()
+    plt.figure(figsize=(5,5))
+    plt.scatter(centroids[0, :, 1].detach().cpu().numpy(), -centroids[0, :, 0].detach().cpu().numpy(), c=patches, cmap='jet')
+    plt.scatter(centroids_reshape[k, l, 1], -centroids_reshape[k, l, 0], c='red', marker='*', s=100)
+    plt.title(f'Seed row {k}, column {l}')
+    plt.axis('off')
+    plt.show()
+    plt.clf()
+    count += 1
     #         ax[k, l].imshow(np.array(patches).reshape(32, 32), cmap='hot')
     #         ax[k, l].set_xticks([])
     #         ax[k, l].set_yticks([])

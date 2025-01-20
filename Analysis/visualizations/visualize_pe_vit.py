@@ -25,23 +25,36 @@ s = model.embeddings.position_embeddings.shape
 pos_patch = model.embeddings.position_embeddings.view(*s[1:])[1:].view(7, 7,-1)
 import matplotlib.pyplot as plt
 import numpy as np
-fig, ax = plt.subplots(7, 7)
-for k in range(7):
-    for l in range(7):
-        patches = []
-        for i in range(7):
-            for j in range(7):
-                patches.append(torch.sqrt(torch.sum(torch.pow(pos_patch[k, l]-pos_patch[i, j], 2))).detach().cpu().numpy())
-        ax[k, l].imshow(np.array(patches).reshape(7, 7), cmap='hot')
-        ax[k, l].set_xticks([])
-        ax[k, l].set_yticks([])
-        if l == 0:
-            ax[k, l].set_ylabel(f'{k+1}')
-        if k == 6:
-            ax[k, l].set_xlabel(f'{l+1}')
+# fig, ax = plt.subplots(7, 7)
+# for k in range(7):
+#     for l in range(7):
+patches = []
+k=3
+l = 3
+for i in range(7):
+    for j in range(7):
+        patches.append(torch.sqrt(torch.sum(torch.pow(pos_patch[k, l]-pos_patch[i, j], 2))).detach().cpu().numpy())
+patches = np.array(patches).reshape(7, 7)
+patches = (patches - patches.min())/(patches.max()-patches.min())
+
+plt.scatter(l, k, c='red', marker='*', s=100)
+ps = plt.imshow(patches,cmap='jet')
+plt.title('ViT', fontsize=20)
+plt.colorbar(ps)
+plt.axis('off')
+plt.show()
+
+
+# ax[k, l].imshow(np.array(patches).reshape(7, 7), cmap='hot')
+# ax[k, l].set_xticks([])
+# ax[k, l].set_yticks([])
+# if l == 0:
+#     ax[k, l].set_ylabel(f'{k+1}')
+# if k == 6:
+#     ax[k, l].set_xlabel(f'{l+1}')
         
 
 
-fig.suptitle('Vision Transformer Positional Encoding Euclidean Distance')
-plt.show()
+# fig.suptitle('Vision Transformer Positional Encoding Euclidean Distance')
+# plt.show()
 
