@@ -64,19 +64,24 @@ import matplotlib.pyplot as plt
 import numpy as np
 # fig, ax = plt.subplots(32, 32)
 count = 0 
-for k in range(32):
-    for l in range(32):
-        patches = []
-        for i in range(32):
-            for j in range(32):
-                patches.append(cos(output[k, l], output[i, j]).detach().cpu().numpy())
+k = 16
+l = 16
 
-        plt.imshow(np.array(patches).reshape(32, 32), cmap='hot')
-        plt.scatter(l, k, c='green', marker='s')
-        plt.title(f'Seed row {k}, column {l}')
-        plt.savefig(f"/home/eddie/Downloads/gif_pe/{count}.png")
-        plt.clf()
-        count += 1
+patches = []
+for i in range(32):
+    for j in range(32):
+        patches.append(torch.sqrt(torch.sum(torch.pow(output[k, l]-output[i, j], 2))).detach().cpu().numpy())
+patches = np.array(patches).reshape(32, 32)
+patches = (patches - patches.min())/(patches.max()-patches.min())
+plt.scatter(l, k, c='red', marker='*', s=100)
+ps = plt.imshow(patches,cmap='jet')
+plt.title('Sinusoidal', fontsize=20)
+plt.axis('off')
+plt.colorbar(ps)
+plt.show()
+# plt.savefig(f"/home/eddie/Downloads/gif_pe/{count}.png")
+# plt.clf()
+# count += 1
 #         ax[k, l].imshow(np.array(patches).reshape(32, 32), cmap='hot')
 #         ax[k, l].set_xticks([])
 #         ax[k, l].set_yticks([])

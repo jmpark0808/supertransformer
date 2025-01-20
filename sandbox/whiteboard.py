@@ -1,10 +1,86 @@
+import dgl
+import torch
 import numpy as np
+import hashlib
+from scipy import sparse as sp
+g = dgl.graph((torch.tensor([0, 0, 1, 1, 2, 2]), torch.tensor([0, 1, 1, 2, 2, 1])))
+neighbor_array = np.array([[1, 1, 0],
+                           [0, 1, 1],
+                           [0, 1, 1]])
+A = neighbor_array.astype(float)
+N = sp.diags(dgl.backend.asnumpy(g.in_degrees()).clip(1) ** -0.5, dtype=float)
+# print(dgl.backend.asnumpy(g.in_degrees()))
+L = sp.eye(g.number_of_nodes()) - N * A * N
+pos_enc_dim = 10
+# Eigenvectors with scipy
+#EigVal, EigVec = sp.linalg.eigs(L, k=pos_enc_dim+1, which='SR')
+EigVal, EigVec = sp.linalg.eigs(L, k=pos_enc_dim+1, which='SR', tol=1e-2) # for 40 PEs
+EigVec = EigVec[:, EigVal.argsort()] # increasing order
+lap_pos = torch.from_numpy(EigVec[:,1:pos_enc_dim+1]).float() 
+print(lap_pos)
 
-features = np.load('/home/eddie/Datasets/ILSVRC2012_test_00000004_features.npy')
-print(np.max(features[:, 0]), np.max(features[:, 1]))
+eye = np.eye(3)
+A = neighbor_array.astype(float)
+N = sp.diags(np.sum(A, axis=0).clip(1) ** -0.5, dtype=float)
+# print(np.sum(A, axis=0).clip(1))
+L = eye - N * A * N
+
+
+# Eigenvectors with numpy
+EigVal, EigVec = np.linalg.eig(L)
+idx = EigVal.argsort() # increasing order
+EigVal, EigVec = EigVal[idx], np.real(EigVec[:,idx])
+pos_enc = torch.from_numpy(EigVec[:,1:]).float() 
+print(pos_enc)
 
 
 
+max_iter = 2
+node_color_dict = {}
+node_neighbor_dict = {}
+
+edge_list = torch.nonzero(g.adj().to_dense() != 0, as_tuple=False).numpy()
+node_list = g.nodes().numpy()
+print(node_list)
+
+# setting init
+for node in node_list:
+    node_color_dict[node] = 1
+    node_neighbor_dict[node] = {}
+
+for pair in edge_list:
+    u1, u2 = pair
+    if u1 not in node_neighbor_dict:
+        node_neighbor_dict[u1] = {}
+    if u2 not in node_neighbor_dict:
+        node_neighbor_dict[u2] = {}
+    node_neighbor_dict[u1][u2] = 1
+    node_neighbor_dict[u2][u1] = 1
+
+
+# WL recursion
+iteration_count = 1
+exit_flag = False
+while not exit_flag:
+    new_color_dict = {}
+    for node in node_list:
+        neighbors = node_neighbor_dict[node]
+        neighbor_color_list = [node_color_dict[neb] for neb in neighbors]
+        color_string_list = [str(node_color_dict[node])] + sorted([str(color) for color in neighbor_color_list])
+        color_string = "_".join(color_string_list)
+        hash_object = hashlib.md5(color_string.encode())
+        hashing = hash_object.hexdigest()
+        new_color_dict[node] = hashing
+    color_index_dict = {k: v+1 for v, k in enumerate(sorted(set(new_color_dict.values())))}
+    for node in new_color_dict:
+        new_color_dict[node] = color_index_dict[new_color_dict[node]]
+    if node_color_dict == new_color_dict or iteration_count == max_iter:
+        exit_flag = True
+    else:
+        node_color_dict = new_color_dict
+    iteration_count += 1
+
+print(torch.LongTensor(list(node_color_dict.values())))
 
 # import os
 # from skimage.segmentation import slic, mark_boundaries

@@ -22,6 +22,7 @@ from dataset.randaugment import RandAugment
 from pathlib import Path
 from tqdm import tqdm
 from dataset.fft_transform import *
+import torch.nn.functional as F
 
 class Resize(object):
     def __init__(self, size):
@@ -220,9 +221,36 @@ class ToTensorSPFFT(object):
         # if self.fully_connected:
         #     neighbor_array = np.ones([self.num_seg, self.num_seg])
         # else:
-        #     neighbor_array = np.zeros([self.num_seg, self.num_seg])
-        #     neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
-        #     neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+        neighbor_array = np.zeros([self.num_seg, self.num_seg])
+        neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+        neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+        eye = np.eye(self.num_seg)
+        A = neighbor_array.astype(float)
+        N = sp.diags(np.sum(A, axis=0).clip(1) ** -0.5, dtype=float)
+        L = eye - N * A * N
+        max_freqs = self.num_seg
+        n = np.max(label)+1
+        print('decomposing)')
+        EigVals, EigVecs = np.linalg.eigh(L)
+        EigVals, EigVecs = EigVals[: max_freqs], EigVecs[:, :max_freqs]
+        print('normalizing')
+        EigVecs = torch.from_numpy(EigVecs).float()
+        EigVecs = F.normalize(EigVecs, p=2, dim=1, eps=1e-12, out=None)
+        
+        if n<max_freqs:
+            EigVecs = F.pad(EigVecs, (0, max_freqs-n), value=float('nan'))
+        
+        #Save eigenvales and pad
+        EigVals = torch.from_numpy(np.sort(np.abs(np.real(EigVals)))) #Abs value is taken because numpy sometimes computes the first eigenvalue approaching 0 from the negative
+        
+        if n<max_freqs:
+            EigVals = F.pad(EigVals, (0, max_freqs-n), value=float('nan')).unsqueeze(0)
+        else:
+            EigVals=EigVals.unsqueeze(0)
+
+        EigVals = EigVals.repeat(self.num_seg,1).unsqueeze(2)
+        print(EigVals.size())
+        
         # edge_index = np.nonzero(neighbor_array)
 
 
