@@ -3,6 +3,7 @@ import torch
 # import sys
 # sys.path.insert(0, '/home/eddie/waterloo/supertransformer')
 # from Blocks.swintransformer_original import SwinTransformer
+from Blocks.swin_encoder_ape_image import SwinTransformer
 import torch.nn.functional as F
 import numpy as np
 from dataset.mixup import Mixup
@@ -29,10 +30,20 @@ class ImageNet_SWIN_Wrapper(pl.LightningModule):
         self.window_size = kwargs.get('window_size')
         self.warmup_epochs = kwargs.get('warmup_epochs')
         self.total_train_epochs = kwargs.get('epoch')
+        self.heads = kwargs.get('heads')
+        self.dims = kwargs.get('dims')
+        self.depths = kwargs.get('depths')
+        self.size = kwargs.get('size')
+        self.mlp_ratio = kwargs.get('mlp_ratio')
+        self.dp = kwargs.get('drop_path')
+        self.image_size = kwargs.get('size')
+   
         
         # Generator that produces the HeatMap
-
-        self.supert = SwinTransformer()
+        self.supert = SwinTransformer(img_size=self.image_size, in_chans=3, patch_size=4, window_size=self.window_size,
+                                       embed_dim=self.dims, depths=self.depths,
+                                         num_heads=self.heads, mlp_ratio=self.mlp_ratio, attn_drop_rate=self.dropout_edge, drop_rate=self.dropout,
+                                         drop_path_rate=self.dp)
         self.mixup = Mixup(
             mixup_alpha=0.8, cutmix_alpha=1.0, cutmix_minmax=None,
             prob=1.0, switch_prob=0.5, mode='batch',

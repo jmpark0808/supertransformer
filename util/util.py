@@ -219,3 +219,57 @@ def create_edge_index(rows, cols):
     del grid
     return edge_index
 
+def merge_contours(contours):
+    """
+    Merges multiple contours by connecting their closest points and updating the order of points.
+
+    Parameters:
+    - contours: List of contours from OpenCV's findContours, where each contour is a numpy array of shape (n, 1, 2).
+
+    Returns:
+    - merged_contour: A single contour combining all input contours.
+    """
+    # Flatten the contours to remove hierarchy dimension
+    contours = [c.reshape(-1, 2) for c in contours]
+
+    while len(contours) > 1:
+        # Find the two closest contours
+        min_distance = float('inf')
+        closest_pair = None
+
+        for i in range(len(contours)):
+            for j in range(i + 1, len(contours)):
+                contour_a = contours[i]
+                contour_b = contours[j]
+
+                # Compute pairwise distances
+                distances = np.linalg.norm(
+                    contour_a[:, None, :] - contour_b[None, :, :], axis=2)
+                min_idx = np.unravel_index(np.argmin(distances), distances.shape)
+
+                distance = distances[min_idx]
+                if distance < min_distance:
+                    min_distance = distance
+                    closest_pair = (i, j, min_idx)
+
+        # Retrieve the indices of the two closest contours and points
+        i, j, (idx_a, idx_b) = closest_pair
+        contour_a, contour_b = contours[i], contours[j]
+
+        # Reorder contour_a and contour_b to maintain continuity
+        contour_a = np.roll(contour_a, -idx_a, axis=0)
+        contour_b = np.roll(contour_b, -idx_b, axis=0)
+
+        # Create a connecting line between the two contours
+        connecting_line = np.array([contour_a[-1], contour_b[0]])
+
+        # Merge the contours and connecting line
+        merged_contour = np.vstack([contour_a, connecting_line, contour_b])
+
+        # Update the contours list
+        contours.pop(j)  # Remove second contour (higher index first to avoid indexing issues)
+        contours.pop(i)  # Remove first contour
+        contours.append(merged_contour)  # Add merged contour back to the list
+
+    # Return the final merged contour
+    return contours[0].reshape(-1, 1, 2)

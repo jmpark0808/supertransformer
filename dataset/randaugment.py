@@ -167,7 +167,7 @@ class RandAugment(torch.nn.Module):
                 magnitude *= -1.0
             img = _apply_op(img, op_name, magnitude, interpolation=self.interpolation, fill=fill)
 
-        return img, op_names
+        return img
 
 
     def __repr__(self) -> str:

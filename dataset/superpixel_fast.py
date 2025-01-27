@@ -23,6 +23,7 @@ from pathlib import Path
 from tqdm import tqdm
 from dataset.fft_transform import *
 import torch.nn.functional as F
+from util.util import merge_contours
 
 class Resize(object):
     def __init__(self, size):
@@ -121,7 +122,16 @@ class ToTensorSPFFT(object):
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
             contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            points = contour[0][:, 0, :]
+            if len(contour)>1:
+                merged_contour = merge_contours(contour)
+
+                points = np.array(merged_contour).reshape((-1, 2)).astype(np.int32)
+  
+                indices_y = np.argwhere(points[:, 1]==np.min(points[:, 1])) # smallest y
+                indices_x = np.argmin(points[indices_y, 0])
+                points = np.roll(points, -indices_y[indices_x], axis=0)
+            else:
+                points = contour[0][:, 0, :]
             xi, yi = resample_2d(points, resample_points)
             contour_array = np.stack((xi, yi), axis=1)
 
@@ -129,11 +139,8 @@ class ToTensorSPFFT(object):
             contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
             contour_complex.real = contour_array[:, 0]
             contour_complex.imag = contour_array[:, 1]
-            fourier_result = np.fft.fft(contour_complex)
+            fourier_result = np.fft.fft(contour_complex)[1:]
 
-            fourier_result_front = fourier_result[1:1+coeff//2]
-            fourier_result_back = fourier_result[-coeff//2:]
-            fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
 
             amp = abs(fourier_result)
             phase = np.arctan2(fourier_result.imag, fourier_result.real)
@@ -169,8 +176,7 @@ class ToTensorSPFFT(object):
             max_num_iter=10,
             convert2lab=True,
             enforce_connectivity=False,
-            slic_zero=False,
-            min_size_factor=0,)
+            slic_zero=False)
 
         # plt.imshow(mark_boundaries(img_np, segments))
         # plt.show()
@@ -181,9 +187,9 @@ class ToTensorSPFFT(object):
         
         
         edge_attr = np.zeros([self.num_seg, self.num_seg])
-        for i in range(bneighbors.shape[1]):
-            if bneighbors[0,i] != bneighbors[1,i]:
-                edge_attr[bneighbors[0,i]-1, bneighbors[1,i]-1] = counts[i]
+        # for i in range(bneighbors.shape[1]):
+        #     if bneighbors[0,i] != bneighbors[1,i]:
+        #         edge_attr[bneighbors[0,i]-1, bneighbors[1,i]-1] = counts[i]
                 
         lbp_np = local_binary_pattern(img_gray, 8, 1, method='uniform')
         regions_lbp = regionprops_table(segments, intensity_image=lbp_np, extra_properties=[self.lbp])
@@ -194,9 +200,9 @@ class ToTensorSPFFT(object):
         seq_len = len(regions['label'])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
-        features = np.zeros([self.num_seg, 8+(self.coeff)*2+10])
+        features = np.zeros([self.num_seg, 8+(self.resample_points-1)*2+10])
         
-        for i in range(self.coeff*2):
+        for i in range((self.resample_points-1)*2):
             features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
  
@@ -211,7 +217,7 @@ class ToTensorSPFFT(object):
         features[label-1, 7] = regions['image_stdev-2']/255.
 
         for ind in range(8+2):
-            features[label-1, ind+8+(self.coeff)*2] = regions_lbp[f'lbp-{ind}']
+            features[label-1, ind+8+(self.resample_points-1)*2] = regions_lbp[f'lbp-{ind}']
         
         
         for ind, coord in zip(regions['label'], regions['coords']):
@@ -221,35 +227,35 @@ class ToTensorSPFFT(object):
         # if self.fully_connected:
         #     neighbor_array = np.ones([self.num_seg, self.num_seg])
         # else:
-        neighbor_array = np.zeros([self.num_seg, self.num_seg])
-        neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
-        neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
-        eye = np.eye(self.num_seg)
-        A = neighbor_array.astype(float)
-        N = sp.diags(np.sum(A, axis=0).clip(1) ** -0.5, dtype=float)
-        L = eye - N * A * N
-        max_freqs = self.num_seg
-        n = np.max(label)+1
-        print('decomposing)')
-        EigVals, EigVecs = np.linalg.eigh(L)
-        EigVals, EigVecs = EigVals[: max_freqs], EigVecs[:, :max_freqs]
-        print('normalizing')
-        EigVecs = torch.from_numpy(EigVecs).float()
-        EigVecs = F.normalize(EigVecs, p=2, dim=1, eps=1e-12, out=None)
+        # neighbor_array = np.zeros([self.num_seg, self.num_seg])
+        # neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+        # neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+        # eye = np.eye(self.num_seg)
+        # A = neighbor_array.astype(float)
+        # N = sp.diags(np.sum(A, axis=0).clip(1) ** -0.5, dtype=float)
+        # L = eye - N * A * N
+        # max_freqs = self.num_seg
+        # n = np.max(label)+1
+        # print('decomposing)')
+        # EigVals, EigVecs = np.linalg.eigh(L)
+        # EigVals, EigVecs = EigVals[: max_freqs], EigVecs[:, :max_freqs]
+        # print('normalizing')
+        # EigVecs = torch.from_numpy(EigVecs).float()
+        # EigVecs = F.normalize(EigVecs, p=2, dim=1, eps=1e-12, out=None)
         
-        if n<max_freqs:
-            EigVecs = F.pad(EigVecs, (0, max_freqs-n), value=float('nan'))
+        # if n<max_freqs:
+        #     EigVecs = F.pad(EigVecs, (0, max_freqs-n), value=float('nan'))
         
-        #Save eigenvales and pad
-        EigVals = torch.from_numpy(np.sort(np.abs(np.real(EigVals)))) #Abs value is taken because numpy sometimes computes the first eigenvalue approaching 0 from the negative
+        # #Save eigenvales and pad
+        # EigVals = torch.from_numpy(np.sort(np.abs(np.real(EigVals)))) #Abs value is taken because numpy sometimes computes the first eigenvalue approaching 0 from the negative
         
-        if n<max_freqs:
-            EigVals = F.pad(EigVals, (0, max_freqs-n), value=float('nan')).unsqueeze(0)
-        else:
-            EigVals=EigVals.unsqueeze(0)
+        # if n<max_freqs:
+        #     EigVals = F.pad(EigVals, (0, max_freqs-n), value=float('nan')).unsqueeze(0)
+        # else:
+        #     EigVals=EigVals.unsqueeze(0)
 
-        EigVals = EigVals.repeat(self.num_seg,1).unsqueeze(2)
-        print(EigVals.size())
+        # EigVals = EigVals.repeat(self.num_seg,1).unsqueeze(2)
+        # print(EigVals.size())
         
         # edge_index = np.nonzero(neighbor_array)
 
@@ -376,7 +382,7 @@ class SPDatasetExport(data.Dataset):
         mask = self.resize_mask(mask)
         mask = (mask > 0.5).float()
         sample = self.transform(sample)
-        np.save(sp_file_path_features, sample[0])
+        np.save(sp_file_path_features, sample[0].astype(np.float16))
         np.save(sp_file_path_seq_mask, sample[1])
         np.save(sp_file_path_segments, sample[2])
         np.save(sp_file_path_mask, mask.detach().cpu().numpy())
@@ -423,6 +429,17 @@ class SPDataset(data.Dataset):
         segments = np.load(sp_file_path_segments)
         mask = np.load(sp_file_path_mask)
         
+        features_first = features[:, :8]
+        features_last = features[:, -10:]
+        take = self.coeff//2
+        amp_front = features[:, 8:(8+take)]
+        amp_back = features[:, (8+self.resample_points-take):(8+self.resample_points)]
+        phase_front = features[:, (8+self.resample_points):(8+self.resample_points)+take]
+        phase_back = features[:, (8+self.resample_points*2-take):(8+self.resample_points*2)]
+
+        features = np.concatenate((features_first, amp_front, amp_back, phase_front, phase_back, features_last), axis=1)
+        # plt.bar(np.arange(take*2),np.concatenate((amp_front, amp_back), axis=1)[0])
+        # plt.show()
         
         
         if self.data_augmentation:
@@ -438,7 +455,7 @@ class SPDataset(data.Dataset):
             color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
             if np.random.random() < 0.5:
                 color_space = (color_space*255).to(torch.uint8)
-                color_space, _ = randaug(color_space)
+                color_space = randaug(color_space)
                 color_space = color_space.float()
                 color_space /= 255.
             # plt.imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
@@ -493,7 +510,15 @@ class SPOGMaskDataset(data.Dataset):
         mask = torch.tensor(np.array(mask.convert('L')))/255.
  
         mask = (mask > 0.5).float().unsqueeze(0)
-        
+        features_first = features[:, :8]
+        features_last = features[:, -10:]
+        take = self.coeff//2
+        amp_front = features[:, 8:(8+take)]
+        amp_back = features[:, (8+self.resample_points-take):(8+self.resample_points)]
+        phase_front = features[:, (8+self.resample_points):(8+self.resample_points)+take]
+        phase_back = features[:, (8+self.resample_points*2-take):(8+self.resample_points*2)]
+
+        features = np.concatenate((features_first, amp_front, amp_back, phase_front, phase_back, features_last), axis=1)
         
         if self.data_augmentation:
             features, seq_mask = horizontal_flip(features, self.coeff, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
@@ -508,7 +533,7 @@ class SPOGMaskDataset(data.Dataset):
             color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
             if np.random.random() < 0.5:
                 color_space = (color_space*255).to(torch.uint8)
-                color_space, _ = randaug(color_space)
+                color_space = randaug(color_space)
                 color_space = color_space.float()
                 color_space /= 255.
             # plt.imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
