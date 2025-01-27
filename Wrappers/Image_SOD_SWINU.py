@@ -5,6 +5,7 @@ import torch
 # from Blocks.swintransformer_original_rpe import SwinUTransformer
 # from Blocks.swinunet_rpe import SwinUTransformer
 # from Blocks.swintransformer_original import SwinUTransformer
+from Blocks.swinunet_mix_ape_image import SwinUTransformer
 # from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
 import numpy as np
@@ -30,13 +31,21 @@ class Image_SWINU_Wrapper(pl.LightningModule):
         self.pretrain = kwargs.get('pretrain')
         self.dropout_edge = kwargs.get('dropout_edge')
         self.window_size = kwargs.get('window_size')
+        self.heads = kwargs.get('heads')
+        self.dims = kwargs.get('dims')
+        self.depths = kwargs.get('depths')
+        self.size = kwargs.get('size')
+        self.mlp_ratio = kwargs.get('mlp_ratio')
+        self.dp = kwargs.get('drop_path')
         self.image_size = kwargs.get('size')
         self.warmup_epochs = kwargs.get('warmup_epochs')
         self.total_train_epochs = kwargs.get('epoch')
-        input_dim = get_input_dim(kwargs)
-        res = int(self.num_seg**0.5)
+        
         # Generator that produces the HeatMap
-        self.supert = SwinUTransformer( depths=[2, 2, 6], num_heads=[3, 6, 12])
+        self.supert = SwinUTransformer(img_size=self.image_size, in_chans=3, patch_size=4, window_size=self.window_size,
+                                       embed_dim=self.dims, depths=self.depths,
+                                         num_heads=self.heads, mlp_ratio=self.mlp_ratio, attn_drop_rate=self.dropout_edge, drop_rate=self.dropout,
+                                         drop_path_rate=self.dp)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
         kwargs['parameters'] = parameter_count(self.supert)['']
@@ -53,7 +62,10 @@ class Image_SWINU_Wrapper(pl.LightningModule):
         if self.pretrain:
             checkpoint = torch.load(self.pretrain)
             for key in list(checkpoint['state_dict'].keys()):
-                checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
+                if 'patch_embed' in key or 'attn_mask'in key:
+                    checkpoint['state_dict'].pop(key)
+                else:
+                    checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
             
             self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
         
@@ -135,11 +147,10 @@ class Image_SWINU_Wrapper(pl.LightningModule):
         seq_mask = batch['seq_mask']
         segments = batch['segments']
         mask = batch['mask'].cpu()
-        features = features[:, :, 2:]
+        # features = features[:, :, 2:]
 
 
-       
-        features = features.reshape(features.size(0), 224, 224, -1).permute(0, 3, 1, 2)
+        # features = features.reshape(features.size(0), 224, 224, -1).permute(0, 3, 1, 2)
         seq_mask = seq_mask.reshape(seq_mask.size(0), 224, 224)
         features, seq_mask = self.mixup(features, seq_mask)
         
@@ -188,9 +199,10 @@ class Image_SWINU_Wrapper(pl.LightningModule):
         seq_mask = batch['seq_mask']
         segments = batch['segments']
         mask = batch['mask'].cpu()
-        features = features[:, :, 2:]
-        
-        features = features.reshape(features.size(0), 224, 224, -1).permute(0, 3, 1, 2)
+        # features = features[:, :, 2:]
+        # print(features.size())
+        # assert(0)
+        # features = features.reshape(features.size(0), 224, 224, -1).permute(0, 3, 1, 2)
         pred = self.forward(features)
 
         pred = torch.sigmoid(pred).detach().cpu()
@@ -285,9 +297,9 @@ class Image_SWINU_Wrapper(pl.LightningModule):
         seq_mask = batch['seq_mask']
         segments = batch['segments']
         mask = batch['mask'].cpu()
-        features = features[:, :, 2:]
+        # features = features[:, :, 2:]
         
-        features = features.reshape(features.size(0), 224, 224, -1).permute(0, 3, 1, 2)
+        # features = features.reshape(features.size(0), 224, 224, -1).permute(0, 3, 1, 2)
         # forward pass
         pred = self.forward(features)
 

@@ -12,3 +12,4 @@ local-attention
 fast-slic
 pandas
 GitPython
+ptflops

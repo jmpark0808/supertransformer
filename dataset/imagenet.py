@@ -72,7 +72,7 @@ class ImageNetDataset(data.Dataset):
             # op_names = 'No augment'
             if np.random.random() < 0.5:
                 color_space = (color_space*255).to(torch.uint8)
-                color_space, op_names = randaug(color_space)
+                color_space = randaug(color_space)
                 color_space = color_space.float()
                 color_space /= 255.
             color_space = erase(color_space)

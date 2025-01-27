@@ -402,6 +402,7 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
         # forward pass
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
+       
         pred = self.forward(features)
 
         pred_numpy = torch.sigmoid(pred).detach().cpu() # batch, seq_len, 1
@@ -434,6 +435,7 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
         #     cv2.imwrite('/home/eddie/Qualitative/SF/DUTS-TE/'+name, sample)
 
         mae = torch.sum(torch.mean(torch.abs((samples >= 0.5).float() - mask), dim=tuple(range(1, len(samples.size())))))
+        # mae = torch.sum(torch.mean(torch.abs(samples- mask), dim=tuple(range(1, len(samples.size())))))
         self.maes += mae
         self.mean_num += features.size(0)
 
