@@ -11,6 +11,7 @@ from dataset.constants import *
 from util.util import get_input_dim
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 from dataset.mixup import MixupSaliency
+from util.util import eval_e, S_object, S_region
 
 class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
@@ -384,6 +385,10 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         self.recalls = torch.zeros(256).cuda()
         self.test_step_outputs = []
 
+        self.e_measure_scores = torch.zeros(255).cuda()
+        self.s_measure_q = 0.0
+
+
 
     def test_step(self, batch, batch_idx):
         """
@@ -435,6 +440,24 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         self.maes += mae
         self.mean_num += features.size(0)
 
+        for pred, gt in zip(samples, mask):
+            self.e_measure_scores += eval_e(pred, gt, 255)
+            y = gt.mean()
+            if y == 0:
+                x = pred.mean()
+                Q = 1.0 -x
+            elif y == 1:
+                x = pred.mean()
+                Q = x
+            else:
+                gt[gt>=0.5] = 1
+                gt[gt<0.5] = 0
+                Q = 0.5 * S_object(pred, gt) + (1-0.5) * S_region(pred, gt)
+                if Q.item() < 0:
+                    Q = torch.FloatTensor([0.0])
+            self.s_measure_q += Q.item()
+
+
         prec, recall = torch.zeros(samples.size(0), 256).cuda(), torch.zeros(samples.size(0), 256).cuda()
         pred = samples.reshape(samples.size(0), -1)
         mask = mask.reshape(mask.size(0), -1)
@@ -461,7 +484,8 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         self.log('Final Test Max F Threshold', thlist[torch.argmax(f_score)])
 
         self.log('Final Test MAE', self.maes/self.mean_num)
-        
+        self.log('Final Test E measure', self.e_measure_scores/self.mean_num)
+        self.log('Final Test S measure', self.s_measure_q/self.mean_num)
 
 
 

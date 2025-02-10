@@ -94,6 +94,10 @@ for i in range(0, 360, 10):
     yc = np.mean(yi)
 
     xi_rotate, yi_rotate = rotate([xc, yc], [xi, yi], math.radians(i))
+    indices_y = np.argwhere(yi_rotate==np.min(yi_rotate)) # smallest y
+    indices_x = np.argmin(xi_rotate[indices_y])
+    xi_rotate = np.roll(xi_rotate, -indices_y[indices_x], axis=0)
+    yi_rotate = np.roll(yi_rotate, -indices_y[indices_x], axis=0)
     contour_array = np.stack((xi_rotate, yi_rotate), axis=1)
     contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
     contour_complex.real = contour_array[:, 0]
@@ -118,4 +122,4 @@ for i in range(0, 360, 10):
         initial_phase = phase[1]
     ax[2].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
     fig.supxlabel('Frequency (2nd and 3rd row)')
-    fig.savefig(f'{i}')
+    fig.savefig(f'/home/eddie/Downloads/gif/{i}')

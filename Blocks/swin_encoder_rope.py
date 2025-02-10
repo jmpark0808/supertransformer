@@ -116,13 +116,13 @@ class SwinTransformer(nn.Module):
         return {'relative_position_bias_table'}
 
     def forward_features(self, x):
-        x = x[:, 2:, :, :]
+        features = x[:, 2:, :, :]
         centroids = x[:, :2, :, :].permute(0, 2, 3, 1)
         centroids = self.locations(centroids)
         centroids = centroids.reshape(centroids.size(0), -1, centroids.size(3))
         
 
-        x = self.patch_embed(x)
+        x = self.patch_embed(features)
  
         x = self.pos_drop(x)
         x = x + centroids
