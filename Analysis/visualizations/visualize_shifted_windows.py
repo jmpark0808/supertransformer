@@ -116,7 +116,7 @@ def _enforce_label_connectivity_cython( segments,
     return np.asarray(connected_segments)
 
 
-im = '/mnt/hdd/Datasets/DUTS/DUTS-TE/Image/ILSVRC2012_test_00000003.jpg'
+im = '/home/eddie/Datasets/DUTS/DUTS-TE/Image/ILSVRC2012_test_00000003.jpg'
 
 img = Image.open(im)
             
@@ -144,11 +144,12 @@ shifted_windows = np.roll(np.arange(0, 784).reshape(28, 28), (-7, -7), axis=(1, 
 
 
 fig, ax = plt.subplots(1, 2)
-gap = 20
+gap = 50
 dummy_image1 = np.ones((448+gap, 448+gap, 3))
 dummy_image2 = np.ones((448+2*gap, 448+2*gap, 3))
 for i in range(2):
     for j in range(2):
+       
         start_h = i*14
         start_w = j*14
         indices_window = windows[start_h:start_h+14, start_w:start_w+14].flatten()
@@ -178,7 +179,7 @@ for i in range(2):
                 temp_segments_inner[indices[:, 0], indices[:, 1]] = 1000
 
         inner = find_boundaries(temp_segments_inner, mode='inner', background=1000)
-        outer = find_boundaries(temp_segments_outer, mode='inner', background=0)
+        outer = find_boundaries(temp_segments_outer, mode='thick', background=0)
         inner_indices = np.argwhere(inner==1)
         inner_indices[:, 0] += plot_shift_h
         inner_indices[:, 1] += plot_shift_w
@@ -189,7 +190,16 @@ for i in range(2):
 
 
         dummy_image1[inner_indices[:, 0], inner_indices[:, 1]] = [1, 1, 0]
-        dummy_image1[outer_indices[:, 0], outer_indices[:, 1]] = [1, 0, 0]
+        if i == 0 and j == 0:
+            colour = [1, 0, 0]
+        elif i == 0 and j == 1:
+            colour = [0, 1, 0]
+        elif i == 1 and j == 0:
+            colour = [0, 0, 1]
+        else:
+            colour = [1, 0.5, 0]
+
+        dummy_image1[outer_indices[:, 0], outer_indices[:, 1]] = colour
 
 
         
@@ -248,7 +258,7 @@ for i in range(2):
                 temp_segments_inner[indices[:, 0], indices[:, 1]] = 1000
 
         inner = find_boundaries(temp_segments_inner, mode='inner', background=1000)
-        outer = find_boundaries(temp_segments_outer, mode='inner', background=0)
+        outer = find_boundaries(temp_segments_outer, mode='thick', background=0)
         inner_indices = np.argwhere(inner==1)
         outer_indices = np.argwhere(outer==1)
 
@@ -259,65 +269,61 @@ for i in range(2):
             outer_indices[:, 0] += gap
             outer_indices[:, 1] += gap
         elif i == 0 and j == 1:
-            for h,h_ind in enumerate(inner_indices[:, 0]):
-                for w, w_ind in enumerate(inner_indices[:, 1]):
-                    if w < 14:
-                        inner_indices[h] += gap
-                    else:
-                        inner_indices[h] += gap
-                        inner_indices[w] += 2*gap
+            for ind, (h, w) in enumerate(inner_indices):
+                if w < 224:
+                    inner_indices[ind, 0] += gap
+                else:
+                    inner_indices[ind, 0] += gap
+                    inner_indices[ind, 1] += 2*gap
 
-            for h,h_ind in enumerate(outer_indices[:, 0]):
-                for w, w_ind in enumerate(outer_indices[:, 1]):
-                    if w < 14:
-                        outer_indices[h] += gap
-                    else:
-                        outer_indices[h] += gap
-                        outer_indices[w] += 2*gap
+
+            for ind, (h,w) in enumerate(outer_indices):
+                if w < 224:
+                    outer_indices[ind, 0] += gap
+                else:
+                    outer_indices[ind, 0] += gap
+                    outer_indices[ind, 1] += 2*gap
             
         elif i == 1 and j == 0:
-            for h,h_ind in enumerate(inner_indices[:, 0]):
-                for w, w_ind in enumerate(inner_indices[:, 1]):
-                    if h < 14:
-                        inner_indices[w] += gap
-                    else:
-                        inner_indices[h] += 2*gap
-                        inner_indices[w] += gap
-            for h,h_ind in enumerate(outer_indices[:, 0]):
-                for w, w_ind in enumerate(outer_indices[:, 1]):
-                    if h < 14:
-                        outer_indices[w] += gap
-                    else:
-                        outer_indices[h] += 2*gap
-                        outer_indices[w] += gap
+            for ind, (h,w) in enumerate(inner_indices):
+                if h < 224:
+                    inner_indices[ind, 1] += gap
+                else:
+                    inner_indices[ind, 0] += 2*gap
+                    inner_indices[ind, 1] += gap
+            for ind, (h,w) in enumerate(outer_indices):
+                if h < 224:
+                    outer_indices[ind, 1] += gap
+                else:
+                    outer_indices[ind, 0] += 2*gap
+                    outer_indices[ind, 1] += gap
             
         else:
-            for h,h_ind in enumerate(inner_indices[:, 0]):
-                for w, w_ind in enumerate(inner_indices[:, 1]):
-                    if h < 14 and w < 14:
-                        pass
-                    elif h < 14 and w > 14:
-                        inner_indices[w] += 2*gap
-                    elif h > 14 and w < 14:
-                        inner_indices[h] += 2*gap
-                    else:
-                        inner_indices[w] += 2*gap
-                        inner_indices[h] += 2*gap
-            for h,h_ind in enumerate(outer_indices[:, 0]):
-                for w, w_ind in enumerate(outer_indices[:, 1]):
-                    if h < 14 and w < 14:
-                        pass
-                    elif h < 14 and w > 14:
-                        outer_indices[w] += 2*gap
-                    elif h > 14 and w < 14:
-                        outer_indices[h] += 2*gap
-                    else:
-                        outer_indices[w] += 2*gap
-                        outer_indices[h] += 2*gap
+            for ind, (h,w) in enumerate(inner_indices):
+                if h < 224 and w < 224:
+                    pass
+                elif h < 224 and w > 224:
+                    inner_indices[ind, 1] += 2*gap
+                elif h > 224 and w < 224:
+                    inner_indices[ind, 0] += 2*gap
+                else:
+                    inner_indices[ind, 1] += 2*gap
+                    inner_indices[ind, 0] += 2*gap
+            for ind, (h,w) in enumerate(outer_indices):
+                if h < 224 and w < 224:
+                    pass
+                elif h < 224 and w > 224:
+                    outer_indices[ind, 1] += 2*gap
+                elif h > 224 and w < 224:
+                    outer_indices[ind, 0] += 2*gap
+                else:
+                    outer_indices[ind, 1] += 2*gap
+                    outer_indices[ind, 0] += 2*gap
             
 
         dummy_image2[inner_indices[:, 0], inner_indices[:, 1]] = [1, 1, 0]
-        dummy_image2[outer_indices[:, 0], outer_indices[:, 1]] = [1, 0, 0]
+        
+        dummy_image2[outer_indices[:, 0], outer_indices[:, 1]] = colour
 
 
 ax[0].imshow(dummy_image1)
