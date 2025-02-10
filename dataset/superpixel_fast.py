@@ -119,19 +119,38 @@ class ToTensorSPFFT(object):
         resample_points = int(((size**2)//num_seg)**0.5)*4
         self.resample_points = resample_points
         
+        # def fourier_descriptors(region):
+        #     region = (region*255).astype(np.uint8)
+        #     contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        #     # if len(contour)>1:
+        #     #     merged_contour = merge_contours(contour)
+
+        #     #     points = np.array(merged_contour).reshape((-1, 2)).astype(np.int32)
+  
+        #     #     indices_y = np.argwhere(points[:, 1]==np.min(points[:, 1])) # smallest y
+        #     #     indices_x = np.argmin(points[indices_y, 0])
+        #     #     points = np.roll(points, -indices_y[indices_x], axis=0)
+        #     # else:
+        #     points = contour[0][:, 0, :]
+        #     xi, yi = resample_2d(points, resample_points)
+        #     contour_array = np.stack((xi, yi), axis=1)
+
+
+        #     contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
+        #     contour_complex.real = contour_array[:, 0]
+        #     contour_complex.imag = contour_array[:, 1]
+        #     fourier_result = np.fft.fft(contour_complex)[1:]
+
+
+        #     amp = abs(fourier_result)
+        #     phase = np.arctan2(fourier_result.imag, fourier_result.real)
+
+        #     # return np.array(amp)
+        #     return np.concatenate((amp, phase))
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
             contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            if len(contour)>1:
-                merged_contour = merge_contours(contour)
-
-                points = np.array(merged_contour).reshape((-1, 2)).astype(np.int32)
-  
-                indices_y = np.argwhere(points[:, 1]==np.min(points[:, 1])) # smallest y
-                indices_x = np.argmin(points[indices_y, 0])
-                points = np.roll(points, -indices_y[indices_x], axis=0)
-            else:
-                points = contour[0][:, 0, :]
+            points = contour[0][:, 0, :]
             xi, yi = resample_2d(points, resample_points)
             contour_array = np.stack((xi, yi), axis=1)
 
@@ -139,8 +158,11 @@ class ToTensorSPFFT(object):
             contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
             contour_complex.real = contour_array[:, 0]
             contour_complex.imag = contour_array[:, 1]
-            fourier_result = np.fft.fft(contour_complex)[1:]
+            fourier_result = np.fft.fft(contour_complex)
 
+            fourier_result_front = fourier_result[1:1+coeff//2]
+            fourier_result_back = fourier_result[-coeff//2:]
+            fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
 
             amp = abs(fourier_result)
             phase = np.arctan2(fourier_result.imag, fourier_result.real)
@@ -200,9 +222,11 @@ class ToTensorSPFFT(object):
         seq_len = len(regions['label'])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
-        features = np.zeros([self.num_seg, 8+(self.resample_points-1)*2+10])
+        # features = np.zeros([self.num_seg, 8+(self.resample_points-1)*2+10])
+        features = np.zeros([self.num_seg, 8+(self.coeff)*2+10])
         
-        for i in range((self.resample_points-1)*2):
+        # for i in range((self.resample_points-1)*2):
+        for i in range(self.coeff*2):
             features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
  
@@ -217,7 +241,8 @@ class ToTensorSPFFT(object):
         features[label-1, 7] = regions['image_stdev-2']/255.
 
         for ind in range(8+2):
-            features[label-1, ind+8+(self.resample_points-1)*2] = regions_lbp[f'lbp-{ind}']
+            # features[label-1, ind+8+(self.resample_points-1)*2] = regions_lbp[f'lbp-{ind}']
+            features[label-1, ind+8+(self.coeff)*2] = regions_lbp[f'lbp-{ind}']
         
         
         for ind, coord in zip(regions['label'], regions['coords']):
@@ -295,7 +320,8 @@ class ToTensorSP(object):
             max_num_iter=10,
             convert2lab=True,
             enforce_connectivity=False,
-            slic_zero=False)
+            slic_zero=False,
+            min_size_factor=0,)
         
      
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
@@ -429,15 +455,16 @@ class SPDataset(data.Dataset):
         segments = np.load(sp_file_path_segments)
         mask = np.load(sp_file_path_mask)
         
-        features_first = features[:, :8]
-        features_last = features[:, -10:]
-        take = self.coeff//2
-        amp_front = features[:, 8:(8+take)]
-        amp_back = features[:, (8+self.resample_points-take):(8+self.resample_points)]
-        phase_front = features[:, (8+self.resample_points):(8+self.resample_points)+take]
-        phase_back = features[:, (8+self.resample_points*2-take):(8+self.resample_points*2)]
+        # features_first = features[:, :8]
+        # features_last = features[:, -10:]
+        # take = self.coeff//2
+        # amp_front = features[:, 8:(8+take)]
+        # amp_back = features[:, (8+self.resample_points-take):(8+self.resample_points)]
+        # phase_front = features[:, (8+self.resample_points):(8+self.resample_points)+take]
+        # phase_back = features[:, (8+self.resample_points*2-take):(8+self.resample_points*2)]
+        # features = np.concatenate((features_first, amp_front, amp_back, phase_front, phase_back, features_last), axis=1)
 
-        features = np.concatenate((features_first, amp_front, amp_back, phase_front, phase_back, features_last), axis=1)
+        
         # plt.bar(np.arange(take*2),np.concatenate((amp_front, amp_back), axis=1)[0])
         # plt.show()
         
@@ -510,15 +537,15 @@ class SPOGMaskDataset(data.Dataset):
         mask = torch.tensor(np.array(mask.convert('L')))/255.
  
         mask = (mask > 0.5).float().unsqueeze(0)
-        features_first = features[:, :8]
-        features_last = features[:, -10:]
-        take = self.coeff//2
-        amp_front = features[:, 8:(8+take)]
-        amp_back = features[:, (8+self.resample_points-take):(8+self.resample_points)]
-        phase_front = features[:, (8+self.resample_points):(8+self.resample_points)+take]
-        phase_back = features[:, (8+self.resample_points*2-take):(8+self.resample_points*2)]
 
-        features = np.concatenate((features_first, amp_front, amp_back, phase_front, phase_back, features_last), axis=1)
+        # features_first = features[:, :8]
+        # features_last = features[:, -10:]
+        # take = self.coeff//2
+        # amp_front = features[:, 8:(8+take)]
+        # amp_back = features[:, (8+self.resample_points-take):(8+self.resample_points)]
+        # phase_front = features[:, (8+self.resample_points):(8+self.resample_points)+take]
+        # phase_back = features[:, (8+self.resample_points*2-take):(8+self.resample_points*2)]
+        # features = np.concatenate((features_first, amp_front, amp_back, phase_front, phase_back, features_last), axis=1)
         
         if self.data_augmentation:
             features, seq_mask = horizontal_flip(features, self.coeff, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)

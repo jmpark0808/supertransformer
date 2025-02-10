@@ -1,582 +1,289 @@
-import dgl
-import torch
 import numpy as np
-import hashlib
-from scipy import sparse as sp
-g = dgl.graph((torch.tensor([0, 0, 1, 1, 2, 2]), torch.tensor([0, 1, 1, 2, 2, 1])))
-neighbor_array = np.array([[1, 1, 0],
-                           [0, 1, 1],
-                           [0, 1, 1]])
-A = neighbor_array.astype(float)
-N = sp.diags(dgl.backend.asnumpy(g.in_degrees()).clip(1) ** -0.5, dtype=float)
-# print(dgl.backend.asnumpy(g.in_degrees()))
-L = sp.eye(g.number_of_nodes()) - N * A * N
-pos_enc_dim = 10
-# Eigenvectors with scipy
-#EigVal, EigVec = sp.linalg.eigs(L, k=pos_enc_dim+1, which='SR')
-EigVal, EigVec = sp.linalg.eigs(L, k=pos_enc_dim+1, which='SR', tol=1e-2) # for 40 PEs
-EigVec = EigVec[:, EigVal.argsort()] # increasing order
-lap_pos = torch.from_numpy(EigVec[:,1:pos_enc_dim+1]).float() 
-print(lap_pos)
+import matplotlib.pyplot as plt
+from skimage import measure
+from skimage.draw import ellipse
+from scipy.ndimage import rotate
+import cv2
 
-eye = np.eye(3)
-A = neighbor_array.astype(float)
-N = sp.diags(np.sum(A, axis=0).clip(1) ** -0.5, dtype=float)
-# print(np.sum(A, axis=0).clip(1))
-L = eye - N * A * N
-
-
-# Eigenvectors with numpy
-EigVal, EigVec = np.linalg.eig(L)
-idx = EigVal.argsort() # increasing order
-EigVal, EigVec = EigVal[idx], np.real(EigVec[:,idx])
-pos_enc = torch.from_numpy(EigVec[:,1:]).float() 
-print(pos_enc)
-
-
-
-max_iter = 2
-node_color_dict = {}
-node_neighbor_dict = {}
-
-edge_list = torch.nonzero(g.adj().to_dense() != 0, as_tuple=False).numpy()
-node_list = g.nodes().numpy()
-print(node_list)
-
-# setting init
-for node in node_list:
-    node_color_dict[node] = 1
-    node_neighbor_dict[node] = {}
-
-for pair in edge_list:
-    u1, u2 = pair
-    if u1 not in node_neighbor_dict:
-        node_neighbor_dict[u1] = {}
-    if u2 not in node_neighbor_dict:
-        node_neighbor_dict[u2] = {}
-    node_neighbor_dict[u1][u2] = 1
-    node_neighbor_dict[u2][u1] = 1
-
-
-# WL recursion
-iteration_count = 1
-exit_flag = False
-while not exit_flag:
-    new_color_dict = {}
-    for node in node_list:
-        neighbors = node_neighbor_dict[node]
-        neighbor_color_list = [node_color_dict[neb] for neb in neighbors]
-        color_string_list = [str(node_color_dict[node])] + sorted([str(color) for color in neighbor_color_list])
-        color_string = "_".join(color_string_list)
-        hash_object = hashlib.md5(color_string.encode())
-        hashing = hash_object.hexdigest()
-        new_color_dict[node] = hashing
-    color_index_dict = {k: v+1 for v, k in enumerate(sorted(set(new_color_dict.values())))}
-    for node in new_color_dict:
-        new_color_dict[node] = color_index_dict[new_color_dict[node]]
-    if node_color_dict == new_color_dict or iteration_count == max_iter:
-        exit_flag = True
-    else:
-        node_color_dict = new_color_dict
-    iteration_count += 1
-
-print(torch.LongTensor(list(node_color_dict.values())))
-
-# import os
-# from skimage.segmentation import slic, mark_boundaries
-# from skimage.measure import regionprops_table
-# import numpy as np
-# import matplotlib.pyplot as plt
-# import PIL
-# from fast_slic.avx2 import SlicAvx2
-# for image in os.listdir('/home/eddie/DUTS/DUTS-TE/Image/'):
-
-
-
-#     img = PIL.Image.open(os.path.join('/home/eddie/DUTS/DUTS-TE/Image/' ,image))
-#     img = img.resize((448, 448))
-#     img_np = np.array(img)
-#     fig, ax = plt.subplots(1, 2)
-#     # segments = slic(img_np, n_segments=3136,
-#     #             compactness=10,
-#     #             max_num_iter=1,
-#     #             convert2lab=True,
-#     #             enforce_connectivity=False,
-#     #             slic_zero=False)
-#     slic = SlicAvx2(num_components=3136, compactness=10, min_size_factor=0.)
-#     segments = slic.iterate(img_np, max_iter=1)
-
+def compute_central_moments(binary_image):
+    """
+    Computes central moments of a binary image using skimage.measure.regionprops.
     
+    Parameters:
+    - binary_image: (2D numpy array) Binary image.
 
-#     regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid'))
+    Returns:
+    - central_moments (numpy array): The computed central moments.
+    """
+    # label_image = measure.label(binary_image)  # Label connected components
+    # props = measure.regionprops(label_image)
+    # moments = props[0].moments_central 
+    moments = measure.moments_central(binary_image)
+    return moments
 
+def log_moments(moments):
+    moments_ = np.sign(moments)*np.log(np.abs(moments)+1e-10)
+    moments_ = np.array([moments_[0,0], moments_[1, 1], moments_[2, 0],
+                          moments_[0, 2], moments_[2, 1], moments_[1, 2], moments_[3, 0], moments_[0, 3]])
+    return moments_ # Return the central moments of the largest region
+
+def parse_moments(moments):
+    moments_ = np.array([moments[0,0], moments[1, 1], moments[2, 0],
+                          moments[0, 2], moments[2, 1], moments[1, 2], moments[3, 0], moments[0, 3]])
+    return moments_ # Return the central moments of the largest region
+
+def apply_translation(binary_image, shift_x, shift_y):
+    """
+    Translates a binary image by shifting pixels.
+
+    Parameters:
+    - binary_image: (2D numpy array) Binary image.
+    - shift_x: (int) Shift along the x-axis.
+    - shift_y: (int) Shift along the y-axis.
+
+    Returns:
+    - Translated binary image.
+    """
+    return np.roll(np.roll(binary_image, shift_y, axis=0), shift_x, axis=1)
+
+def apply_horizontal_flip(binary_image):
+    """
+    Flips a binary image horizontally.
+    
+    Parameters:
+    - binary_image: (2D numpy array) Binary image.
+
+    Returns:
+    - Flipped binary image.
+    """
+    return np.fliplr(binary_image)
+
+def apply_rotation(binary_image, angle):
+    """
+    Rotates a binary image by a given angle.
+
+    Parameters:
+    - binary_image: (2D numpy array) Binary image.
+    - angle: (float) Rotation angle in degrees.
+
+    Returns:
+    - Rotated binary image.
+    """
+    return rotate(binary_image, angle, reshape=False, mode='nearest')
+
+def apply_scaling(binary_image, scale_factor):
+    """
+    Scales a binary image using OpenCV.
+
+    Parameters:
+    - binary_image: (2D numpy array) Binary image.
+    - scale_factor: (float) Scaling factor.
+
+    Returns:
+    - Scaled binary image.
+    """
+    height, width = binary_image.shape
+    new_size = (int(width * scale_factor), int(height * scale_factor))
+    resized = cv2.resize(binary_image.astype(np.uint8), new_size, interpolation=cv2.INTER_NEAREST)
+
+    # Pad or crop to maintain original size
+    final_image = np.zeros_like(binary_image)
+    min_h, min_w = min(final_image.shape[0], resized.shape[0]), min(final_image.shape[1], resized.shape[1])
+    final_image[:min_h, :min_w] = resized[:min_h, :min_w]
+    
+    return final_image
+
+# Create an asymmetrical "L" shape
+image_size = (200, 200)
+binary_image = np.zeros(image_size, dtype=np.uint8)
+
+# Draw L-shape manually
+binary_image[50:150, 50:80] = 1  # Vertical segment
+binary_image[120:150, 50:130] = 1  # Horizontal segment
+
+# Compute central moments for the original image
+original_moments = compute_central_moments(binary_image)
+
+# Apply transformations
+translated_image = apply_translation(binary_image, shift_x=30, shift_y=20)
+rotated_image = apply_rotation(binary_image, angle=45)
+flipped_image = apply_horizontal_flip(binary_image)
+scaled_image = apply_scaling(binary_image, scale_factor=1.5)
+
+# Compute moments for transformed images
+translated_moments = log_moments(compute_central_moments(translated_image))
+rotated_moments = log_moments(compute_central_moments(rotated_image))
+flipped_moments = log_moments(compute_central_moments(flipped_image))
+scaled_moments = log_moments(compute_central_moments(scaled_image))
+
+# for i in range(0, 360, 5):
+#     rotated_image = apply_rotation(binary_image, angle=i)
+#     rotated_moments = log_moments(compute_central_moments(rotated_image))
+#     plt.bar(list(range(8)), rotated_moments.flatten())
+#     plt.ylim(-20, 20)
+#     plt.savefig(f'/home/eddie/Downloads/gif/{i}.png')
+    
+#     plt.clf()
+
+
+# Display results
+fig, axes = plt.subplots(1, 5, figsize=(15, 4))
+axes[0].imshow(binary_image, cmap='gray'); axes[0].set_title("Original")
+axes[1].imshow(translated_image, cmap='gray'); axes[1].set_title("Translated")
+axes[2].imshow(rotated_image, cmap='gray'); axes[2].set_title("Rotated (45°)")
+axes[3].imshow(flipped_image, cmap='gray'); axes[3].set_title("Horizontally Flipped")
+axes[4].imshow(scaled_image, cmap='gray'); axes[4].set_title("Scaled (1.5x)")
+
+plt.show()
+
+# Print comparison of moments
+print("\nCentral Moments Comparison:")
+print(f"Original Moments:\n{original_moments}")
+# print(f"Translated Moments (Should be same as original):\n{compute_central_moments(translated_image)}")
+# print(f"Rotated Moments (Should change):\n{compute_central_moments(rotated_image)}")
+# print(f"Flipped Moments (Should change in x-axis moments):\n{compute_central_moments(flipped_image)}")
+# print(f"Scaled Moments (Should change significantly):\n{compute_central_moments(scaled_image)}")
+
+fig, ax = plt.subplots(2, 5, figsize=(15,4))
+columns = 8
+ax[0,0].bar(list(range(columns)), log_moments(original_moments).flatten())
+ax[0,1].bar(list(range(columns)), translated_moments.flatten())
+ax[0,2].bar(list(range(columns)), rotated_moments.flatten())
+ax[0,3].bar(list(range(columns)), flipped_moments.flatten())
+ax[0,4].bar(list(range(columns)), scaled_moments.flatten())
+
+
+def rotate_central_moments(moments, rotation_angle_degrees):
+    """
+    Computes the rotated central moments (up to third order) for a shape
+    when rotated about its centroid by a given angle.
+    
+    Parameters:
+    -----------
+    moments : dict
+        Dictionary with the following keys:
+          - 'mu20', 'mu02', 'mu11' for second-order central moments.
+          - 'mu30', 'mu03', 'mu21', 'mu12' for third-order central moments.
+    rotation_angle_degrees : float
+        Rotation angle in degrees.
+        
+    Returns:
+    --------
+    rotated_moments : dict
+        Dictionary containing the rotated moments with the same keys.
+    """
+    # Convert degrees to radians
+    theta = np.deg2rad(rotation_angle_degrees)
+    
+    # Extract second-order moments
+    mu20 = moments[2, 0]
+    mu02 = moments[0, 2]
+    mu11 = moments[1, 1]
+    
+    # Rotate second-order moments
+    mu20_rot = mu20 * (np.cos(theta)**2) + mu02 * (np.sin(theta)**2) - 2 * mu11 * np.sin(theta) * np.cos(theta)
+    mu02_rot = mu20 * (np.sin(theta)**2) + mu02 * (np.cos(theta)**2) + 2 * mu11 * np.sin(theta) * np.cos(theta)
+    mu11_rot = (mu20 - mu02) * np.sin(theta) * np.cos(theta) + mu11 * (np.cos(theta)**2 - np.sin(theta)**2)
+    
+    # Extract third-order moments
+    mu30 = moments[3, 0]
+    mu03 = moments[0, 3]
+    mu21 = moments[2, 1]
+    mu12 = moments[1, 2]
+    
+    # Rotate third-order moments
+    mu30_rot = (mu30 * np.cos(theta)**3 
+                - 3 * mu21 * np.cos(theta)**2 * np.sin(theta)
+                + 3 * mu12 * np.cos(theta) * np.sin(theta)**2 
+                - mu03 * np.sin(theta)**3)
+    
+    mu03_rot = (mu30 * np.sin(theta)**3 
+                + 3 * mu21 * np.cos(theta) * np.sin(theta)**2
+                + 3 * mu12 * np.cos(theta)**2 * np.sin(theta) 
+                + mu03 * np.cos(theta)**3)
+    
+    mu21_rot = (mu30 * np.cos(theta)**2 * np.sin(theta)
+                + mu21 * (np.cos(theta)**3 - 2*np.cos(theta)*np.sin(theta)**2)
+                + mu12 * (np.sin(theta)**3 - 2*np.cos(theta)**2*np.sin(theta))
+                + mu03 * np.cos(theta)*np.sin(theta)**2)
+    
+    mu12_rot = (mu30 * np.cos(theta) * np.sin(theta)**2
+                + mu21 * (2*np.cos(theta)**2*np.sin(theta) - np.sin(theta)**3)
+                + mu12 * (np.cos(theta)**3 - 2*np.cos(theta)*np.sin(theta)**2)
+                - mu03 * np.cos(theta)**2 * np.sin(theta))
+    
+    
+    rotated_moments = np.copy(moments)
+    rotated_moments[2, 0] = mu20_rot
+    rotated_moments[0, 2] = mu02_rot
+    rotated_moments[1, 1] = mu11_rot
+
+    rotated_moments[3, 0] = mu30_rot
+    rotated_moments[0, 3] = mu03_rot
+    rotated_moments[2, 1] = mu21_rot
+    rotated_moments[1, 2] = mu12_rot
+    
+    return rotated_moments
+
+
+
+# Transform moments
+rotated_moments = log_moments(rotate_central_moments(original_moments, rotation_angle_degrees=45))
+# scaled_moments = log_moments(transform_central_moments(original_moments, scale_factor=2))
+# flipped_moments = log_moments(transform_central_moments(original_moments, horizontal_flip=True))
+ax[1,2].bar(list(range(columns)), rotated_moments.flatten())
+# ax[1,3].bar(list(range(columns)), flipped_moments.flatten())
+# ax[1,4].bar(list(range(columns)), scaled_moments.flatten())
+custom_ylim = (-40, 40)
+
+
+
+# Setting the values for all axes.
+plt.setp(ax, ylim=custom_ylim)
+
+plt.show()
+# Print results
+# print("Original Moments:", original_moments)
+# print("Rotated Moments (45°):", rotated_moments)
+# print("Scaled Moments (2x):", scaled_moments)
+# print("Flipped Moments:", flipped_moments)
+print("Original Moments:", original_moments)
+s1 = []
+s2 = []
+
+for i in range(0, 360, 5):
+    # rotated_image = apply_rotation(binary_image, angle=i)
+    # rotated_moments = log_moments(compute_central_moments(rotated_image))
+    # fig, ax = plt.subplots(1, 3)
+    # ax[0].bar(list(range(8)), rotated_moments.flatten())
+    # rotated_moments = log_moments(rotate_central_moments(original_moments, rotation_angle_degrees=i))
+    # ax[1].bar(list(range(8)), rotated_moments.flatten())
+    # ax[2].bar(list(range(8)), log_moments(original_moments).flatten())
+    # ax[0].set_ylim(-20, 20)
+    # ax[1].set_ylim(-20, 20)
+    # ax[2].set_ylim(-20, 20)
+    # fig.savefig(f'/home/eddie/Downloads/gif/{i}.png')
+    
+    # plt.clf()
+    rotated_image = apply_rotation(binary_image, angle=i)
+    rotated_moments = parse_moments(compute_central_moments(rotated_image))
+
+    t = parse_moments(rotate_central_moments(original_moments, rotation_angle_degrees=i))
+
+    s1.append(rotated_moments)
+    s2.append(t)
    
+s1 = np.array(s1)
+s2 = np.array(s2)
 
-#     ax[0].imshow(mark_boundaries(img_np, segments))
-#     for x, y, s in zip(regions['centroid-1'], regions['centroid-0'], [str(t) for t in regions['label']]):
-#         ax[0].text(x, y, s)
-#     ax[0].set_title(str(regions['label'].shape))
+fig, ax = plt.subplots(1, 8)
+for i in range(8):
+    ax[i].plot(s1[:, i], label='Rotated')
+    ax[i].plot(s2[:, i], label='Transformed')
+    ax[i].legend()
 
-#     # segments = slic(img_np, n_segments=3136,
-#     #             compactness=10,
-#     #             max_num_iter=10,
-#     #             convert2lab=True,
-#     #             enforce_connectivity=False,
-#     #             slic_zero=False)
-#     slic = SlicAvx2(num_components=3136, compactness=10, min_size_factor=0.)
-#     segments = slic.iterate(img_np, max_iter=10)
+plt.show()
 
-#     regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid'))
 
-   
 
-#     ax[1].imshow(mark_boundaries(img_np, segments))
-#     for x, y, s in zip(regions['centroid-1'], regions['centroid-0'], [str(t) for t in regions['label']]):
-#         ax[1].text(x, y, s)
-#     ax[1].set_title(str(regions['label'].shape))
 
-#     plt.show()
-
-
-# from PIL import Image
-# import os
-# import numpy as np
-# train_dir = '/mnt/f/Datasets/HRSOD_release/HRSOD_release/HRSOD_train/'
-
-# hs = []
-# ws = []
-# for file in os.listdir(train_dir):
-#     file_path = os.path.join(train_dir, file)
-#     img = Image.open(file_path)
-#     np_img = np.array(img)
-#     hs.append(np_img.shape[0])
-#     ws.append(np_img.shape[1])
-
-# print(np.max(hs), np.max(ws))
-
-
-
-
-#from typing import Callable, Optional, Union
-# from einops import rearrange
-# import torch
-# from torch import Tensor
-# import torch.nn.functional as F
-# import time
-# from Blocks.performer2 import ViP, ViPEnc
-# import numpy as np
-# from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
-# model = ViP(image_size=32, patch_size=1, dim=32, depth=6, heads=2, mlp_dim=32*4, channels=16, dim_head=16).cuda()
-# model.eval()
-
-
-
-
-# dummy_input = torch.randn(1, 1024, 38).cuda()
-# l = []
-# with torch.no_grad():
-#     for i in range(1000):
-#         start = time.time()
-#         model(dummy_input)
-#         end = time.time()
-#         l.append(end-start)
-
-# print(np.mean(l))
-
-
-# model = ViPEnc(image_size=32, patch_size=1, dims=[32, 64, 128, 256], depths=[2, 2, 6, 2], heads=[2,4, 8, 16], mlp_ratio=4, channels=16).cuda()
-# model.eval()
-
-# l = []
-# with torch.no_grad():
-#     for i in range(1000):
-#         start = time.time()
-#         model(dummy_input)
-#         end = time.time()
-#         l.append(end-start)
-
-# print(np.mean(l))
-
-
-# linear = torch.nn.Linear(256, 256)
-# class conv(torch.nn.Module):
-#     def __init__(self) -> None:
-#         super().__init__()
-#         self.conv = torch.nn.Conv1d(256, 256*8, 1, groups=8)
-
-#     def forward(self, x):
-#         x = x.permute(0, 2, 1)
-#         x = self.conv(x)
-#         x = rearrange(x, 'b (c g) n->b c g n', g=8)
-#         x = x.mean(2)
-#         return x
-    
-# conv_model = conv()
-
-# params_linear = parameter_count(linear)['']
-# params_conv = parameter_count(conv_model)['']
-
-# inp = torch.randn([1, 1024, 256])
-# flops_linear = FlopCountAnalysis(linear, inp)
-# flops_conv = FlopCountAnalysis(conv_model, inp)
-# flops_linear = flops_linear.total()
-# flops_conv = flops_conv.total()
-
-# print(params_linear, flops_linear)
-# print(params_conv, flops_conv)
-
-# from Blocks.DiffSLIC import DiffSLIC
-# from PIL import Image
-# # slic_fn = DiffSLIC(n_spixels=1024, n_iter=10, tau=1, candidate_radius=1, stable=True, normalize=False, compactness=1)
-# from torchvision.transforms import ToTensor
-# import matplotlib.pyplot as plt
-# from skimage.segmentation import mark_boundaries
-# rgb_img = Image.open('/mnt/dragon/Datasets/DUTS/DUTS-TE/Image/ILSVRC2012_test_00000003.jpg').resize((224, 224))
-# tt = ToTensor()
-# rgb_img = tt(rgb_img).unsqueeze(0)
-
-# # features, spix2pix_assign, pix2spix_assign, hard_assignment = slic_fn(rgb_img)
-# # hard_assignment = hard_assignment.long().detach().numpy()-1
-# # print(features[:, :, 0, 0])
-
-# from torch_kmeans import SoftKMeans
-
-# model = SoftKMeans()
-
-# # x = torch.randn(1, 1024, 32)
-# result = model(rgb_img.reshape(1, 3, -1).permute(0, 2, 1), k=256)
-# print(result.soft_assignment.size())
-# plt.imshow(mark_boundaries(rgb_img[0].permute(1, 2, 0).detach().numpy(), result.labels.reshape(1, 224, 224).detach().numpy().squeeze()))
-# # plt.imshow(features.reshape(5,1024).permute(1, 0).detach().numpy()[hard_assignment.reshape(-1), :].reshape(320, 320, 5)[:, :, :3])
-# plt.show()
-
-#-------------------------------------------------------------------
-
-# from dataset.superpixel import SPDataModule, SPDataset, DUTSDataset
-# from torch.utils.data import DataLoader
-# from tqdm import tqdm
-# from Blocks.swinunet_mix_ape import SwinUTransformer
-# from Blocks.performer2 import ViPU
-# import os
-# import time
-# train_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TR'
-# test_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TE'
-# batch_size = 1
-# num_workers = 20
-# num_seg = 1024
-# res = 224
-# dataloader = 'SPFFT'
-# compactness = 10
-# coeff = 10
-# ignore_phase = False
-
-# image_list = np.array(sorted([os.path.join('{}/Image'.format(train_dir), f) for f in os.listdir('{}/Image'.format(train_dir))]))
-# mask_list = np.array(sorted([os.path.join('{}/Mask'.format(train_dir), f) for f in os.listdir('{}/Mask'.format(train_dir))]))
-
-
-# indices = np.array(list(range(len(image_list))))
-# np.random.shuffle(indices)
-
-# val_image_list = image_list[indices[int(len(image_list)*0.85):]]
-# val_mask_list = mask_list[indices[int(len(mask_list)*0.85):]]
-
-# tr_image_list = image_list[indices[:int(len(image_list)*0.85)]][:1000]
-# tr_mask_list = mask_list[indices[:int(len(mask_list)*0.85)]][:1000]
-
-# test_image_list = sorted([os.path.join('{}/Image'.format(test_dir), f) for f in os.listdir('{}/Image'.format(test_dir))])
-# test_mask_list = sorted([os.path.join('{}/Mask'.format(test_dir), f) for f in os.listdir('{}/Mask'.format(test_dir))])
-
-
-# dataset = SPDataset(tr_image_list, tr_mask_list, num_seg, res, compactness, True, dataloader, coeff, ignore_phase)
-# # dataset = DUTSDataset(tr_image_list, tr_mask_list, num_seg, res, True)
-        
-# loader = DataLoader(
-#                 dataset, batch_size=batch_size, 
-#                 num_workers=num_workers, shuffle=True, pin_memory=True, drop_last=True)
-
-# # model = SwinUTransformer(img_size=32, in_chans=28, patch_size=1, window_size=8,
-# #                                        embed_dim=[32, 64, 128], depths=[2, 2, 6],
-# #                                          num_heads=[2, 4, 8], mlp_ratio=4).cuda()
-# model = ViPU(image_size=32, patch_size=1, dims=[32, 64, 128], depths=[2, 2, 6], heads=[2, 4, 8], mlp_ratio=4, channels=36).cuda()
-# model.eval()
-
-# all_times = []
-# inp = torch.randn(1, 1024, 38).cuda()
-# with torch.no_grad():
-#     curr_time = time.time()
-#     for _ in range(1000):
-
-#     # for batch in tqdm(loader):
-#         start = time.time()
-#         model(inp)
-        
-#         curr_time = time.time()
-#         all_times.append(curr_time-start)
-
-# print(np.mean(all_times)*1000)
-# assert(0)
-        
-
-# ---------------------------------------------------------------------------------------
-
-# import torch
-# import time
-# from tqdm import tqdm
-
-# num_seg = 1024
-# img_size = 224
-# seg = torch.arange(0, num_seg).unsqueeze(1).repeat(1, img_size*img_size//num_seg).reshape(1, 1, img_size, img_size).repeat(16, 1, 1, 1).long().cuda()
-# img = torch.rand(16, 3, 224, 224).cuda()
-# mask = torch.rand(16, 1, 224, 224).cuda()
-# h, w = img.shape[-2:]
-# xs = torch.arange(0, w, device=img.device).unsqueeze(0).float()
-# ys = torch.arange(0, h, device=img.device).unsqueeze(1).float()
-# xs = xs.repeat(h, 1)
-# ys = ys.repeat(1, w)
-# coord = torch.stack((xs, ys), 0).unsqueeze(0).repeat(img.size(0), 1, 1, 1)
-# all_times = []
-# for _ in tqdm(range(1)):
-#     start = time.time()
-#     label_onehot = F.one_hot(seg.reshape(seg.size(0), -1), num_seg).float()
-#     area = label_onehot.sum(1).unsqueeze(-1)
-#     area_input = area.detach().clone()
-
-#     As = label_onehot.permute(0, 2, 1)
-#     Bs = img.reshape(seg.size(0), 3, -1).permute(0, 2, 1)
-
-    
-
-#     Cs = coord.reshape(img.size(0), 2, -1).permute(0, 2, 1)
-#     area[area==0] = torch.inf
-#     colour = torch.einsum('bij,bjk->bik', As, Bs)/area
-#     centroids = torch.einsum('bij,bjk->bik', As, Cs)/area
-    
-
-#     end = time.time()
-#     all_times.append(end-start)
-
-# print(np.array(all_times).mean())
-
-# colour_method_1 = colour.detach().clone()
-# centroids_method_1 = centroids.detach().clone()
-
-# from torch_sparse import SparseTensor
-# from torch_geometric.utils import scatter
-
-
-# def batch_of_segs_to_sparse(seg, img, mask):
-#     # seg (bs, 1, H, W)
-#     # img (bs, 3, H, W)
-#     # coord (bs, 2, H, W)
-#     b, _, h, w = img.size()
-#     xs = torch.arange(0, img_size, device=seg.device).unsqueeze(0).float()
-#     ys = torch.arange(0, img_size, device=seg.device).unsqueeze(1).float()
-#     xs = xs.repeat(img_size, 1)
-#     ys = ys.repeat(1, img_size)
-#     coord = torch.stack((xs, ys), 0).unsqueeze(0)
-#     coord = coord.repeat(b, 1, 1, 1)
-
-#     shift = torch.arange(0, b, device=seg.device).repeat_interleave(h*w)*num_seg
-    
-#     seg = seg.reshape(-1)+shift
-#     img = img.permute(0, 2, 3, 1).reshape(-1, 3)
-#     mask = mask.reshape(-1)+shift
-#     area = torch.ones_like(seg)
-    
-#     coord = coord.permute(0, 2, 3, 1).reshape(-1, 2)
-#     # seg = SparseTensor(row=seg, col=torch.arange(0, seg.size(0), device='cuda'))
-#     # edge_index = torch.stack((torch.arange(0, seg.size(0), device='cuda'), seg), dim=0)
-    
-    
-
-#     colour = scatter(img, seg, reduce='sum',  dim_size=num_seg*b)
-#     centroid = scatter(coord, seg, reduce='mean', dim_size=num_seg*b)
-#     area = scatter(area, seg, reduce='sum', dim_size=num_seg*b)
-#     seq_mask = scatter(mask, seg, reduce='mean', dim_size=num_seg*b)
-#     # colour = seg.matmul(img) # BS*H*W x 3
-#     # centroid = seg.matmul(coord) # BS*H*W x 2
-    
-    
-#     colour = colour.reshape(b, num_seg, 3)
-#     centroid = centroid.reshape(b, num_seg, 2)
-#     area = area.reshape(b, num_seg)
-#     seq_mask = seq_mask.reshape(b, num_seg)
-#     return colour, centroid, area, seq_mask
-
-
-
-
-
-# all_times = []
-# for _ in tqdm(range(1)):
-#     start = time.time()
-
-#     colour, centroids, _, _= batch_of_segs_to_sparse(seg, img, mask)
-
-
-#     end = time.time()
-#     all_times.append(end-start)
-
-
-# print(np.array(all_times).mean())
-
-# print(torch.norm((colour-colour_method_1).reshape(-1), p=2), torch.norm((centroids-centroids_method_1).reshape(-1), p=2))
-
-# import matplotlib.pyplot as plt
-
-# plt.plot(centroids[0, :, 0].detach().cpu().numpy())
-# plt.show()
-
-
-
-# from fast_slic.avx2 import SlicAvx2
-# import numpy as np
-# from skimage.measure import regionprops_table
-# import matplotlib.pyplot as plt
-# from skimage.segmentation import mark_boundaries
-# img_np = (np.ones([320, 320, 3])*255).astype(np.uint8)
-# slic = SlicAvx2(num_components=1024, compactness=10, min_size_factor=0.)
-# segments = slic.iterate(img_np)
-
-# regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid'))#, polarize])
-# centers_y = regions['centroid-0']
-# centers_x = regions['centroid-1']
-# plt.imshow(mark_boundaries(img_np, segments))
-# plt.scatter(centers_x, centers_y, c='blue', s=30)
-# for ind, (x, y) in enumerate(zip(centers_x, centers_y)):
-#     plt.text(x, y, str(regions['label'][ind]))
-# plt.show()
-
-#--------------------------------------------------------------------------------------
-
-# import numpy as np
-# import matplotlib.pyplot as plt
-# tr_images = np.load('/mnt/dragon/Datasets/PASCAL/archive (1)/images.npy')
-# tr_masks = np.load('/mnt/dragon/Datasets/PASCAL/archive (1)/masks.npy')
-# # te_images = np.load('/mnt/dragon/Datasets/PASCAL/archive (1)/pascals_test_images.npy')
-# # te_masks = np.load('/mnt/dragon/Datasets/PASCAL/archive (1)/pascals_test_masks.npy')
-
-# export_image_dir = '/mnt/dragon/Datasets/PASCAL/Image'
-# export_mask_dir = '/mnt/dragon/Datasets/PASCAL/Mask'
-
-
-# tr_images = tr_images.reshape(-1, 256, 256, 3)
-# tr_masks = tr_masks.reshape(-1, 256, 256)
-# # te_images = te_images.reshape(-1, 256, 256, 3)
-# # te_masks = te_masks.reshape(-1, 256, 256)
-
-# # all_images = np.concatenate((tr_images, te_images), axis=0)
-# # all_masks = np.concatenate((tr_masks, te_masks), axis=0)
-# all_images = tr_images
-# all_masks = tr_masks
-
-# import cv2
-# import os
-# for idx, image in enumerate(all_images):
-#     cv2.imwrite(os.path.join(export_image_dir, f'{idx}.png'), image[:, :, ::-1])
-
-# for idx, mask in enumerate(all_masks):
-#     cv2.imwrite(os.path.join(export_mask_dir, f'{idx}.png'), mask)
-    
-#-------------------------------------------------------------------------------------------
-
-
-
-# import os
-# from PIL import Image
-# import numpy as np
-# from tqdm import tqdm
-# from torchvision.datasets import ImageFolder
-# from torch.utils.data import DataLoader
-# from torchvision import transforms
-# imagenet_dir = '/mnt/dragon/Datasets/DUTS/DUTS-TR/Image'
-# # dataset = ImageFolder(imagenet_dir, transform=transforms.Compose([transforms.ToTensor()]))
-# # loader = DataLoader(dataset, batch_size=1, num_workers=20)
-# all_heights = []
-# all_widths = []
-
-# for img in os.listdir(imagenet_dir):
-#     img_path = os.path.join(imagenet_dir, img)
-#     img = np.array(Image.open(img_path).convert('RGB'))
-#     height, width, c = img.shape
-#     all_heights.append(height)
-#     all_widths.append(width)
-
-# # for images, labels in tqdm(loader):
-# #     _, _, height, width = images.size()
-# #     all_heights.append(height)
-# #     all_widths.append(width)
-    
-
-# print(np.mean(all_heights))
-# print(np.mean(all_widths))
-
-
-
-#-----------------------------------------------------------------------------
-
-# import os
-# import numpy as np
-# import matplotlib.pyplot as plt
-# main_dir = '/mnt/dragon/Datasets/sp_train'
-# files = os.listdir(main_dir)
-# count = 0
-# coeffs = np.zeros([55])
-# for file in files:
-#     if 'target' not in file:
-#         features = np.load(os.path.join(main_dir, file))
-        
-#         amplitude = features[:, 9:9+55]
-#         coeffs += amplitude.sum(0)
-#         count += amplitude.shape[0]
-
-# print(coeffs/count)
-# plt.bar(list(range(55)), coeffs/count)
-# plt.show()
-
-        
-
-# -----------------------------------------------------------
-
-# import torch
-# for _ in range(1000):
-#     pred = torch.rand(30, 1024).cuda()
-#     mask = torch.rand(30, 1024).cuda()
-
-#     prec, recall = torch.zeros(pred.size(0), 10).cuda(), torch.zeros(pred.size(0), 10).cuda()
-
-#     thlist = torch.linspace(0, 1 - 1e-10, 10).cuda()
-#     for j in range(10):
-#         y_temp = (pred >= thlist[j]).float()
-#         tp = (y_temp * mask).sum(dim=-1)
-#         # avoid prec becomes 0
-#         prec[:, j], recall[:, j] = (tp + 1e-10) / (y_temp.sum(dim=-1) + 1e-10), (tp + 1e-10) / (mask.sum(dim=-1) + 1e-10)
-                
-#     prec_mean = prec.mean(0)
-#     prec_sum = prec.sum(0)/30
-#     recall_mean = recall.mean(0)
-#     recall_sum = recall.sum(0)/30      
-
-
-#     beta_square = 0.3
-#     f_score_mean = (1 + beta_square) * prec_mean * recall_mean / (beta_square * prec_mean + recall_mean)
-#     f_score_sum = (1 + beta_square) * prec_sum * recall_sum / (beta_square * prec_sum + recall_sum)
-
-#     print(torch.sum(torch.abs(f_score_mean-f_score_sum)))
-
-
-# -------------------------------------------------
-# import torch
-
-# a = torch.zeros(100, 2)
-# ind = 0 
-# for i in range(0, 10):
-#     for j in range(0, 10):
-#         a[ind] = torch.tensor([i, j])
-#         ind +=1
-# print(a)
-# b = torch.nn.LayerNorm(2)
-# c = b(a)
-# print(c)
-
-        
