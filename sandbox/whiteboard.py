@@ -226,6 +226,80 @@ def rotate_central_moments(moments, rotation_angle_degrees):
     return rotated_moments
 
 
+def rotate_log_central_moments(moments, rotation_angle_degrees):
+    """
+    Computes the rotated central moments (up to third order) for a shape
+    when rotated about its centroid by a given angle.
+    
+    Parameters:
+    -----------
+    moments : dict
+        Dictionary with the following keys:
+          - 'mu20', 'mu02', 'mu11' for second-order central moments.
+          - 'mu30', 'mu03', 'mu21', 'mu12' for third-order central moments.
+    rotation_angle_degrees : float
+        Rotation angle in degrees.
+        
+    Returns:
+    --------
+    rotated_moments : dict
+        Dictionary containing the rotated moments with the same keys.
+    """
+    # Convert degrees to radians
+    theta = np.deg2rad(rotation_angle_degrees)
+    
+    # Extract second-order moments
+    mu20 = moments[2]
+    mu02 = moments[3]
+    mu11 = moments[1]
+    
+    # Rotate second-order moments
+    mu20_rot = mu20 * (np.cos(theta)**2) + mu02 * (np.sin(theta)**2) - 2 * mu11 * np.sin(theta) * np.cos(theta)
+    mu02_rot = mu20 * (np.sin(theta)**2) + mu02 * (np.cos(theta)**2) + 2 * mu11 * np.sin(theta) * np.cos(theta)
+    mu11_rot = (mu20 - mu02) * np.sin(theta) * np.cos(theta) + mu11 * (np.cos(theta)**2 - np.sin(theta)**2)
+    
+    # Extract third-order moments
+    mu30 = moments[6]
+    mu03 = moments[7]
+    mu21 = moments[4]
+    mu12 = moments[5]
+    
+    # Rotate third-order moments
+    mu30_rot = (mu30 * np.cos(theta)**3 
+                - 3 * mu21 * np.cos(theta)**2 * np.sin(theta)
+                + 3 * mu12 * np.cos(theta) * np.sin(theta)**2 
+                - mu03 * np.sin(theta)**3)
+    
+    mu03_rot = (mu30 * np.sin(theta)**3 
+                + 3 * mu21 * np.cos(theta) * np.sin(theta)**2
+                + 3 * mu12 * np.cos(theta)**2 * np.sin(theta) 
+                + mu03 * np.cos(theta)**3)
+    
+    mu21_rot = (mu30 * np.cos(theta)**2 * np.sin(theta)
+                + mu21 * (np.cos(theta)**3 - 2*np.cos(theta)*np.sin(theta)**2)
+                + mu12 * (np.sin(theta)**3 - 2*np.cos(theta)**2*np.sin(theta))
+                + mu03 * np.cos(theta)*np.sin(theta)**2)
+    
+    mu12_rot = (mu30 * np.cos(theta) * np.sin(theta)**2
+                + mu21 * (2*np.cos(theta)**2*np.sin(theta) - np.sin(theta)**3)
+                + mu12 * (np.cos(theta)**3 - 2*np.cos(theta)*np.sin(theta)**2)
+                - mu03 * np.cos(theta)**2 * np.sin(theta))
+    
+    
+    rotated_moments = np.copy(moments)
+    rotated_moments[2] = mu20_rot
+    rotated_moments[3] = mu02_rot
+    rotated_moments[1] = mu11_rot
+
+    rotated_moments[6] = mu30_rot
+    rotated_moments[7] = mu03_rot
+    rotated_moments[4] = mu21_rot
+    rotated_moments[5] = mu12_rot
+    
+    return rotated_moments
+
+
+
 
 # Transform moments
 rotated_moments = log_moments(rotate_central_moments(original_moments, rotation_angle_degrees=45))
@@ -252,26 +326,24 @@ s1 = []
 s2 = []
 
 for i in range(0, 360, 5):
-    # rotated_image = apply_rotation(binary_image, angle=i)
-    # rotated_moments = log_moments(compute_central_moments(rotated_image))
-    # fig, ax = plt.subplots(1, 3)
-    # ax[0].bar(list(range(8)), rotated_moments.flatten())
-    # rotated_moments = log_moments(rotate_central_moments(original_moments, rotation_angle_degrees=i))
-    # ax[1].bar(list(range(8)), rotated_moments.flatten())
-    # ax[2].bar(list(range(8)), log_moments(original_moments).flatten())
-    # ax[0].set_ylim(-20, 20)
-    # ax[1].set_ylim(-20, 20)
-    # ax[2].set_ylim(-20, 20)
-    # fig.savefig(f'/home/eddie/Downloads/gif/{i}.png')
-    
-    # plt.clf()
     rotated_image = apply_rotation(binary_image, angle=i)
     rotated_moments = parse_moments(compute_central_moments(rotated_image))
+    fig, ax = plt.subplots(1, 2)
+    ax[0].bar(list(range(8)), rotated_moments.flatten())
+    rotated_moments = rotate_log_central_moments(parse_moments(original_moments), rotation_angle_degrees=i)
+    ax[1].bar(list(range(8)), rotated_moments.flatten())
+    # ax[0].set_ylim(-20, 20)
+    # ax[1].set_ylim(-20, 20)
+    fig.savefig(f'/home/eddie/Downloads/gif/{i}.png')
+    
+    plt.clf()
+    # rotated_image = apply_rotation(binary_image, angle=i)
+    # rotated_moments = parse_moments(compute_central_moments(rotated_image))
 
-    t = parse_moments(rotate_central_moments(original_moments, rotation_angle_degrees=i))
+    # t = parse_moments(rotate_central_moments(original_moments, rotation_angle_degrees=i))
 
-    s1.append(rotated_moments)
-    s2.append(t)
+    # s1.append(rotated_moments)
+    # s2.append(t)
    
 s1 = np.array(s1)
 s2 = np.array(s2)

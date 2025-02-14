@@ -22,8 +22,9 @@ from dataset.randaugment import RandAugment
 from pathlib import Path
 from tqdm import tqdm
 from dataset.fft_transform import *
+from dataset.moments_transform import *
 import torch.nn.functional as F
-from util.util import merge_contours
+from util.util import merge_contours, compute_central_moments
 
 class Resize(object):
     def __init__(self, size):
@@ -110,27 +111,52 @@ class RandomColorJitter(object):
 
 
 class ToTensorSPFFT(object):
-    def __init__(self, num_seg, compactness, coeff, size, ignore_phase):
+    def __init__(self, num_seg, compactness, coeff, size, ignore_phase, enforce_connectivity, moments):
         self.tensor = transforms.ToTensor()
         self.num_seg = num_seg
         self.coeff = coeff
         self.compactness = compactness
         self.ignore_phase = ignore_phase
+        self.ec = enforce_connectivity
         resample_points = int(((size**2)//num_seg)**0.5)*4
         self.resample_points = resample_points
-        
+        self.moments = moments
+        if moments:
+            def fourier_descriptors(region):
+                moments = compute_central_moments(region)
+                return moments
+        else:
+            def fourier_descriptors(region):
+                region = (region*255).astype(np.uint8)
+                contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                if len(contour)>1:
+                    merged_contour = merge_contours(contour)
+
+                    points = np.array(merged_contour).reshape((-1, 2)).astype(np.int32)
+    
+                    indices_y = np.argwhere(points[:, 1]==np.min(points[:, 1])) # smallest y
+                    indices_x = np.argmin(points[indices_y, 0])
+                    points = np.roll(points, -indices_y[indices_x], axis=0)
+                else:
+                    points = contour[0][:, 0, :]
+                xi, yi = resample_2d(points, resample_points)
+                contour_array = np.stack((xi, yi), axis=1)
+
+
+                contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
+                contour_complex.real = contour_array[:, 0]
+                contour_complex.imag = contour_array[:, 1]
+                fourier_result = np.fft.fft(contour_complex)[1:]
+
+
+                amp = abs(fourier_result)
+                phase = np.arctan2(fourier_result.imag, fourier_result.real)
+
+                # return np.array(amp)
+                return np.concatenate((amp, phase))
         # def fourier_descriptors(region):
         #     region = (region*255).astype(np.uint8)
         #     contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        #     # if len(contour)>1:
-        #     #     merged_contour = merge_contours(contour)
-
-        #     #     points = np.array(merged_contour).reshape((-1, 2)).astype(np.int32)
-  
-        #     #     indices_y = np.argwhere(points[:, 1]==np.min(points[:, 1])) # smallest y
-        #     #     indices_x = np.argmin(points[indices_y, 0])
-        #     #     points = np.roll(points, -indices_y[indices_x], axis=0)
-        #     # else:
         #     points = contour[0][:, 0, :]
         #     xi, yi = resample_2d(points, resample_points)
         #     contour_array = np.stack((xi, yi), axis=1)
@@ -139,36 +165,17 @@ class ToTensorSPFFT(object):
         #     contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
         #     contour_complex.real = contour_array[:, 0]
         #     contour_complex.imag = contour_array[:, 1]
-        #     fourier_result = np.fft.fft(contour_complex)[1:]
+        #     fourier_result = np.fft.fft(contour_complex)
 
+        #     fourier_result_front = fourier_result[1:1+coeff//2]
+        #     fourier_result_back = fourier_result[-coeff//2:]
+        #     fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
 
         #     amp = abs(fourier_result)
         #     phase = np.arctan2(fourier_result.imag, fourier_result.real)
 
         #     # return np.array(amp)
         #     return np.concatenate((amp, phase))
-        def fourier_descriptors(region):
-            region = (region*255).astype(np.uint8)
-            contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            points = contour[0][:, 0, :]
-            xi, yi = resample_2d(points, resample_points)
-            contour_array = np.stack((xi, yi), axis=1)
-
-
-            contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
-            contour_complex.real = contour_array[:, 0]
-            contour_complex.imag = contour_array[:, 1]
-            fourier_result = np.fft.fft(contour_complex)
-
-            fourier_result_front = fourier_result[1:1+coeff//2]
-            fourier_result_back = fourier_result[-coeff//2:]
-            fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
-
-            amp = abs(fourier_result)
-            phase = np.arctan2(fourier_result.imag, fourier_result.real)
-
-            # return np.array(amp)
-            return np.concatenate((amp, phase))
 
         self.fourier_descriptors = fourier_descriptors
 
@@ -197,7 +204,7 @@ class ToTensorSPFFT(object):
             compactness=self.compactness,
             max_num_iter=10,
             convert2lab=True,
-            enforce_connectivity=False,
+            enforce_connectivity=self.ec,
             slic_zero=False)
 
         # plt.imshow(mark_boundaries(img_np, segments))
@@ -223,26 +230,49 @@ class ToTensorSPFFT(object):
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
         # features = np.zeros([self.num_seg, 8+(self.resample_points-1)*2+10])
-        features = np.zeros([self.num_seg, 8+(self.coeff)*2+10])
-        
-        # for i in range((self.resample_points-1)*2):
-        for i in range(self.coeff*2):
-            features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
+        if self.moments:
+            features = np.zeros([self.num_seg, 8+8+10])
+            
+            # for i in range((self.resample_points-1)*2):
+            for i in range(8):
+                features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
- 
-        features[label-1, 0] = regions['centroid-0']
-        features[label-1, 1] = regions['centroid-1']
-        
-        features[label-1, 2] = regions['intensity_mean-0']/255.
-        features[label-1, 3] = regions['intensity_mean-1']/255.
-        features[label-1, 4] = regions['intensity_mean-2']/255.
-        features[label-1, 5] = regions['image_stdev-0']/255.
-        features[label-1, 6] = regions['image_stdev-1']/255.
-        features[label-1, 7] = regions['image_stdev-2']/255.
+    
+            features[label-1, 0] = regions['centroid-0']
+            features[label-1, 1] = regions['centroid-1']
+            
+            features[label-1, 2] = regions['intensity_mean-0']/255.
+            features[label-1, 3] = regions['intensity_mean-1']/255.
+            features[label-1, 4] = regions['intensity_mean-2']/255.
+            features[label-1, 5] = regions['image_stdev-0']/255.
+            features[label-1, 6] = regions['image_stdev-1']/255.
+            features[label-1, 7] = regions['image_stdev-2']/255.
 
-        for ind in range(8+2):
-            # features[label-1, ind+8+(self.resample_points-1)*2] = regions_lbp[f'lbp-{ind}']
-            features[label-1, ind+8+(self.coeff)*2] = regions_lbp[f'lbp-{ind}']
+            for ind in range(8+2):
+                # features[label-1, ind+8+(self.resample_points-1)*2] = regions_lbp[f'lbp-{ind}']
+                features[label-1, ind+8+8] = regions_lbp[f'lbp-{ind}']
+        else:
+
+            features = np.zeros([self.num_seg, 8+(self.coeff)*2+10])
+            
+            # for i in range((self.resample_points-1)*2):
+            for i in range(self.coeff*2):
+                features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
+
+    
+            features[label-1, 0] = regions['centroid-0']
+            features[label-1, 1] = regions['centroid-1']
+            
+            features[label-1, 2] = regions['intensity_mean-0']/255.
+            features[label-1, 3] = regions['intensity_mean-1']/255.
+            features[label-1, 4] = regions['intensity_mean-2']/255.
+            features[label-1, 5] = regions['image_stdev-0']/255.
+            features[label-1, 6] = regions['image_stdev-1']/255.
+            features[label-1, 7] = regions['image_stdev-2']/255.
+
+            for ind in range(8+2):
+                # features[label-1, ind+8+(self.resample_points-1)*2] = regions_lbp[f'lbp-{ind}']
+                features[label-1, ind+8+(self.coeff)*2] = regions_lbp[f'lbp-{ind}']
         
         
         for ind, coord in zip(regions['label'], regions['coords']):
@@ -354,10 +384,11 @@ class ToTensorSP(object):
 class SPDatasetExport(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, compactness,
                   dataloader,  coeff=None,
-                    ignore_phase=False):
+                    ignore_phase=False, enforce_connectivity=False, moments=False):
         self.image_list = image_list
         self.mask_list = mask_list
-        
+        self.ec = enforce_connectivity
+        self.moments = moments
         self.resize_mask = ResizeMask(size)
         
     
@@ -367,7 +398,7 @@ class SPDatasetExport(data.Dataset):
         self.coeff = coeff
         
         if dataloader == 'SPFFFT' or dataloader == 'SPFRS':
-            totensor = ToTensorSPFFT(num_seg, compactness, coeff, size, ignore_phase)
+            totensor = ToTensorSPFFT(num_seg, compactness, coeff, size, ignore_phase, enforce_connectivity, moments)
         else:
             totensor = ToTensorSP(num_seg, compactness)
         # totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
@@ -418,7 +449,7 @@ class SPDatasetExport(data.Dataset):
 
 class SPDataset(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, 
-                  dataloader, data_augmentation=True, coeff=None):
+                  dataloader, data_augmentation=True, coeff=None, moments=False):
         self.image_list = image_list
         self.mask_list = mask_list
         self.resize_mask = ResizeMask(size)
@@ -428,6 +459,7 @@ class SPDataset(data.Dataset):
         self.coeff = coeff
         self.data_augmentation = data_augmentation
         self.resample_points = int(((size**2)//num_seg)**0.5)*4
+        self.moments = moments
             
 
     def __len__(self):
@@ -467,11 +499,20 @@ class SPDataset(data.Dataset):
         
         # plt.bar(np.arange(take*2),np.concatenate((amp_front, amp_back), axis=1)[0])
         # plt.show()
-        
+        if self.moments:
+            assert(features.shape[1] == (8+8+10))
         
         if self.data_augmentation:
-            features, seq_mask = horizontal_flip(features, self.coeff, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
-            features = rotate(features, self.coeff, 15, 0.5, (self.size, self.size))
+            if self.moments:
+                moments = features[:, 8:16]
+                moments = rotate_moments(moments, 0.5, 15)
+                moments = flip_moments(moments, 0.5)
+                moments = log_moments(moments)
+                features[:, 8:16] = moments
+
+            else:
+                features, seq_mask = horizontal_flip(features, self.coeff, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
+                features = rotate(features, self.coeff, 15, 0.5, (self.size, self.size))
             
 
         features = torch.tensor(features).float()
@@ -592,6 +633,8 @@ class SPFDataModule(pl.LightningDataModule):
         self.ignore_phase = kwargs.get('ignore_phase')
         self.debug = kwargs.get('debug', False)
         self.skip_train = kwargs.get('skip_train')
+        self.ec = kwargs.get('ec')
+        self.moments = kwargs.get('moments')
         
         if not self.skip_train:
             self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
@@ -614,7 +657,7 @@ class SPFDataModule(pl.LightningDataModule):
 
             dummy_tr = SPDatasetExport(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.compactness, self.dataloader,
-                                  self.coeff, self.ignore_phase)
+                                  self.coeff, self.ignore_phase, self.ec, self.moments)
             dummy_tr_loader = DataLoader(
                     dummy_tr, batch_size=1, 
                     num_workers=self.num_workers, shuffle=False, pin_memory=False)
@@ -626,7 +669,7 @@ class SPFDataModule(pl.LightningDataModule):
 
             dummy_val = SPDatasetExport(self.val_image_list, self.val_mask_list, self.num_seg,
                                 self.res, self.compactness, self.dataloader, 
-                                    self.coeff, self.ignore_phase)
+                                    self.coeff, self.ignore_phase, self.ec, self.moments)
             
             dummy_val_loader = DataLoader(
                 dummy_val, batch_size=1, 
@@ -648,7 +691,7 @@ class SPFDataModule(pl.LightningDataModule):
        
         dummy_test = SPDatasetExport(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.dataloader, 
-                               self.coeff, self.ignore_phase)
+                               self.coeff, self.ignore_phase, self.ec, self.moments)
         
         dummy_test_loader = DataLoader(
                 dummy_test, batch_size=1, 
@@ -666,7 +709,7 @@ class SPFDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.dataloader, True,
-                                  self.coeff)
+                                  self.coeff, self.moments)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=True, drop_last=True)
@@ -713,6 +756,9 @@ class SPFRSDataModule(pl.LightningDataModule):
         self.ignore_phase = kwargs.get('ignore_phase')
         self.debug = kwargs.get('debug', False)
         self.skip_train = kwargs.get('skip_train')
+        self.ec = kwargs.get('ec')
+        self.moments = kwargs.get('moments')
+
         
         if not self.skip_train:
             self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
@@ -728,7 +774,7 @@ class SPFRSDataModule(pl.LightningDataModule):
 
             dummy_tr = SPDatasetExport(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.compactness, self.dataloader,
-                                  self.coeff, self.ignore_phase)
+                                  self.coeff, self.ignore_phase, self.ec, self.moments)
             dummy_tr_loader = DataLoader(
                     dummy_tr, batch_size=1, 
                     num_workers=self.num_workers, shuffle=False, pin_memory=False)
@@ -751,7 +797,7 @@ class SPFRSDataModule(pl.LightningDataModule):
        
         dummy_test = SPDatasetExport(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.dataloader, 
-                               self.coeff, self.ignore_phase)
+                               self.coeff, self.ignore_phase, self.ec, self.moments)
         
         dummy_test_loader = DataLoader(
                 dummy_test, batch_size=1, 
@@ -769,7 +815,7 @@ class SPFRSDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.dataloader, True,
-                                  self.coeff)
+                                  self.coeff, self.moments)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=True, drop_last=True)

@@ -3,7 +3,7 @@ import torch
 # import sys
 # sys.path.insert(0, '/home/eddie/waterloo/supertransformer')
 # from Blocks.swintransformer_original import SwinTransformer
-from Blocks.swin_encoder_ape_image import SwinTransformer
+from Blocks.swin_encoder_ape import SwinTransformer
 import torch.nn.functional as F
 import numpy as np
 from dataset.mixup import Mixup

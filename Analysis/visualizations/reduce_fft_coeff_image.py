@@ -13,7 +13,6 @@ from fast_slic.avx2 import SlicAvx2
 import torch
 from torch_geometric.utils import scatter
 import torch.nn.functional as F
-from torch_scatter import scatter_std
 from math import pi, atan2
 
 dataset_images = '/home/eddie/Datasets/DUTS/DUTS-TR/Image'
@@ -346,5 +345,6 @@ for file in tqdm(os.listdir(dataset_images)[:num_images]):
     
     
     fig.tight_layout()
-    fig.savefig('/mnt/d/Figures/SuperFormer/reduce_coeff_fourier.pdf', format='pdf')
+    plt.subplots_adjust(wspace=0.2, hspace=0.2)
+    fig.savefig('/home/eddie/Figures/reduce_coeff_fourier.pdf', format='pdf')
     plt.show()
