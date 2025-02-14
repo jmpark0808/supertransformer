@@ -23,12 +23,16 @@ from skimage.segmentation import mark_boundaries
 import torchvision 
 import xml.etree.ElementTree as ET
 from dataset.fft_transform import *
+from dataset.moments_transform import *
 from dataset.randaugment import RandAugment
 import pathlib
 import scipy
 import pickle
+from util.util import merge_contours, compute_central_moments
+
+
 class ImageNetDataset(data.Dataset):
-    def __init__(self, root_dir, augmentation, coeff, num_seg, size):
+    def __init__(self, root_dir, augmentation, coeff, num_seg, size, moments):
         self.root_dir = root_dir
         self.image_list = []
         self.target_list = []
@@ -36,6 +40,7 @@ class ImageNetDataset(data.Dataset):
         self.size = size
         self.augmentation = augmentation
         self.resample_points = int(((size**2)//num_seg)**0.5)*4
+        self.moments = moments
       
         for file in os.listdir(root_dir):
             if '_target' in file:
@@ -55,15 +60,24 @@ class ImageNetDataset(data.Dataset):
         
         features_np = np.load(self.image_list[item])
         res = int(features_np.shape[0]**0.5)
-
+        # Spatial augmentation
+        if self.moments:
+            assert(features.shape[1] == (8+8+10))
         if self.augmentation:
-            features_np = horizontal_flip(features_np, self.coeff, 0.5, self.size, (res, res))
-            features_np = rotate(features_np, self.coeff, 15, 0.5, (self.size, self.size))
+            if self.moments:
+                moments = features_np[:, 8:16]
+                moments = rotate_moments(moments, 0.5, 15)
+                moments = flip_moments(moments, 0.5)
+                moments = log_moments(moments)
+                features_np[:, 8:16] = moments
+            else:
+                features_np = horizontal_flip(features_np, self.coeff, 0.5, self.size, (res, res))
+                features_np = rotate(features_np, self.coeff, 15, 0.5, (self.size, self.size))
 
 
         features = torch.tensor(features_np).float()
+        # Colour augmentations
         if self.augmentation:
-            
             randaug = RandAugment(5)
             erase = transforms.RandomErasing(0.25)
             color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
@@ -94,40 +108,53 @@ class ImageNetDataset(data.Dataset):
 
 
 class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
-    def __init__(self, root, num_seg, coeff, size, compactness, transform, export_dir, ignore_phase) -> None:
+    def __init__(self, root, num_seg, coeff, size, compactness,
+                  transform, export_dir, ignore_phase, enforce_connectivity, moments) -> None:
         super().__init__(root, transform=transform)
         self.num_seg = num_seg
         self.compactness = compactness
         self.coeff = coeff
         self.export_dir = export_dir
         self.ignore_phase = ignore_phase
+        self.enforce_connectivity = enforce_connectivity
+        self.moments = moments
 
         resample_points = int(((size**2)//num_seg)**0.5)*4
         self.resample_points = resample_points
         
-        def fourier_descriptors(region):
-            region = (region*255).astype(np.uint8)
-            contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            points = contour[0][:, 0, :]
-            xi, yi = resample_2d(points, resample_points)
-            contour_array = np.stack((xi, yi), axis=1)
+        if moments:
+            def fourier_descriptors(region):
+                moments = compute_central_moments(region)
+                return moments
+        else:
+            def fourier_descriptors(region):
+                region = (region*255).astype(np.uint8)
+                contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                if len(contour)>1:
+                    merged_contour = merge_contours(contour)
+
+                    points = np.array(merged_contour).reshape((-1, 2)).astype(np.int32)
+    
+                    indices_y = np.argwhere(points[:, 1]==np.min(points[:, 1])) # smallest y
+                    indices_x = np.argmin(points[indices_y, 0])
+                    points = np.roll(points, -indices_y[indices_x], axis=0)
+                else:
+                    points = contour[0][:, 0, :]
+                xi, yi = resample_2d(points, resample_points)
+                contour_array = np.stack((xi, yi), axis=1)
 
 
-            contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
-            contour_complex.real = contour_array[:, 0]
-            contour_complex.imag = contour_array[:, 1]
-            fourier_result = np.fft.fft(contour_complex)
+                contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
+                contour_complex.real = contour_array[:, 0]
+                contour_complex.imag = contour_array[:, 1]
+                fourier_result = np.fft.fft(contour_complex)[1:]
 
-            fourier_result_front = fourier_result[1:1+coeff//2]
-            fourier_result_back = fourier_result[-coeff//2:]
-            fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
 
-            amp = abs(fourier_result)
-            phase = np.arctan2(fourier_result.imag, fourier_result.real)
+                amp = abs(fourier_result)
+                phase = np.arctan2(fourier_result.imag, fourier_result.real)
 
-            # return np.array(amp)
-            return np.concatenate((amp, phase))
-
+                # return np.array(amp)
+                return np.concatenate((amp, phase))
         self.fourier_descriptors = fourier_descriptors
 
         def lbp(region, intensities):
@@ -186,7 +213,7 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
             compactness=self.compactness,
             max_num_iter=10,
             convert2lab=True,
-            enforce_connectivity=False,
+            enforce_connectivity=self.enforce_connectivity,
             slic_zero=False)
         # slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
         # segments = slic.iterate(img_np)+1
@@ -212,24 +239,45 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
 
         seq_len = len(regions['label'])
         label = regions['label']
-        features = np.zeros([self.num_seg, 8+(self.coeff)*2+10])
-    
+        if self.moments:
+            features = np.zeros([self.num_seg, 8+8+10])
         
-        for i in range(self.coeff*2):
-            features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
+            
+            for i in range(8):
+                features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
+            
+            features[label-1, 0] = regions['centroid-0']
+            features[label-1, 1] = regions['centroid-1']
+            features[label-1, 2] = regions['intensity_mean-0']/255.
+            features[label-1, 3] = regions['intensity_mean-1']/255.
+            features[label-1, 4] = regions['intensity_mean-2']/255.
+            features[label-1, 5] = regions['image_stdev-0']/255.
+            features[label-1, 6] = regions['image_stdev-1']/255.
+            features[label-1, 7] = regions['image_stdev-2']/255.
+
+            for ind in range(8+2):
+                features[label-1, ind+8+8] = regions_lbp[f'lbp-{ind}']
+        else:
+                
+            features = np.zeros([self.num_seg, 8+(self.coeff)*2+10])
         
-        features[label-1, 0] = regions['centroid-0']
-        features[label-1, 1] = regions['centroid-1']
-        features[label-1, 2] = regions['intensity_mean-0']/255.
-        features[label-1, 3] = regions['intensity_mean-1']/255.
-        features[label-1, 4] = regions['intensity_mean-2']/255.
-        features[label-1, 5] = regions['image_stdev-0']/255.
-        features[label-1, 6] = regions['image_stdev-1']/255.
-        features[label-1, 7] = regions['image_stdev-2']/255.
+            
+            for i in range(self.coeff*2):
+                features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
-        for ind in range(8+2):
-            features[label-1, ind+8+(self.coeff)*2] = regions_lbp[f'lbp-{ind}']
+            
+            features[label-1, 0] = regions['centroid-0']
+            features[label-1, 1] = regions['centroid-1']
+            features[label-1, 2] = regions['intensity_mean-0']/255.
+            features[label-1, 3] = regions['intensity_mean-1']/255.
+            features[label-1, 4] = regions['intensity_mean-2']/255.
+            features[label-1, 5] = regions['image_stdev-0']/255.
+            features[label-1, 6] = regions['image_stdev-1']/255.
+            features[label-1, 7] = regions['image_stdev-2']/255.
+
+            for ind in range(8+2):
+                features[label-1, ind+8+(self.coeff)*2] = regions_lbp[f'lbp-{ind}']
         
 
         
@@ -258,10 +306,11 @@ class SPImageNetDataModule(pl.LightningDataModule):
         self.seed = kwargs.get('seed')
         self.dilation = kwargs.get('dilation')
         self.size = kwargs.get('size')
+        self.moments = kwargs.get('moments')
     
 
-        train_dataset = ImageNetDataset(train_dir, True, self.coeff, self.num_seg, self.size)
-        test_dataset = ImageNetDataset(test_dir, False, self.coeff, self.num_seg, self.size)
+        train_dataset = ImageNetDataset(train_dir, True, self.coeff, self.num_seg, self.size, self.moments)
+        test_dataset = ImageNetDataset(test_dir, False, self.coeff, self.num_seg, self.size, self.moments)
 
         self.train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,
                                                                num_workers =self.num_workers, drop_last=True)

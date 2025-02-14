@@ -18,6 +18,10 @@ if __name__ == "__main__":
     parser.add_argument('--size', help="Resolution for raw image before SLIC", default=320, type=int)
     parser.add_argument('--coeff', help="Number of coefficients used in FFT", default=10, type=int)
     parser.add_argument('--compactness', help="Compactness parameter in SLIC", default=10, type=int)
+    parser.add_argument('--ec', help='Whether to enforce connectivity or not'
+                        , default=False, action="store_true")
+    parser.add_argument('--moments', help='Whether to use moments vs Fourier Descriptors'
+                        , default=False, action="store_true")
 
     
 
@@ -40,15 +44,19 @@ if __name__ == "__main__":
     train_export_dir = dict_args['train_export_dir']
     test_export_dir = dict_args['test_export_dir']
     size = dict_args['size']
+    ec = dict_args['ec']
+    moments = dict_args['moments']
 
     val_test_transform = transforms.Compose(
                             [transforms.Resize([size, size]),
                             transforms.ToTensor()
                             ])
 
-    train_dataset = ImageNetDatasetExport(train_dir, num_seg, coeff, size, compactness, val_test_transform, train_export_dir, False)
+    train_dataset = ImageNetDatasetExport(train_dir, num_seg, coeff, size, compactness,
+                                           val_test_transform, train_export_dir, False, ec, moments)
 
-    test_dataset = ImageNetDatasetExport(test_dir, num_seg, coeff, size, compactness, val_test_transform, test_export_dir, False)
+    test_dataset = ImageNetDatasetExport(test_dir, num_seg, coeff, size, compactness,
+                                          val_test_transform, test_export_dir, False, ec, moments)
 
     if dict_args['debug']:
         tr_random_sampler = torch.utils.data.RandomSampler(train_dataset, num_samples=100)

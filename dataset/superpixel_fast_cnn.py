@@ -21,6 +21,7 @@ from torch.utils.data import DataLoader
 from pathlib import Path
 from tqdm import tqdm
 
+
 class Resize(object):
     def __init__(self, size):
         self.size = size

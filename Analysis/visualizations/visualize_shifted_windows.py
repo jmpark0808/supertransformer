@@ -143,7 +143,7 @@ windows = np.arange(0, 784).reshape(28, 28)
 shifted_windows = np.roll(np.arange(0, 784).reshape(28, 28), (-7, -7), axis=(1, 0))
 
 
-fig, ax = plt.subplots(1, 2)
+fig, ax = plt.subplots(1, 2, figsize=(10, 5))
 gap = 50
 dummy_image1 = np.ones((448+gap, 448+gap, 3))
 dummy_image2 = np.ones((448+2*gap, 448+2*gap, 3))
@@ -327,8 +327,11 @@ for i in range(2):
 
 
 ax[0].imshow(dummy_image1)
+ax[0].set_title('Window Partitioning', fontsize=20)
 ax[1].imshow(dummy_image2)
+ax[1].set_title('Shifted Window Partitioning', fontsize=20)
 ax[0].axis('off')
 ax[1].axis('off')
+fig.savefig('/home/eddie/Figures/visualize_shifted_windows.pdf', format='pdf')
 plt.show()
 

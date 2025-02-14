@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import numpy as np
 from dataset.constants import *
+from skimage.measure import moments_central
 
 def estimate_memory_training(model, sample_input, optimizer_type=torch.optim.Adam, batch_size=1, use_amp=False, device=0):
     """Predict the maximum memory usage of the model. 
@@ -381,3 +382,25 @@ def S_region(pred, gt):
     Q = w1*Q1 + w2*Q2 + w3*Q3 + w4*Q4
     # print(Q)
     return Q
+
+
+def compute_central_moments(binary_image):
+    """
+    Computes central moments of a binary image using skimage.measure.regionprops.
+    
+    Parameters:
+    - binary_image: (2D numpy array) Binary image.
+
+    Returns:
+    - central_moments (numpy array): The computed central moments.
+    """
+    # label_image = measure.label(binary_image)  # Label connected components
+    # props = measure.regionprops(label_image)
+    # moments = props[0].moments_central 
+    moments_ = moments_central(binary_image)
+    # moments_ = np.sign(moments)*np.log(np.abs(moments)+1e-10)
+    moments_ = np.array([moments_[0,0], moments_[1, 1], moments_[2, 0],
+                          moments_[0, 2], moments_[2, 1], moments_[1, 2], moments_[3, 0], moments_[0, 3]])
+    return moments_
+
+

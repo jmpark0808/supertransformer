@@ -237,6 +237,10 @@ if __name__ == "__main__":
     parser.add_argument('--encoder_lr_weight', help='Set LR factor for pre-trained encoder weights', default=1, type=float)
     parser.add_argument('--skip_train', help='Whether to skip training (for evaluation)'
                         , default=False, action="store_true")
+    parser.add_argument('--ec', help='Whether to enforce connectivity or not'
+                        , default=False, action="store_true")
+    parser.add_argument('--moments', help='Whether to use moments vs Fourier Descriptors'
+                        , default=False, action="store_true")
 
 
     import torch 

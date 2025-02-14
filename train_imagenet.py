@@ -138,6 +138,8 @@ if __name__ == "__main__":
                     nargs="*", 
                     type=int, help='Hyperparameters for kernel sizes of SWIN Transformer')
     parser.add_argument('--mlp_ratio', help='Mlp ratio for FF networks', default=4, type=float)
+    parser.add_argument('--moments', help='Whether to use moments vs Fourier Descriptors'
+                        , default=False, action="store_true")
 
 
 
