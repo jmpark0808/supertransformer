@@ -61,10 +61,10 @@ class ImageNetDataset(data.Dataset):
         features_np = np.load(self.image_list[item])
         res = int(features_np.shape[0]**0.5)
         # Spatial augmentation
-        if self.moments:
-            assert(features.shape[1] == (8+8+10))
+            
         if self.augmentation:
             if self.moments:
+                assert(features_np.shape[1] == (8+8+10))
                 moments = features_np[:, 8:16]
                 moments = rotate_moments(moments, 0.5, 15)
                 moments = flip_moments(moments, 0.5)
