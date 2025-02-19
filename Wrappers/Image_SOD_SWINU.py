@@ -62,7 +62,7 @@ class Image_SWINU_Wrapper(pl.LightningModule):
         if self.pretrain:
             checkpoint = torch.load(self.pretrain)
             for key in list(checkpoint['state_dict'].keys()):
-                if 'patch_embed' in key or 'attn_mask'in key:
+                if 'attn_mask'in key:
                     checkpoint['state_dict'].pop(key)
                 else:
                     checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
