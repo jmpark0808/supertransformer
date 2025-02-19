@@ -64,6 +64,6 @@ def flip_moments(moments, prob):
     return moments_
 
 def log_moments(moments):
-    moments_ = np.sign(moments)*np.log(np.abs(moments)+1e-10)
+    moments_ = np.sign(moments)*np.where(moments == 0, 0, np.log(np.abs(moments)))
     return moments_ # Return the central moments of the largest region
 
