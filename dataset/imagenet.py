@@ -73,7 +73,11 @@ class ImageNetDataset(data.Dataset):
             else:
                 features_np = horizontal_flip(features_np, self.coeff, 0.5, self.size, (res, res))
                 features_np = rotate(features_np, self.coeff, 15, 0.5, (self.size, self.size))
-
+        else:
+            if self.moments:
+                moments = features_np[:, 8:16]
+                moments = log_moments(moments)
+                features_np[:, 8:16] = moments
 
         features = torch.tensor(features_np).float()
         # Colour augmentations
