@@ -1,48 +1,46 @@
 import numpy as np
-import cv2
-from scipy.ndimage import rotate
-from skimage.measure import moments_central
+from skimage.measure import regionprops, label
+import matplotlib.pyplot as plt
+import math
+image = np.zeros((100, 100), dtype=np.uint8)
+rr, cc = np.ogrid[0:100, 0:100]
+ellipse = ((rr - 50) ** 2 / 30 ** 2 + (cc - 50) ** 2 / 20 ** 2) <= 1
+image[ellipse] = 1
 
-def create_shape(size=100):
-    shape = np.zeros((size, size), dtype=np.uint8)
-    cv2.rectangle(shape, (25, 25), (75, 75), 255, -1)
-    return shape
+# Label the image and calculate region properties
+labeled_image = label(image)
+regions = regionprops(labeled_image)
 
-def calculate_moments(image):
-    m = moments_central(image)
-    return (m[0, 0], m[1, 0], m[0, 1], 
-            m[1, 1], m[2, 0], m[0, 2],
-            m[3, 0], m[2, 1], m[1, 2], m[0, 3])
+# Get the first (and only) region
+region = regions[0]
 
-def print_moments(moments):
-    labels = ['m00', 'm10', 'm01', 
-              'm11', 'm20', 'm02',
-              'm30', 'm21', 'm12', 'm03']
-    for label, moment in zip(labels, moments):
-        print(f"{label}: {moment:.4f}", end=", ")
-    print()
+# Extract major and minor axis lengths
+major_axis_length = region.major_axis_length
+minor_axis_length = region.minor_axis_length
 
-# Create original shape
-original = create_shape()
+# print(major_axis_length)
+# print(minor_axis_length)
+# assert(0)
+# Calculate orientation (angle of the major axis)
+orientation = region.orientation
 
-# Calculate moments for original shape
-original_moments = calculate_moments(original)
+# Calculate endpoints of major and minor axes
+y0, x0 = region.centroid
+x1 = x0 + np.cos(orientation) * 0.5 * minor_axis_length
+y1 = y0 - np.sin(orientation) * 0.5 * minor_axis_length
 
-print("Original moments:")
-print_moments(original_moments)
+x2 = x0 - np.sin(orientation) * 0.5 * major_axis_length
+y2 = y0 - np.cos(orientation) * 0.5 * major_axis_length
 
-# Rotate shape
-rotated = rotate(original, angle=45, reshape=False)
+# Plot the results
+fig, ax = plt.subplots()
+ax.imshow(image, cmap=plt.cm.gray)
+ax.plot((x0, x1), (y0, y1), '-r', linewidth=2.5)
+ax.plot((x0, x2), (y0, y2), '-b', linewidth=2.5)
+ax.plot(x0, y0, '.g', markersize=15)
 
-# Calculate moments for rotated shape
-rotated_moments = calculate_moments(rotated)
+ax.set_title('Ellipse with Major and Minor Axes')
+plt.show()
 
-print("\nRotated moments:")
-print_moments(rotated_moments)
-
-# Calculate relative changes
-relative_changes = [(r - o) / o * 100 if o != 0 else float('inf') for r, o in zip(rotated_moments, original_moments)]
-
-print("\nRelative changes (%):")
-for label, change in zip(['m00', 'm10', 'm01', 'm11', 'm20', 'm02', 'm30', 'm21', 'm12', 'm03'], relative_changes):
-    print(f"{label}: {change:.2f}%")
+print(f"Major axis length: {major_axis_length:.2f}")
+print(f"Minor axis length: {minor_axis_length:.2f}")
