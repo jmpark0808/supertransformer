@@ -347,7 +347,16 @@ class ToTensorSPFFT(object):
         def fourier_descriptors(region):
             region = (region*255).astype(np.uint8)
             contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            points = contour[0][:, 0, :]
+            if len(contour)>1:
+                merged_contour = merge_contours(contour)
+
+                points = np.array(merged_contour).reshape((-1, 2)).astype(np.int32)
+
+                indices_y = np.argwhere(points[:, 1]==np.min(points[:, 1])) # smallest y
+                indices_x = np.argmin(points[indices_y, 0])
+                points = np.roll(points, -indices_y[indices_x], axis=0)
+            else:
+                points = contour[0][:, 0, :]
             xi, yi = resample_2d(points, resample_points)
             contour_array = np.stack((xi, yi), axis=1)
 
@@ -357,9 +366,10 @@ class ToTensorSPFFT(object):
             contour_complex.imag = contour_array[:, 1]
             fourier_result = np.fft.fft(contour_complex)
 
-            fourier_result_front = fourier_result[1:1+coeff//2]
-            fourier_result_back = fourier_result[-coeff//2:]
-            fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
+            # fourier_result_front = fourier_result[1:1+coeff//2]
+            # fourier_result_back = fourier_result[-coeff//2:]
+            # fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
+            fourier_result = fourier_result[1:]
 
             amp = abs(fourier_result)
             phase = np.arctan2(fourier_result.imag, fourier_result.real)
@@ -388,7 +398,7 @@ class ToTensorSPFFT(object):
             max_num_iter=10,
             convert2lab=True,
             enforce_connectivity=False,
-            slic_zero=False)
+            slic_zero=True)
 
         # plt.imshow(mark_boundaries(img_np, segments))
         # plt.show()
@@ -406,14 +416,14 @@ class ToTensorSPFFT(object):
         seq_len = len(regions['label'])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
-        features = np.zeros([self.num_seg, 8+(self.coeff)*2+10])
+        features = np.zeros([self.num_seg, 8+2*(self.resample_points-1)+10])
         
         if self.ignore_phase:
-            features = np.zeros([self.num_seg, 8+self.coeff])
-            for i in range(self.coeff):
+            features = np.zeros([self.num_seg, 8+(self.resample_points-1)])
+            for i in range(self.resample_points-1):
                 features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
         else:
-            for i in range(self.coeff*2):
+            for i in range(2*(self.resample_points-1)):
                 features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
  
@@ -807,28 +817,32 @@ class DUTSDataModule(pl.LightningDataModule):
         self.num_workers = kwargs.get('num_workers', 0)
         self.image_size = kwargs.get('size')
         self.debug = kwargs.get('debug')
+        self.skip_train = kwargs.get('skip_train')
 
-        self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
-        self.mask_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.train_dir, 'Mask'))]))
+        if not self.skip_train:
 
-        indices = np.array(list(range(len(self.image_list))))
-        np.random.shuffle(indices)
+            self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
+            self.mask_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.train_dir, 'Mask'))]))
+
+            indices = np.array(list(range(len(self.image_list))))
+            np.random.shuffle(indices)
+            
+            self.val_image_list = self.image_list[indices[int(len(self.image_list)*0.95):]]
+            self.val_mask_list = self.mask_list[indices[int(len(self.mask_list)*0.95):]]
         
-        self.val_image_list = self.image_list[indices[int(len(self.image_list)*0.95):]]
-        self.val_mask_list = self.mask_list[indices[int(len(self.mask_list)*0.95):]]
-    
-        self.tr_image_list = self.image_list[indices[:int(len(self.image_list)*0.95)]]
-        self.tr_mask_list = self.mask_list[indices[:int(len(self.mask_list)*0.95)]]
+            self.tr_image_list = self.image_list[indices[:int(len(self.image_list)*0.95)]]
+            self.tr_mask_list = self.mask_list[indices[:int(len(self.mask_list)*0.95)]]
 
         self.test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'Image'))])
         self.test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'Mask'))])
 
         if self.debug:
-            self.val_image_list = self.val_image_list[:100]
-            self.val_mask_list = self.val_mask_list[:100]
+            if not self.skip_train:
+                self.val_image_list = self.val_image_list[:100]
+                self.val_mask_list = self.val_mask_list[:100]
 
-            self.tr_image_list = self.tr_image_list[:100]
-            self.tr_mask_list = self.tr_mask_list[:100]
+                self.tr_image_list = self.tr_image_list[:100]
+                self.tr_mask_list = self.tr_mask_list[:100]
 
             self.test_image_list = self.test_image_list[:100]
             self.test_mask_list = self.test_mask_list[:100]

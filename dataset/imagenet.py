@@ -71,8 +71,8 @@ class ImageNetDataset(data.Dataset):
                 moments = log_moments(moments)
                 features_np[:, 8:16] = moments
             else:
-                features_np = horizontal_flip(features_np, self.coeff, 0.5, self.size, (res, res))
-                features_np = rotate(features_np, self.coeff, 15, 0.5, (self.size, self.size))
+                features_np = horizontal_flip(features_np, self.resample_points-1, 0.5, self.size, (res, res))
+                # features_np = rotate(features_np, self.coeff, 15, 0.5, (self.size, self.size))
         else:
             if self.moments:
                 moments = features_np[:, 8:16]
@@ -101,6 +101,18 @@ class ImageNetDataset(data.Dataset):
             color_space = color_space.reshape(3, res*res).permute(1, 0)
             
             features[:, 2:5] = color_space
+
+        
+        features_amp = features[:, 8:8+(self.resample_points-1)]
+        features_phase = features[:, 8+(self.resample_points-1):8+2*(self.resample_points-1)]
+        front = math.ceil(self.coeff/2.)
+        back = self.coeff-front
+        assert (front+back) == (self.resample_points-1)
+        colour_and_centroid = features[:, :8]
+        lbp = features[:, -10:]
+        features_amp = torch.cat((features_amp[:, :front], features_amp[:, -back:]), dim=1)
+        features_phase = torch.cat((features_phase[:, :front], features_phase[:, -back:]), dim=1)
+        features = torch.cat((colour_and_centroid, features_amp, features_phase, lbp), dim=1)
 
         target = torch.tensor(np.load(self.target_list[item]))
 
@@ -218,7 +230,7 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
             max_num_iter=10,
             convert2lab=True,
             enforce_connectivity=self.enforce_connectivity,
-            slic_zero=False)
+            slic_zero=True)
         # slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
         # segments = slic.iterate(img_np)+1
         # plt.imshow(mark_boundaries(img_np, segments))
@@ -264,10 +276,10 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
                 features[label-1, ind+8+8] = regions_lbp[f'lbp-{ind}']
         else:
                 
-            features = np.zeros([self.num_seg, 8+(self.coeff)*2+10])
+            features = np.zeros([self.num_seg, 8+(2*(self.resample_points-1))+10])
         
             
-            for i in range(self.coeff*2):
+            for i in range((2*(self.resample_points-1))):
                 features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
             
@@ -280,8 +292,8 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
             features[label-1, 6] = regions['image_stdev-1']/255.
             features[label-1, 7] = regions['image_stdev-2']/255.
 
-            for ind in range(8+2):
-                features[label-1, ind+8+(self.coeff)*2] = regions_lbp[f'lbp-{ind}']
+            for ind in range(10):
+                features[label-1, ind+8+(2*(self.resample_points-1))] = regions_lbp[f'lbp-{ind}']
         
 
         
