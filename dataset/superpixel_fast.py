@@ -205,7 +205,7 @@ class ToTensorSPFFT(object):
             max_num_iter=10,
             convert2lab=True,
             enforce_connectivity=self.ec,
-            slic_zero=False)
+            slic_zero=True)
 
         # plt.imshow(mark_boundaries(img_np, segments))
         # plt.show()
@@ -253,10 +253,10 @@ class ToTensorSPFFT(object):
                 features[label-1, ind+8+8] = regions_lbp[f'lbp-{ind}']
         else:
 
-            features = np.zeros([self.num_seg, 8+(self.coeff)*2+10])
+            features = np.zeros([self.num_seg, 8+((self.resample_points-1)*2)*2+10])
             
             # for i in range((self.resample_points-1)*2):
-            for i in range(self.coeff*2):
+            for i in range((self.resample_points-1)*2):
                 features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
     
@@ -272,7 +272,7 @@ class ToTensorSPFFT(object):
 
             for ind in range(8+2):
                 # features[label-1, ind+8+(self.resample_points-1)*2] = regions_lbp[f'lbp-{ind}']
-                features[label-1, ind+8+(self.coeff)*2] = regions_lbp[f'lbp-{ind}']
+                features[label-1, ind+8+(self.resample_points-1)*2] = regions_lbp[f'lbp-{ind}']
         
         
         for ind, coord in zip(regions['label'], regions['coords']):
@@ -495,7 +495,16 @@ class SPDataset(data.Dataset):
         # phase_front = features[:, (8+self.resample_points):(8+self.resample_points)+take]
         # phase_back = features[:, (8+self.resample_points*2-take):(8+self.resample_points*2)]
         # features = np.concatenate((features_first, amp_front, amp_back, phase_front, phase_back, features_last), axis=1)
-
+        features_amp = features[:, 8:8+(self.resample_points-1)]
+        features_phase = features[:, 8+(self.resample_points-1):8+2*(self.resample_points-1)]
+        front = math.ceil(self.coeff/2.)
+        back = self.coeff-front
+        assert (front+back) == (self.resample_points-1)
+        colour_and_centroid = features[:, :8]
+        lbp = features[:, -10:]
+        features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), 1)
+        features_phase = np.concatenate((features_phase[:, :front], features_phase[:, -back:]), 1)
+        features = np.concatenate((colour_and_centroid, features_amp, features_phase, lbp), 1)
         
         # plt.bar(np.arange(take*2),np.concatenate((amp_front, amp_back), axis=1)[0])
         # plt.show()
@@ -511,8 +520,8 @@ class SPDataset(data.Dataset):
                 features[:, 8:16] = moments
 
             else:
-                features, seq_mask = horizontal_flip(features, self.coeff, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
-                features = rotate(features, self.coeff, 15, 0.5, (self.size, self.size))
+                features, seq_mask = horizontal_flip(features, self.resample_points-1, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
+                # features = rotate(features, self.coeff, 15, 0.5, (self.size, self.size))
             
 
         features = torch.tensor(features).float()
@@ -587,10 +596,20 @@ class SPOGMaskDataset(data.Dataset):
         # phase_front = features[:, (8+self.resample_points):(8+self.resample_points)+take]
         # phase_back = features[:, (8+self.resample_points*2-take):(8+self.resample_points*2)]
         # features = np.concatenate((features_first, amp_front, amp_back, phase_front, phase_back, features_last), axis=1)
+        features_amp = features[:, 8:8+(self.resample_points-1)]
+        features_phase = features[:, 8+(self.resample_points-1):8+2*(self.resample_points-1)]
+        front = math.ceil(self.coeff/2.)
+        back = self.coeff-front
+        assert (front+back) == (self.resample_points-1)
+        colour_and_centroid = features[:, :8]
+        lbp = features[:, -10:]
+        features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), 1)
+        features_phase = np.concatenate((features_phase[:, :front], features_phase[:, -back:]), 1)
+        features = np.concatenate((colour_and_centroid, features_amp, features_phase, lbp), 1)
         
         if self.data_augmentation:
-            features, seq_mask = horizontal_flip(features, self.coeff, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
-            features = rotate(features, self.coeff, 15, 0.5, (self.size, self.size))
+            features, seq_mask = horizontal_flip(features, self.resample_points-1, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
+            # features = rotate(features, self.coeff, 15, 0.5, (self.size, self.size))
             
 
         features = torch.tensor(features).float()

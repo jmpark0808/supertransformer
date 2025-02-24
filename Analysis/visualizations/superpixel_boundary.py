@@ -15,8 +15,8 @@ from torch_geometric.utils import scatter
 import torch.nn.functional as F
 from torch_scatter import scatter_std
 
-dataset_images = '/home/eddie/Datasets/ORSSD/train/Image'
-masks = '/home/eddie/Datasets/ORSSD/train/Mask'
+dataset_images = '/home/eddie/Datasets/DUTS/DUTS-TR/Image'
+masks = '/home/eddie/Datasets/DUTS/DUTS-TR/Mask'
 # segment_numbers = [224, 448]# , 300
 # segment_numbers = [100, 200, 300, 400, 500, 600, 800, 1000, 1500, 3000, 10000, 45000, 90000]
 segment_numbers = [3136]
@@ -70,9 +70,10 @@ for compact in tqdm(compactness):
             max_num_iter=10,
             convert2lab=True,
             enforce_connectivity=False,
-            slic_zero=True)
+            slic_zero=False)
             
-            segments = quickshift(img, kernel_size=3, max_dist=6, ratio=0.5)
+            
+            # segments = quickshift(img, kernel_size=3, max_dist=6, ratio=0.5)
             # slic = SlicAvx2(num_components=num_seg, compactness=compact, min_size_factor=0.)
             # segments = slic.iterate(img)
 
@@ -80,8 +81,12 @@ for compact in tqdm(compactness):
             ms = end-start
             # print(ms)
             
+            
 
-            # segments = slic(image=img, n_segments=seg, compactness=compact, min_size_factor=0.5, max_num_iter=3, enforce_connectivity=False)
+            # segments = slic(image=img, n_segments=seg,
+            #                  compactness=compact,
+            #                    min_size_factor=0.5, max_num_iter=10,
+            #                      enforce_connectivity=False)
             # segments = slic.iterate(img)
 
             # superpixel_boundaries = np.sum(mark_boundaries(empty_background, segments), axis=2)
@@ -103,7 +108,7 @@ for compact in tqdm(compactness):
             for ind, coord in zip(regions['label'], regions['coords']):
                 seq_mask[ind-1] = 1 if np.sum(msk[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
 
-            print(regions['label'].shape)
+            
 
             plt_image = seq_mask[segments-1].reshape([img.shape[0], img.shape[1]])
             plt_image_skip = np.copy(plt_image)
