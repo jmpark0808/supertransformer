@@ -138,39 +138,36 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
         resample_points = int(((size**2)//num_seg)**0.5)*4
         self.resample_points = resample_points
         
-        if moments:
-            def fourier_descriptors(region):
-                moments = compute_central_moments(region)
-                return moments
-        else:
-            def fourier_descriptors(region):
-                region = (region*255).astype(np.uint8)
-                contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-                if len(contour)>1:
-                    merged_contour = merge_contours(contour)
+        
+        def fourier_descriptors(region):
+            moments = compute_central_moments(region)
+            region = (region*255).astype(np.uint8)
+            contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            if len(contour)>1:
+                merged_contour = merge_contours(contour)
 
-                    points = np.array(merged_contour).reshape((-1, 2)).astype(np.int32)
-    
-                    indices_y = np.argwhere(points[:, 1]==np.min(points[:, 1])) # smallest y
-                    indices_x = np.argmin(points[indices_y, 0])
-                    points = np.roll(points, -indices_y[indices_x], axis=0)
-                else:
-                    points = contour[0][:, 0, :]
-                xi, yi = resample_2d(points, resample_points)
-                contour_array = np.stack((xi, yi), axis=1)
+                points = np.array(merged_contour).reshape((-1, 2)).astype(np.int32)
+
+                indices_y = np.argwhere(points[:, 1]==np.min(points[:, 1])) # smallest y
+                indices_x = np.argmin(points[indices_y, 0])
+                points = np.roll(points, -indices_y[indices_x], axis=0)
+            else:
+                points = contour[0][:, 0, :]
+            xi, yi = resample_2d(points, resample_points)
+            contour_array = np.stack((xi, yi), axis=1)
 
 
-                contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
-                contour_complex.real = contour_array[:, 0]
-                contour_complex.imag = contour_array[:, 1]
-                fourier_result = np.fft.fft(contour_complex)[1:]
+            contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
+            contour_complex.real = contour_array[:, 0]
+            contour_complex.imag = contour_array[:, 1]
+            fourier_result = np.fft.fft(contour_complex)[1:]
 
 
-                amp = abs(fourier_result)
-                phase = np.arctan2(fourier_result.imag, fourier_result.real)
+            amp = abs(fourier_result)
+            phase = np.arctan2(fourier_result.imag, fourier_result.real)
 
-                # return np.array(amp)
-                return np.concatenate((amp, phase))
+            # return np.array(amp)
+            return np.concatenate((amp, phase, moments))
         self.fourier_descriptors = fourier_descriptors
 
         def lbp(region, intensities):
@@ -229,7 +226,7 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
             compactness=self.compactness,
             max_num_iter=10,
             convert2lab=True,
-            enforce_connectivity=self.enforce_connectivity,
+            enforce_connectivity=False,
             slic_zero=True)
         # slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
         # segments = slic.iterate(img_np)+1
@@ -255,46 +252,28 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
 
         seq_len = len(regions['label'])
         label = regions['label']
-        if self.moments:
-            features = np.zeros([self.num_seg, 8+8+10])
+       
         
-            
-            for i in range(8):
-                features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
-
-            
-            features[label-1, 0] = regions['centroid-0']
-            features[label-1, 1] = regions['centroid-1']
-            features[label-1, 2] = regions['intensity_mean-0']/255.
-            features[label-1, 3] = regions['intensity_mean-1']/255.
-            features[label-1, 4] = regions['intensity_mean-2']/255.
-            features[label-1, 5] = regions['image_stdev-0']/255.
-            features[label-1, 6] = regions['image_stdev-1']/255.
-            features[label-1, 7] = regions['image_stdev-2']/255.
-
-            for ind in range(8+2):
-                features[label-1, ind+8+8] = regions_lbp[f'lbp-{ind}']
-        else:
                 
-            features = np.zeros([self.num_seg, 8+(2*(self.resample_points-1))+10])
+        features = np.zeros([self.num_seg, 8+(2*(self.resample_points-1))+8+10])
+    
         
-            
-            for i in range((2*(self.resample_points-1))):
-                features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
+        for i in range((2*(self.resample_points-1))+8):
+            features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
-            
-            features[label-1, 0] = regions['centroid-0']
-            features[label-1, 1] = regions['centroid-1']
-            features[label-1, 2] = regions['intensity_mean-0']/255.
-            features[label-1, 3] = regions['intensity_mean-1']/255.
-            features[label-1, 4] = regions['intensity_mean-2']/255.
-            features[label-1, 5] = regions['image_stdev-0']/255.
-            features[label-1, 6] = regions['image_stdev-1']/255.
-            features[label-1, 7] = regions['image_stdev-2']/255.
-
-            for ind in range(10):
-                features[label-1, ind+8+(2*(self.resample_points-1))] = regions_lbp[f'lbp-{ind}']
         
+        features[label-1, 0] = regions['centroid-0']
+        features[label-1, 1] = regions['centroid-1']
+        features[label-1, 2] = regions['intensity_mean-0']/255.
+        features[label-1, 3] = regions['intensity_mean-1']/255.
+        features[label-1, 4] = regions['intensity_mean-2']/255.
+        features[label-1, 5] = regions['image_stdev-0']/255.
+        features[label-1, 6] = regions['image_stdev-1']/255.
+        features[label-1, 7] = regions['image_stdev-2']/255.
+
+        for ind in range(10):
+            features[label-1, ind+8+(2*(self.resample_points-1))+8] = regions_lbp[f'lbp-{ind}']
+    
 
         
         np.save(sp_file_path, features.astype(np.float16))
