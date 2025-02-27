@@ -85,19 +85,54 @@ xi, yi = resample_2d(points, N)
 # ax[1].scatter(xi, yi)
 # plt.show()
 initial_phase = None
-for i in range(0, 360, 10):
+# for i in range(0, 360, 10):
+#     fig, ax = plt.subplots(1, 3, figsize=(20, 10))
+
+#     # ROTATION
+
+#     xc = np.mean(xi)
+#     yc = np.mean(yi)
+
+#     xi_rotate, yi_rotate = rotate([xc, yc], [xi, yi], math.radians(i))
+#     indices_y = np.argwhere(yi_rotate==np.min(yi_rotate)) # smallest y
+#     indices_x = np.argmin(xi_rotate[indices_y])
+#     xi_rotate = np.roll(xi_rotate, -indices_y[indices_x], axis=0)
+#     yi_rotate = np.roll(yi_rotate, -indices_y[indices_x], axis=0)
+#     contour_array = np.stack((xi_rotate, yi_rotate), axis=1)
+#     contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
+#     contour_complex.real = contour_array[:, 0]
+#     contour_complex.imag = contour_array[:, 1]
+#     fourier_result = np.fft.fft(contour_complex)
+#     ax[0].scatter(xi_rotate[2:], yi_rotate[2:], c='blue')
+#     ax[0].scatter(xi_rotate[0], yi_rotate[0], c='red', label='Start')
+#     ax[0].scatter(xi_rotate[1], yi_rotate[1], c='Green', label='Second')
+#     ax[0].legend()
+#     ax[0].set_title('Rotated')
+#     ax[0].set_aspect('equal')
+#     ax[1].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result[1:]), 'b', markerfmt=" ", basefmt="-b")
+#     # ax[1, 3].plot(fourier_result.real[1:], label='Real')
+#     # ax[1, 3].plot(fourier_result.imag[1:], label='Imag')
+#     # ax[1, 3].legend(loc='lower left')
+
+#     phase = np.arctan2(fourier_result.imag, fourier_result.real)
+#     if initial_phase is None:
+#         initial_phase = phase[1]
+#     else:
+#         print(phase[1]-initial_phase)
+#         initial_phase = phase[1]
+#     ax[2].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
+#     fig.supxlabel('Frequency (2nd and 3rd row)')
+#     fig.savefig(f'/home/eddie/Downloads/gif/{i}')
+
+
+for i in range(0, 70):
     fig, ax = plt.subplots(1, 3, figsize=(20, 10))
 
     # ROTATION
 
-    xc = np.mean(xi)
-    yc = np.mean(yi)
 
-    xi_rotate, yi_rotate = rotate([xc, yc], [xi, yi], math.radians(i))
-    indices_y = np.argwhere(yi_rotate==np.min(yi_rotate)) # smallest y
-    indices_x = np.argmin(xi_rotate[indices_y])
-    xi_rotate = np.roll(xi_rotate, -indices_y[indices_x], axis=0)
-    yi_rotate = np.roll(yi_rotate, -indices_y[indices_x], axis=0)
+    xi_rotate = np.roll(xi, -i, axis=0)
+    yi_rotate = np.roll(yi, -i, axis=0)
     contour_array = np.stack((xi_rotate, yi_rotate), axis=1)
     contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
     contour_complex.real = contour_array[:, 0]

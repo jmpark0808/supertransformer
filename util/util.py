@@ -3,6 +3,7 @@ from torch import nn
 import numpy as np
 from dataset.constants import *
 from skimage.measure import moments_central
+import math
 
 def estimate_memory_training(model, sample_input, optimizer_type=torch.optim.Adam, batch_size=1, use_amp=False, device=0):
     """Predict the maximum memory usage of the model. 
@@ -151,7 +152,6 @@ def resample_2d(points, N):
 
 def get_input_dim(args):
     d = args.get('dataloader')
-    moments = args.get('moments')
     if d == 'SP' or d == 'SPLAP' or d == 'INPE':
         return 3
     elif d == 'SPF' or d == 'DUTS':
@@ -160,13 +160,10 @@ def get_input_dim(args):
                 'YD', 'SPGSWIN', 'YDG',
               'ImageNet_SWIN',  'SpeedLimits', 
                 'SPSpeedLimits',  'SPFRS', 'SPRS', 'SPFFT' ]:
-        if moments:
-            return 6+8+10
+        if args.get('ignore_phase'):
+            return 6+(args.get('coeff'))+10
         else:
-            if args.get('ignore_phase'):
-                return 6+(args.get('coeff'))+10
-            else:
-                return 6+(args.get('coeff')*2)+10
+            return 6+(args.get('coeff'))+8+10
     elif d== 'SPGIFFT' or d == 'ImageNet_PyG':
         if args.get('ignore_phase'):
             return 6+(args.get('coeff'))

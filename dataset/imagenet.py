@@ -32,7 +32,7 @@ from util.util import merge_contours, compute_central_moments
 
 
 class ImageNetDataset(data.Dataset):
-    def __init__(self, root_dir, augmentation, coeff, num_seg, size, moments):
+    def __init__(self, root_dir, augmentation, coeff, num_seg, size):
         self.root_dir = root_dir
         self.image_list = []
         self.target_list = []
@@ -40,7 +40,7 @@ class ImageNetDataset(data.Dataset):
         self.size = size
         self.augmentation = augmentation
         self.resample_points = int(((size**2)//num_seg)**0.5)*4
-        self.moments = moments
+
       
         for file in os.listdir(root_dir):
             if '_target' in file:
@@ -61,24 +61,27 @@ class ImageNetDataset(data.Dataset):
         features_np = np.load(self.image_list[item])
         res = int(features_np.shape[0]**0.5)
         # Spatial augmentation
-            
-        if self.augmentation:
-            if self.moments:
-                assert(features_np.shape[1] == (8+8+10))
-                moments = features_np[:, 8:16]
-                moments = rotate_moments(moments, 0.5, 15)
-                moments = flip_moments(moments, 0.5)
-                moments = log_moments(moments)
-                features_np[:, 8:16] = moments
-            else:
-                features_np = horizontal_flip(features_np, self.resample_points-1, 0.5, self.size, (res, res))
-                # features_np = rotate(features_np, self.coeff, 15, 0.5, (self.size, self.size))
-        else:
-            if self.moments:
-                moments = features_np[:, 8:16]
-                moments = log_moments(moments)
-                features_np[:, 8:16] = moments
+        features_amp = features[:, 8:8+(self.resample_points-1)]
+        features_phase = features[:, 8+(self.resample_points-1):8+2*(self.resample_points-1)]
+        moments = features[:, (8+2*(self.resample_points-1)):(16+2*(self.resample_points-1))]
+        front = math.ceil(self.coeff/2.)
+        back = self.coeff-front
+        assert (front+back) <= (self.resample_points-1)
+        colour_and_centroid = features[:, :8]
+        lbp = features[:, -10:]
+        features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), 1)
 
+        if self.augmentation:
+            moments = rotate_moments(moments, 0.5, 15)
+            moments = log_moments(moments)
+        
+            centroids, colour, features_amp, moments, lbp = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
+                                                  features_amp, moments, lbp, 0.5, self.size, (res, res))
+            colour_and_centroid = np.concatenate((centroids, colour), 1)
+        else:
+            moments = log_moments(moments)
+
+        features_np = np.concatenate((colour_and_centroid, features_amp, moments, lbp), 1)
         features = torch.tensor(features_np).float()
         # Colour augmentations
         if self.augmentation:
@@ -102,17 +105,6 @@ class ImageNetDataset(data.Dataset):
             
             features[:, 2:5] = color_space
 
-        
-        features_amp = features[:, 8:8+(self.resample_points-1)]
-        features_phase = features[:, 8+(self.resample_points-1):8+2*(self.resample_points-1)]
-        front = math.ceil(self.coeff/2.)
-        back = self.coeff-front
-        assert (front+back) == (self.resample_points-1)
-        colour_and_centroid = features[:, :8]
-        lbp = features[:, -10:]
-        features_amp = torch.cat((features_amp[:, :front], features_amp[:, -back:]), dim=1)
-        features_phase = torch.cat((features_phase[:, :front], features_phase[:, -back:]), dim=1)
-        features = torch.cat((colour_and_centroid, features_amp, features_phase, lbp), dim=1)
 
         target = torch.tensor(np.load(self.target_list[item]))
 
@@ -125,7 +117,7 @@ class ImageNetDataset(data.Dataset):
 
 class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
     def __init__(self, root, num_seg, coeff, size, compactness,
-                  transform, export_dir, ignore_phase, enforce_connectivity, moments) -> None:
+                  transform, export_dir, ignore_phase, enforce_connectivity) -> None:
         super().__init__(root, transform=transform)
         self.num_seg = num_seg
         self.compactness = compactness
@@ -133,7 +125,6 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
         self.export_dir = export_dir
         self.ignore_phase = ignore_phase
         self.enforce_connectivity = enforce_connectivity
-        self.moments = moments
 
         resample_points = int(((size**2)//num_seg)**0.5)*4
         self.resample_points = resample_points
@@ -301,11 +292,11 @@ class SPImageNetDataModule(pl.LightningDataModule):
         self.seed = kwargs.get('seed')
         self.dilation = kwargs.get('dilation')
         self.size = kwargs.get('size')
-        self.moments = kwargs.get('moments')
+
     
 
-        train_dataset = ImageNetDataset(train_dir, True, self.coeff, self.num_seg, self.size, self.moments)
-        test_dataset = ImageNetDataset(test_dir, False, self.coeff, self.num_seg, self.size, self.moments)
+        train_dataset = ImageNetDataset(train_dir, True, self.coeff, self.num_seg, self.size)
+        test_dataset = ImageNetDataset(test_dir, False, self.coeff, self.num_seg, self.size)
 
         self.train_source_loader = torch.utils.data.DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True,
                                                                num_workers =self.num_workers, drop_last=True)
