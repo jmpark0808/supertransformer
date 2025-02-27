@@ -58,8 +58,8 @@ class ImageNetDataset(data.Dataset):
 
     def __getitem__(self, item):
         
-        features_np = np.load(self.image_list[item])
-        res = int(features_np.shape[0]**0.5)
+        features = np.load(self.image_list[item])
+        res = int(features.shape[0]**0.5)
         # Spatial augmentation
         features_amp = features[:, 8:8+(self.resample_points-1)]
         features_phase = features[:, 8+(self.resample_points-1):8+2*(self.resample_points-1)]
