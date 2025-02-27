@@ -144,9 +144,7 @@ else:
 # Normalize phases: subtract reference phase from each coefficient
 fourier_result = np.abs(fourier_result) * np.exp(1j * (np.angle(fourier_result) - ref_phase))
 phase = np.angle(fourier_result)
-angle_major, angle_minor, length_major, length_minor = get_angle(contour_array)
-x_major, y_major = solve_triangle(length_major, angle_major)
-x_minor, y_minor = solve_triangle(length_minor, angle_minor)
+
 
 # Align phases relative to this component
 
@@ -163,14 +161,14 @@ ax[1, 0].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result
 ax[1, 0].set_ylabel('Amplitude')
 
 
-# ax[2, 0].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
+ax[2, 0].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
 # ax[2, 0].stem([0], [phase])
 # circ = plt.Circle((0, 0), radius=1, edgecolor='b', facecolor='None')
 # ax[2,0].add_patch(circ)
-ax[2,0].plot([0, x_major], [0, y_major])
-ax[2,0].plot([0, x_minor], [0, y_minor])
-ellipse = Ellipse([0,0], length_major*2, length_minor*2, angle_major, facecolor='none', edgecolor='red')
-ax[2, 0].add_patch(ellipse)
+# ax[2,0].plot([0, x_major], [0, y_major])
+# ax[2,0].plot([0, x_minor], [0, y_minor])
+# ellipse = Ellipse([0,0], length_major*2, length_minor*2, angle_major, facecolor='none', edgecolor='red')
+# ax[2, 0].add_patch(ellipse)
 ax[2, 0].set_ylabel('Phase')
 
 
@@ -205,7 +203,7 @@ ax[1, 1].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result
 
 
 
-# ax[2, 1].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
+ax[2, 1].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
 # ax[2,1].stem([0], [phase])
 # circ = plt.Circle((0, 0), radius=1, edgecolor='b', facecolor='None')
 # ax[2,1].add_patch(circ)
@@ -217,7 +215,7 @@ ax[1, 1].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result
 xc = np.mean(xi)
 yc = np.mean(yi)
 
-xi_rotate, yi_rotate = rotate([xc, yc], [xi, yi], math.radians(10))
+xi_rotate, yi_rotate = rotate([xc, yc], [xi, yi], math.radians(90))
 contour_array = np.stack((xi_rotate, yi_rotate), axis=1)
 contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
 contour_complex.real = contour_array[:, 0]
@@ -225,9 +223,9 @@ contour_complex.imag = contour_array[:, 1]
 fourier_result = np.fft.fft(contour_complex)
 
 
-angle_major, angle_minor, length_major, length_minor = get_angle(contour_array)
-x_major, y_major = solve_triangle(length_major, angle_major)
-x_minor, y_minor = solve_triangle(length_minor, angle_minor)
+# angle_major, angle_minor, length_major, length_minor = get_angle(contour_array)
+# x_major, y_major = solve_triangle(length_major, angle_major)
+# x_minor, y_minor = solve_triangle(length_minor, angle_minor)
 if np.abs(fourier_result[1]) > 1e-6:
     ref_phase = np.angle(fourier_result[1])
 else:
@@ -252,11 +250,11 @@ ax[1, 2].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result
 # ax[2,2].add_patch(circ)
 # ax[2,2].plot([0, major[0]], [0, major[1]])
 # ax[2,2].plot([0, minor[0]], [0, minor[1]])
-ax[2,2].plot([0, x_major], [0, y_major])
-ax[2,2].plot([0, x_minor], [0, y_minor])
-ellipse = Ellipse([0,0], length_major*2, length_minor*2, angle_major, facecolor='none', edgecolor='red')
-ax[2, 2].add_patch(ellipse)
-# ax[2, 2].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
+# ax[2,2].plot([0, x_major], [0, y_major])
+# ax[2,2].plot([0, x_minor], [0, y_minor])
+# ellipse = Ellipse([0,0], length_major*2, length_minor*2, angle_major, facecolor='none', edgecolor='red')
+# ax[2, 2].add_patch(ellipse)
+ax[2, 2].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
 # ax[2,2].stem([0], [phase])
 
 
@@ -293,15 +291,15 @@ ax[1, 3].stem(np.linspace(0, np.pi, len(fourier_result))[1:], abs(fourier_result
 # ax[1, 3].plot(fourier_result.real[1:], label='Real')
 # ax[1, 3].plot(fourier_result.imag[1:], label='Imag')
 # ax[1, 3].legend(loc='lower left')
-# ax[2, 3].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
+ax[2, 3].stem(np.linspace(0, np.pi, len(fourier_result))[1:], phase[1:], 'b', markerfmt=" ", basefmt="-b")
 # circ = plt.Circle((0, 0), radius=1, edgecolor='b', facecolor='None')
 # ax[2,3].add_patch(circ)
 # ax[2,3].plot([0, major[0]], [0, major[1]])
 # ax[2,3].plot([0, minor[0]], [0, minor[1]])
-ax[2,3].plot([0, x_major], [0, y_major])
-ax[2,3].plot([0, x_minor], [0, y_minor])
-ellipse = Ellipse([0,0], length_major*2, length_minor*2, angle_major, facecolor='none', edgecolor='red')
-ax[2, 3].add_patch(ellipse)
+# ax[2,3].plot([0, x_major], [0, y_major])
+# ax[2,3].plot([0, x_minor], [0, y_minor])
+# ellipse = Ellipse([0,0], length_major*2, length_minor*2, angle_major, facecolor='none', edgecolor='red')
+# ax[2, 3].add_patch(ellipse)
 
 
 

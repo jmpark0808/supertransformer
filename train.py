@@ -239,8 +239,8 @@ if __name__ == "__main__":
                         , default=False, action="store_true")
     parser.add_argument('--ec', help='Whether to enforce connectivity or not'
                         , default=False, action="store_true")
-    parser.add_argument('--moments', help='Whether to use moments vs Fourier Descriptors'
-                        , default=False, action="store_true")
+    parser.add_argument('--aug_strat', help='Data augmentation strategy (between 1 and 4)', type=int, default=4)
+    
 
 
     import torch 

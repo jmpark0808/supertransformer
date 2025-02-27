@@ -82,11 +82,49 @@ def get_rotation(image):
     return math.degrees(orientation), x1, y1, x2, y2, x0, y0
 
 
+def get_pca_rotation(image):
+     # Convert contour to (N, 2) shape
+    contour = np.array(np.nonzero(image)).transpose((1,0))
+    
+    # Compute the mean (centroid)
+    mean = np.mean(contour, axis=0)
+
+    # Center the points
+    centered = contour - mean
+
+    # Compute the covariance matrix and get eigenvectors
+    cov_matrix = np.cov(centered, rowvar=False)
+    eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)  # Ensures sorted order
+
+    # The principal eigenvector (largest eigenvalue)
+    principal_vector = eigenvectors[:, 1]  # Last column is the major axis
+
+    # Compute the angle with respect to the x-axis
+    angle_rad = np.arctan2(principal_vector[1], principal_vector[0])
+    angle_deg = np.degrees(angle_rad)
+
+    # Ensure the angle is in [0, 360)
+    # if angle_deg < 0:
+    #     angle_deg += 360
+
+    y0, x0 = mean
+    orientation = math.radians(angle_deg)
+    minor_axis_length = eigenvalues[0]
+    major_axis_length = eigenvalues[1]
+    x1 = x0 + np.cos(orientation) * 0.5 * minor_axis_length
+    y1 = y0 - np.sin(orientation) * 0.5 * minor_axis_length
+
+    x2 = x0 - np.sin(orientation) * 0.5 * major_axis_length
+    y2 = y0 - np.cos(orientation) * 0.5 * major_axis_length
+
+    return angle_deg, x1, y1, x2, y2, x0, y0
+
+
 for i in range(0, 360, 10):
     img = Image.fromarray(rectangle)
     img = img.rotate(i)
     img_np = np.array(img)
-    degrees, x1, y1, x2, y2, x0, y0 = get_rotation(img_np)
+    degrees, x1, y1, x2, y2, x0, y0 = get_pca_rotation(img_np)
 
 
     plt.imshow(img)

@@ -25,6 +25,46 @@ def horizontal_flip(array, coeff, chance, size, resolution, seq_mask=None):
         return array, seq_mask
     else:
         return array
+    
+
+    
+def horizontal_flip_moments(centroids, colour, amp, moments, lbp, chance, size, resolution, seq_mask=None):
+    if np.random.random() < chance:
+        # Flip centroids
+        xs = centroids[:, 1]
+        centroids[:, 1] = size - xs
+        # Flip moments
+        moments = moments*np.array([1, -1, 1, 1, -1, 1, 1, -1]) 
+        # LR all
+        centroids = centroids.reshape(resolution[0], resolution[1], -1)
+        centroids = np.fliplr(centroids)
+        centroids = centroids.reshape(resolution[0]*resolution[1], -1)
+
+        colour = colour.reshape(resolution[0], resolution[1], -1)
+        colour = np.fliplr(colour)
+        colour = colour.reshape(resolution[0]*resolution[1], -1)
+
+        amp = amp.reshape(resolution[0], resolution[1], -1)
+        amp = np.fliplr(amp)
+        amp = amp.reshape(resolution[0]*resolution[1], -1)
+
+        moments = moments.reshape(resolution[0], resolution[1], -1)
+        moments = np.fliplr(moments)
+        moments = moments.reshape(resolution[0]*resolution[1], -1)
+
+        lbp = lbp.reshape(resolution[0], resolution[1], -1)
+        lbp = np.fliplr(lbp)
+        lbp = lbp.reshape(resolution[0]*resolution[1], -1)
+
+        
+        if seq_mask is not None:
+            seq_mask = seq_mask.reshape(resolution[0], resolution[1])
+            seq_mask= np.fliplr(seq_mask)
+            seq_mask= seq_mask.reshape(-1)
+    if seq_mask is not None:
+        return centroids, colour, amp, moments, lbp, seq_mask
+    else:
+        return centroids, colour, amp, moments, lbp
 
 def rotate_points(origin, point, angle):
     """

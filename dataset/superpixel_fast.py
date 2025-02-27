@@ -111,7 +111,7 @@ class RandomColorJitter(object):
 
 
 class ToTensorSPFFT(object):
-    def __init__(self, num_seg, compactness, coeff, size, ignore_phase, enforce_connectivity, moments):
+    def __init__(self, num_seg, compactness, coeff, size, ignore_phase, enforce_connectivity):
         self.tensor = transforms.ToTensor()
         self.num_seg = num_seg
         self.coeff = coeff
@@ -120,7 +120,7 @@ class ToTensorSPFFT(object):
         self.ec = enforce_connectivity
         resample_points = int(((size**2)//num_seg)**0.5)*4
         self.resample_points = resample_points
-        self.moments = moments
+
         
         def fourier_descriptors(region):
             moments = compute_central_moments(region)
@@ -360,11 +360,10 @@ class ToTensorSP(object):
 class SPDatasetExport(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, compactness,
                   dataloader,  coeff=None,
-                    ignore_phase=False, enforce_connectivity=False, moments=False):
+                    ignore_phase=False, enforce_connectivity=False):
         self.image_list = image_list
         self.mask_list = mask_list
         self.ec = enforce_connectivity
-        self.moments = moments
         self.resize_mask = ResizeMask(size)
         
     
@@ -374,7 +373,7 @@ class SPDatasetExport(data.Dataset):
         self.coeff = coeff
         
         if dataloader == 'SPFFFT' or dataloader == 'SPFRS':
-            totensor = ToTensorSPFFT(num_seg, compactness, coeff, size, ignore_phase, enforce_connectivity, moments)
+            totensor = ToTensorSPFFT(num_seg, compactness, coeff, size, ignore_phase, enforce_connectivity)
         else:
             totensor = ToTensorSP(num_seg, compactness)
         # totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
@@ -425,7 +424,7 @@ class SPDatasetExport(data.Dataset):
 
 class SPDataset(data.Dataset):
     def __init__(self, image_list, mask_list, num_seg, size, 
-                  dataloader, data_augmentation=True, coeff=None, moments=False):
+                  dataloader, data_augmentation=True, coeff=None, aug_strat=4):
         self.image_list = image_list
         self.mask_list = mask_list
         self.resize_mask = ResizeMask(size)
@@ -435,7 +434,8 @@ class SPDataset(data.Dataset):
         self.coeff = coeff
         self.data_augmentation = data_augmentation
         self.resample_points = int(((size**2)//num_seg)**0.5)*4
-        self.moments = moments
+        self.aug_strat = 4
+
             
 
     def __len__(self):
@@ -473,36 +473,36 @@ class SPDataset(data.Dataset):
         # features = np.concatenate((features_first, amp_front, amp_back, phase_front, phase_back, features_last), axis=1)
         features_amp = features[:, 8:8+(self.resample_points-1)]
         features_phase = features[:, 8+(self.resample_points-1):8+2*(self.resample_points-1)]
+        moments = features[:, (8+2*(self.resample_points-1)):(16+2*(self.resample_points-1))]
         front = math.ceil(self.coeff/2.)
         back = self.coeff-front
-        assert (front+back) == (self.resample_points-1)
+        assert (front+back) <= (self.resample_points-1)
         colour_and_centroid = features[:, :8]
         lbp = features[:, -10:]
-        features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), 1)
-        features_phase = np.concatenate((features_phase[:, :front], features_phase[:, -back:]), 1)
-        features = np.concatenate((colour_and_centroid, features_amp, features_phase, lbp), 1)
+        features_amp = torch.cat((features_amp[:, :front], features_amp[:, -back:]), dim=1)
+        
         
         # plt.bar(np.arange(take*2),np.concatenate((amp_front, amp_back), axis=1)[0])
         # plt.show()
-        if self.moments:
-            assert(features.shape[1] == (8+8+10))
-        
+         
         if self.data_augmentation:
-            if self.moments:
-                moments = features[:, 8:16]
-                moments = rotate_moments(moments, 0.5, 15)
-                moments = flip_moments(moments, 0.5)
-                moments = log_moments(moments)
-                features[:, 8:16] = moments
+            moments = rotate_moments(moments, 0.5, 15)
+            moments = log_moments(moments)
 
+            if self.aug_strat >= 1:
+                centroids, colour, features_amp, moments, lbp = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
+                                                    features_amp, moments, lbp, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
             else:
-                features, seq_mask = horizontal_flip(features, self.resample_points-1, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
-                # features = rotate(features, self.coeff, 15, 0.5, (self.size, self.size))
-            
+                centroids, colour = colour_and_centroid[:, :2], colour_and_centroid[:, 2:]
+            colour_and_centroid = np.concatenate((centroids, colour), 1)
+            # features = rotate(features, self.coeff, 15, 0.5, (self.size, self.size))
+        else:
+            moments = log_moments(moments)
 
-        features = torch.tensor(features).float()
+        features_np = np.concatenate((colour_and_centroid, features_amp, moments, lbp), 1)
+        features = torch.tensor(features_np).float()
         
-        if self.data_augmentation:
+        if self.data_augmentation and self.aug_strat >= 3:
             randaug = RandAugment(5)
             res = int(self.num_seg**0.5)
             color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
@@ -516,7 +516,8 @@ class SPDataset(data.Dataset):
             color_space = color_space.reshape(3, self.num_seg).permute(1, 0)
             
             features[:, 2:5] = color_space
-    
+        
+
         return {'features': features, 'seq_mask': torch.tensor(seq_mask),
                  'segments': torch.tensor(segments), 'mask': mask, 
                    'file_name':self.image_list[item]}
@@ -574,36 +575,17 @@ class SPOGMaskDataset(data.Dataset):
         # features = np.concatenate((features_first, amp_front, amp_back, phase_front, phase_back, features_last), axis=1)
         features_amp = features[:, 8:8+(self.resample_points-1)]
         features_phase = features[:, 8+(self.resample_points-1):8+2*(self.resample_points-1)]
+        moments = features[:, (8+2*(self.resample_points-1)):(16+2*(self.resample_points-1))]
         front = math.ceil(self.coeff/2.)
         back = self.coeff-front
-        assert (front+back) == (self.resample_points-1)
+        assert (front+back) <= (self.resample_points-1)
         colour_and_centroid = features[:, :8]
         lbp = features[:, -10:]
-        features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), 1)
-        features_phase = np.concatenate((features_phase[:, :front], features_phase[:, -back:]), 1)
-        features = np.concatenate((colour_and_centroid, features_amp, features_phase, lbp), 1)
+        features_amp = torch.cat((features_amp[:, :front], features_amp[:, -back:]), dim=1)
         
-        if self.data_augmentation:
-            features, seq_mask = horizontal_flip(features, self.resample_points-1, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
-            # features = rotate(features, self.coeff, 15, 0.5, (self.size, self.size))
-            
-
+        features_np = np.concatenate((colour_and_centroid, features_amp, moments, lbp), 1)
         features = torch.tensor(features).float()
         
-        if self.data_augmentation:
-            randaug = RandAugment(5)
-            res = int(self.num_seg**0.5)
-            color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
-            if np.random.random() < 0.5:
-                color_space = (color_space*255).to(torch.uint8)
-                color_space = randaug(color_space)
-                color_space = color_space.float()
-                color_space /= 255.
-            # plt.imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
-            # plt.show()
-            color_space = color_space.reshape(3, self.num_seg).permute(1, 0)
-            
-            features[:, 2:5] = color_space
     
         return {'features': features, 'seq_mask': torch.tensor(seq_mask),
                  'segments': torch.tensor(segments), 'mask': mask, 
@@ -629,7 +611,6 @@ class SPFDataModule(pl.LightningDataModule):
         self.debug = kwargs.get('debug', False)
         self.skip_train = kwargs.get('skip_train')
         self.ec = kwargs.get('ec')
-        self.moments = kwargs.get('moments')
         
         if not self.skip_train:
             self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
@@ -652,7 +633,7 @@ class SPFDataModule(pl.LightningDataModule):
 
             dummy_tr = SPDatasetExport(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.compactness, self.dataloader,
-                                  self.coeff, self.ignore_phase, self.ec, self.moments)
+                                  self.coeff, self.ignore_phase, self.ec)
             dummy_tr_loader = DataLoader(
                     dummy_tr, batch_size=1, 
                     num_workers=self.num_workers, shuffle=False, pin_memory=False)
@@ -664,7 +645,7 @@ class SPFDataModule(pl.LightningDataModule):
 
             dummy_val = SPDatasetExport(self.val_image_list, self.val_mask_list, self.num_seg,
                                 self.res, self.compactness, self.dataloader, 
-                                    self.coeff, self.ignore_phase, self.ec, self.moments)
+                                    self.coeff, self.ignore_phase, self.ec)
             
             dummy_val_loader = DataLoader(
                 dummy_val, batch_size=1, 
@@ -686,7 +667,7 @@ class SPFDataModule(pl.LightningDataModule):
        
         dummy_test = SPDatasetExport(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.dataloader, 
-                               self.coeff, self.ignore_phase, self.ec, self.moments)
+                               self.coeff, self.ignore_phase, self.ec)
         
         dummy_test_loader = DataLoader(
                 dummy_test, batch_size=1, 
@@ -704,7 +685,7 @@ class SPFDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.dataloader, True,
-                                  self.coeff, self.moments)
+                                  self.coeff)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=True, drop_last=True)
@@ -752,7 +733,7 @@ class SPFRSDataModule(pl.LightningDataModule):
         self.debug = kwargs.get('debug', False)
         self.skip_train = kwargs.get('skip_train')
         self.ec = kwargs.get('ec')
-        self.moments = kwargs.get('moments')
+        self.aug_strat = kwargs.get('aug_strat')
 
         
         if not self.skip_train:
@@ -769,7 +750,7 @@ class SPFRSDataModule(pl.LightningDataModule):
 
             dummy_tr = SPDatasetExport(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.compactness, self.dataloader,
-                                  self.coeff, self.ignore_phase, self.ec, self.moments)
+                                  self.coeff, self.ignore_phase, self.ec)
             dummy_tr_loader = DataLoader(
                     dummy_tr, batch_size=1, 
                     num_workers=self.num_workers, shuffle=False, pin_memory=False)
@@ -792,7 +773,7 @@ class SPFRSDataModule(pl.LightningDataModule):
        
         dummy_test = SPDatasetExport(self.test_image_list, self.test_mask_list, self.num_seg,
                                self.res,  self.compactness, self.dataloader, 
-                               self.coeff, self.ignore_phase, self.ec, self.moments)
+                               self.coeff, self.ignore_phase, self.ec)
         
         dummy_test_loader = DataLoader(
                 dummy_test, batch_size=1, 
@@ -810,7 +791,7 @@ class SPFRSDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.dataloader, True,
-                                  self.coeff, self.moments)
+                                  self.coeff, self.aug_strat)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=True, drop_last=True)

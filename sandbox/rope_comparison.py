@@ -57,6 +57,7 @@ def apply_rotary_emb(
     xk: torch.Tensor,
     freqs_cis: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
+    print(xq.size())
     xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
     xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
     print(xq_.size())
@@ -108,7 +109,7 @@ freqs_cis = compute_cis(freqs, t_x, t_y)
 q = torch.randn((1, 1, 1, 16))
 q = q.repeat(1, 2, 81, 1)
 k = q
-
+print(freqs_cis.size())
 q, k = apply_rotary_emb(q, k, freqs_cis)
 
 
