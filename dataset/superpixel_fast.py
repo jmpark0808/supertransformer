@@ -479,7 +479,7 @@ class SPDataset(data.Dataset):
         assert (front+back) <= (self.resample_points-1)
         colour_and_centroid = features[:, :8]
         lbp = features[:, -10:]
-        features_amp = torch.cat((features_amp[:, :front], features_amp[:, -back:]), dim=1)
+        features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), axis=1)
         
         
         # plt.bar(np.arange(take*2),np.concatenate((amp_front, amp_back), axis=1)[0])
@@ -490,7 +490,7 @@ class SPDataset(data.Dataset):
             moments = log_moments(moments)
 
             if self.aug_strat >= 1:
-                centroids, colour, features_amp, moments, lbp = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
+                centroids, colour, features_amp, moments, lbp, seq_mask = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
                                                     features_amp, moments, lbp, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
             else:
                 centroids, colour = colour_and_centroid[:, :2], colour_and_centroid[:, 2:]
