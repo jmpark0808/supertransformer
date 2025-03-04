@@ -202,7 +202,8 @@ class ToTensorSPFFT(object):
             max_num_iter=10,
             convert2lab=True,
             enforce_connectivity=False,
-            slic_zero=False)
+            slic_zero=True)
+       
 
         # plt.imshow(mark_boundaries(img_np, segments))
         # plt.show()
@@ -472,6 +473,7 @@ class SPDataset(data.Dataset):
         # phase_back = features[:, (8+self.resample_points*2-take):(8+self.resample_points*2)]
         # features = np.concatenate((features_first, amp_front, amp_back, phase_front, phase_back, features_last), axis=1)
         features_amp = features[:, 8:8+(self.resample_points-1)]
+        res = int(features.shape[0]**0.5)
         features_phase = features[:, 8+(self.resample_points-1):8+2*(self.resample_points-1)]
         moments = features[:, (8+2*(self.resample_points-1)):(16+2*(self.resample_points-1))]
         front = math.ceil(self.coeff/2.)
@@ -490,7 +492,7 @@ class SPDataset(data.Dataset):
             centroids, colour, features_amp, features_phase, lbp = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
                                                   features_amp, features_phase, lbp, 0.5, self.size, (res, res))
 
-            centroids, features_phase = rotate(centroids, features_phase, 15, 0.5, self.size)
+            centroids, features_phase = rotate(centroids, features_phase, 15, 0.5, (self.size, self.size))
             colour_and_centroid = np.concatenate((centroids, colour), 1)
 
             # if self.aug_strat >= 1:
@@ -501,7 +503,7 @@ class SPDataset(data.Dataset):
             # colour_and_centroid = np.concatenate((centroids, colour), 1)
             
 
-        features_np = np.concatenate((colour_and_centroid, features_amp, moments, lbp), 1)
+        features_np = np.concatenate((colour_and_centroid, features_amp, features_phase, lbp), 1)
         features = torch.tensor(features_np).float()
         
         if self.data_augmentation and self.aug_strat >= 3:
