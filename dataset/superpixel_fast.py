@@ -126,16 +126,8 @@ class ToTensorSPFFT(object):
             moments = compute_central_moments(region)
             region = (region*255).astype(np.uint8)
             contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            if len(contour)>1:
-                merged_contour = merge_contours(contour)
-
-                points = np.array(merged_contour).reshape((-1, 2)).astype(np.int32)
-
-                indices_y = np.argwhere(points[:, 1]==np.min(points[:, 1])) # smallest y
-                indices_x = np.argmin(points[indices_y, 0])
-                points = np.roll(points, -indices_y[indices_x], axis=0)
-            else:
-                points = contour[0][:, 0, :]
+            
+            points = contour[0][:, 0, :]
             xi, yi = resample_2d(points, resample_points)
             contour_array = np.stack((xi, yi), axis=1)
 
@@ -202,7 +194,7 @@ class ToTensorSPFFT(object):
             max_num_iter=10,
             convert2lab=True,
             enforce_connectivity=False,
-            slic_zero=True)
+            slic_zero=False)
        
 
         # plt.imshow(mark_boundaries(img_np, segments))
@@ -464,22 +456,18 @@ class SPDataset(data.Dataset):
         segments = np.load(sp_file_path_segments)
         mask = np.load(sp_file_path_mask)
         
-        # features_amp = features[:, 8:8+(self.resample_points-1)]
-        # res = int(features.shape[0]**0.5)
-        # features_phase = features[:, 8+(self.resample_points-1):8+2*(self.resample_points-1)]
-        # moments = features[:, (8+2*(self.resample_points-1)):(16+2*(self.resample_points-1))]
-        # front = math.ceil(self.coeff/2.)
-        # back = self.coeff-front
-        # assert (front+back) <= (self.resample_points-1)
-        # colour_and_centroid = features[:, :8]
-        # lbp = features[:, -10:]
-        # features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), axis=1)
-        # features_phase = np.concatenate((features_phase[:, :front], features_phase[:, -back:]), axis=1)
+        features_amp = features[:, 8:8+(self.resample_points-1)]
         res = int(features.shape[0]**0.5)
+        features_phase = features[:, 8+(self.resample_points-1):8+2*(self.resample_points-1)]
+        moments = features[:, (8+2*(self.resample_points-1)):(16+2*(self.resample_points-1))]
+        front = math.ceil(self.coeff/2.)
+        back = self.coeff-front
+        assert (front+back) <= (self.resample_points-1)
         colour_and_centroid = features[:, :8]
         lbp = features[:, -10:]
-        features_amp = features[:, 8:8+self.coeff]
-        features_phase = features[:, (8+self.coeff):(8+2*self.coeff)]
+        features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), axis=1)
+        features_phase = np.concatenate((features_phase[:, :front], features_phase[:, -back:]), axis=1)
+        
         
         # plt.bar(np.arange(take*2),np.concatenate((amp_front, amp_back), axis=1)[0])
         # plt.show()
