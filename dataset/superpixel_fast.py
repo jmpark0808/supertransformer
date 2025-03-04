@@ -202,7 +202,7 @@ class ToTensorSPFFT(object):
             max_num_iter=10,
             convert2lab=True,
             enforce_connectivity=False,
-            slic_zero=True)
+            slic_zero=False)
 
         # plt.imshow(mark_boundaries(img_np, segments))
         # plt.show()
@@ -581,10 +581,10 @@ class SPOGMaskDataset(data.Dataset):
         assert (front+back) <= (self.resample_points-1)
         colour_and_centroid = features[:, :8]
         lbp = features[:, -10:]
-        features_amp = torch.cat((features_amp[:, :front], features_amp[:, -back:]), dim=1)
+        features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), axis=1)
         
         features_np = np.concatenate((colour_and_centroid, features_amp, moments, lbp), 1)
-        features = torch.tensor(features).float()
+        features = torch.tensor(features_np).float()
         
     
         return {'features': features, 'seq_mask': torch.tensor(seq_mask),

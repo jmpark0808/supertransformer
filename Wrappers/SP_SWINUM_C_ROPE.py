@@ -51,7 +51,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
                                        embed_dim=self.dims, depths=self.depths,
                                          num_heads=self.heads, mlp_ratio=self.mlp_ratio, attn_drop_rate=self.dropout_edge, drop_rate=self.dropout,
-                                         drop_path_rate=self.dp)
+                                         qkv_bias=False, drop_path_rate=self.dp)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
         kwargs['parameters'] = parameter_count(self.supert)['']
@@ -74,10 +74,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         if self.pretrain:
             checkpoint = torch.load(self.pretrain)
             for key in list(checkpoint['state_dict'].keys()):
-                if 'attn_mask' in key:
-                    checkpoint['state_dict'].pop(key)
-                else:
-                    checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
+                checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
             
             self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
         
