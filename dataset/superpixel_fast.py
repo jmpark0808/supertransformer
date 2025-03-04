@@ -464,26 +464,21 @@ class SPDataset(data.Dataset):
         segments = np.load(sp_file_path_segments)
         mask = np.load(sp_file_path_mask)
         
-        # features_first = features[:, :8]
-        # features_last = features[:, -10:]
-        # take = self.coeff//2
-        # amp_front = features[:, 8:(8+take)]
-        # amp_back = features[:, (8+self.resample_points-take):(8+self.resample_points)]
-        # phase_front = features[:, (8+self.resample_points):(8+self.resample_points)+take]
-        # phase_back = features[:, (8+self.resample_points*2-take):(8+self.resample_points*2)]
-        # features = np.concatenate((features_first, amp_front, amp_back, phase_front, phase_back, features_last), axis=1)
-        features_amp = features[:, 8:8+(self.resample_points-1)]
-        res = int(features.shape[0]**0.5)
-        features_phase = features[:, 8+(self.resample_points-1):8+2*(self.resample_points-1)]
-        moments = features[:, (8+2*(self.resample_points-1)):(16+2*(self.resample_points-1))]
-        front = math.ceil(self.coeff/2.)
-        back = self.coeff-front
-        assert (front+back) <= (self.resample_points-1)
+        # features_amp = features[:, 8:8+(self.resample_points-1)]
+        # res = int(features.shape[0]**0.5)
+        # features_phase = features[:, 8+(self.resample_points-1):8+2*(self.resample_points-1)]
+        # moments = features[:, (8+2*(self.resample_points-1)):(16+2*(self.resample_points-1))]
+        # front = math.ceil(self.coeff/2.)
+        # back = self.coeff-front
+        # assert (front+back) <= (self.resample_points-1)
+        # colour_and_centroid = features[:, :8]
+        # lbp = features[:, -10:]
+        # features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), axis=1)
+        # features_phase = np.concatenate((features_phase[:, :front], features_phase[:, -back:]), axis=1)
         colour_and_centroid = features[:, :8]
         lbp = features[:, -10:]
-        features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), axis=1)
-        features_phase = np.concatenate((features_phase[:, :front], features_phase[:, -back:]), axis=1)
-        
+        features_amp = features[:, 8:8+self.coeff]
+        features_phase = features[:, (8+self.coeff):(8+2*self.coeff)]
         
         # plt.bar(np.arange(take*2),np.concatenate((amp_front, amp_back), axis=1)[0])
         # plt.show()
