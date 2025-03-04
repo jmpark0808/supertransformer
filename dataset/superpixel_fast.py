@@ -475,6 +475,7 @@ class SPDataset(data.Dataset):
         # lbp = features[:, -10:]
         # features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), axis=1)
         # features_phase = np.concatenate((features_phase[:, :front], features_phase[:, -back:]), axis=1)
+        res = int(features.shape[0]**0.5)
         colour_and_centroid = features[:, :8]
         lbp = features[:, -10:]
         features_amp = features[:, 8:8+self.coeff]
