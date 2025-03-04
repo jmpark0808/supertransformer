@@ -480,24 +480,26 @@ class SPDataset(data.Dataset):
         colour_and_centroid = features[:, :8]
         lbp = features[:, -10:]
         features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), axis=1)
+        features_phase = np.concatenate((features_phase[:, :front], features_phase[:, -back:]), axis=1)
         
         
         # plt.bar(np.arange(take*2),np.concatenate((amp_front, amp_back), axis=1)[0])
         # plt.show()
          
         if self.data_augmentation:
-            moments = rotate_moments(moments, 0.5, 15)
-            moments = log_moments(moments)
+            centroids, colour, features_amp, features_phase, lbp = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
+                                                  features_amp, features_phase, lbp, 0.5, self.size, (res, res))
 
-            if self.aug_strat >= 1:
-                centroids, colour, features_amp, moments, lbp, seq_mask = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
-                                                    features_amp, moments, lbp, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
-            else:
-                centroids, colour = colour_and_centroid[:, :2], colour_and_centroid[:, 2:]
+            centroids, features_phase = rotate(centroids, features_phase, 15, 0.5, self.size)
             colour_and_centroid = np.concatenate((centroids, colour), 1)
-            # features = rotate(features, self.coeff, 15, 0.5, (self.size, self.size))
-        else:
-            moments = log_moments(moments)
+
+            # if self.aug_strat >= 1:
+            #     centroids, colour, features_amp, moments, lbp, seq_mask = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
+            #                                         features_amp, moments, lbp, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
+            # else:
+            #     centroids, colour = colour_and_centroid[:, :2], colour_and_centroid[:, 2:]
+            # colour_and_centroid = np.concatenate((centroids, colour), 1)
+            
 
         features_np = np.concatenate((colour_and_centroid, features_amp, moments, lbp), 1)
         features = torch.tensor(features_np).float()

@@ -70,16 +70,15 @@ class ImageNetDataset(data.Dataset):
         colour_and_centroid = features[:, :8]
         lbp = features[:, -10:]
         features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), 1)
+        features_phase = np.concatenate((features_phase[:, :front], features_phase[:, -back:]), 1)
 
         if self.augmentation:
-            moments = rotate_moments(moments, 0.5, 15)
-            moments = log_moments(moments)
-        
-            centroids, colour, features_amp, moments, lbp = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
-                                                  features_amp, moments, lbp, 0.5, self.size, (res, res))
+            centroids, colour, features_amp, features_phase, lbp = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
+                                                  features_amp, features_phase, lbp, 0.5, self.size, (res, res))
+
+            centroids, features_phase = rotate(centroids, features_phase, 15, 0.5, self.size)
             colour_and_centroid = np.concatenate((centroids, colour), 1)
-        else:
-            moments = log_moments(moments)
+        
 
         features_np = np.concatenate((colour_and_centroid, features_amp, moments, lbp), 1)
         features = torch.tensor(features_np).float()

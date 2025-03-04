@@ -34,7 +34,12 @@ def horizontal_flip_moments(centroids, colour, amp, moments, lbp, chance, size, 
         xs = centroids[:, 1]
         centroids[:, 1] = size - xs
         # Flip moments
-        moments = moments*np.array([1, -1, 1, 1, -1, 1, 1, -1]) 
+        phase = moments
+        mask = phase > 0
+        phase_flipped = np.empty_like(phase)
+        phase_flipped[mask] = np.pi - phase[mask]
+        phase_flipped[~mask] = -np.pi - phase[~mask]
+        moments = phase_flipped
         # LR all
         centroids = centroids.reshape(resolution[0], resolution[1], -1)
         centroids = np.fliplr(centroids)
@@ -81,25 +86,24 @@ def rotate_points(origin, point, angle):
     qy[zeros] = 0
     return qx, qy
 
-def rotate(array, coeff, degrees, chance, size):
+def rotate(centroids, phase, degrees, chance, size):
     if np.random.random() < chance:
-        phase = array[:, 8+coeff:8+2*coeff]
         random_degrees = np.random.randint(-degrees, degrees)
         radians = math.radians(random_degrees)
         new_phase = phase + radians
         ys = np.sin(new_phase)
         xs = np.cos(new_phase)
         phase = np.arctan2(ys, xs)
-        array[:, 8+coeff:8+2*coeff] = phase
 
-        ys = array[:, 0]
-        xs = array[:, 1]
+
+        ys = centroids[:, 0]
+        xs = centroids[:, 1]
         new_xs, new_ys = rotate_points([size[0]//2, size[1]//2], [xs, ys], radians)
-        array[:, 0] = new_ys
-        array[:, 1] = new_xs
+        centroids[:, 0] = new_ys
+        centroids[:, 1] = new_xs
 
 
-    return array
+    return centroids, phase
 # import matplotlib.pyplot as plt
 # fig, ax = plt.subplots(1, 2)
 # random_phase = np.random.random(70)*2*np.pi-np.pi
