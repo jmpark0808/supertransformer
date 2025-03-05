@@ -277,10 +277,10 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
         pred = self.forward(features)
         res = int(self.num_seg**0.5)
-        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
+        pred_numpy = torch.sigmoid(pred).detach().cpu() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
         batch_size = mask.shape[0]
-        img_size = mask.shape[2]
+        img_size = self.size
         segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
         if torch.sum(segments) != 0 :
@@ -290,6 +290,8 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
             samples = []
             for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
                 plt_image = masked[labels-1].reshape([img_size, img_size])
+                plt_image = F.interpolate(plt_image.unsqueeze(0).unsqueeze(0), (mask.size(2), mask.size(3)), mode='bilinear')
+                
                 samples.append(plt_image)
 
             samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
