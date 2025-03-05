@@ -229,7 +229,7 @@ class ToTensorSPFFT(object):
         # features = np.zeros([self.num_seg, 8+(self.resample_points-1)*2+10])
        
 
-        features = np.zeros([self.num_seg, 8+((self.resample_points-1)*2)*2+8+10])
+        features = np.zeros([self.num_seg, 8+((self.resample_points-1)*2)+8+10])
         
         # for i in range((self.resample_points-1)*2):
         for i in range((self.resample_points-1)*2+8):
@@ -498,7 +498,7 @@ class SPDataset(data.Dataset):
         else:
             moments = log_moments(moments)
 
-        features_np = np.concatenate((colour_and_centroid, moments, lbp), 1)
+        features_np = np.concatenate((colour_and_centroid, features_amp, moments, lbp), 1)
         features = torch.tensor(features_np).float()
         
         if self.data_augmentation and self.aug_strat >= 3:

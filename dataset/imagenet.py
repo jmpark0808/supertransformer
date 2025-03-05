@@ -81,7 +81,7 @@ class ImageNetDataset(data.Dataset):
         else:
             moments = log_moments(moments)
 
-        features_np = np.concatenate((colour_and_centroid, moments, lbp), 1)
+        features_np = np.concatenate((colour_and_centroid, features_amp, moments, lbp), 1)
         features = torch.tensor(features_np).float()
         # Colour augmentations
         if self.augmentation:

@@ -1,46 +1,29 @@
 import numpy as np
-from skimage.measure import regionprops, label
-import matplotlib.pyplot as plt
-import math
-image = np.zeros((100, 100), dtype=np.uint8)
-rr, cc = np.ogrid[0:100, 0:100]
-ellipse = ((rr - 50) ** 2 / 30 ** 2 + (cc - 50) ** 2 / 20 ** 2) <= 1
-image[ellipse] = 1
 
-# Label the image and calculate region properties
-labeled_image = label(image)
-regions = regionprops(labeled_image)
+cvpr_dataset = '/home/eddie/Datasets/DUTS-3136/DUTS/DUTS-TR/SPFFFT/ILSVRC2012_test_00000004_features.npy'
+new_dataset = '/home/eddie/Datasets/DUTS/DUTS-TR/SPFFFT/ILSVRC2012_test_00000004_features.npy'
 
-# Get the first (and only) region
-region = regions[0]
+cvpr = np.load(cvpr_dataset)
+new = np.load(new_dataset)
 
-# Extract major and minor axis lengths
-major_axis_length = region.major_axis_length
-minor_axis_length = region.minor_axis_length
 
-# print(major_axis_length)
-# print(minor_axis_length)
-# assert(0)
-# Calculate orientation (angle of the major axis)
-orientation = region.orientation
+for i in range(cvpr.shape[0]):
+    
+    print(new[i, :].shape)
+    cvpr_amp = cvpr[i, 8:18]
+    cvpr_phase = cvpr[i, 18:28]
+    cvpr_lbp = cvpr[i, 28:]
+    new_amp = new[i, 8:23]
+    new_phase = new[i, 23:38]
+    new_moments = new[i, 38:46]
+    new_lbp = new[i, 46:]
 
-# Calculate endpoints of major and minor axes
-y0, x0 = region.centroid
-x1 = x0 + np.cos(orientation) * 0.5 * minor_axis_length
-y1 = y0 - np.sin(orientation) * 0.5 * minor_axis_length
+    print(cvpr_amp)
+    print(cvpr_phase)
+    print(cvpr_lbp)
 
-x2 = x0 - np.sin(orientation) * 0.5 * major_axis_length
-y2 = y0 - np.cos(orientation) * 0.5 * major_axis_length
-
-# Plot the results
-fig, ax = plt.subplots()
-ax.imshow(image, cmap=plt.cm.gray)
-ax.plot((x0, x1), (y0, y1), '-r', linewidth=2.5)
-ax.plot((x0, x2), (y0, y2), '-b', linewidth=2.5)
-ax.plot(x0, y0, '.g', markersize=15)
-
-ax.set_title('Ellipse with Major and Minor Axes')
-plt.show()
-
-print(f"Major axis length: {major_axis_length:.2f}")
-print(f"Minor axis length: {minor_axis_length:.2f}")
+    print(new_amp)
+    print(new_phase)
+    print(new_moments)
+    print(new_lbp)
+    assert(0)
