@@ -202,7 +202,7 @@ class ToTensorSPFFT(object):
             max_num_iter=10,
             convert2lab=True,
             enforce_connectivity=False,
-            slic_zero=False)
+            slic_zero=True)
 
         # plt.imshow(mark_boundaries(img_np, segments))
         # plt.show()
@@ -489,17 +489,16 @@ class SPDataset(data.Dataset):
             moments = rotate_moments(moments, 0.5, 15)
             moments = log_moments(moments)
 
-            if self.aug_strat >= 1:
-                centroids, colour, features_amp, moments, lbp, seq_mask = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
-                                                    features_amp, moments, lbp, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
-            else:
-                centroids, colour = colour_and_centroid[:, :2], colour_and_centroid[:, 2:]
+            
+            centroids, colour, features_amp, moments, lbp, seq_mask = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
+                                                features_amp, moments, lbp, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
+            
             colour_and_centroid = np.concatenate((centroids, colour), 1)
             # features = rotate(features, self.coeff, 15, 0.5, (self.size, self.size))
         else:
             moments = log_moments(moments)
 
-        features_np = np.concatenate((colour_and_centroid, features_amp, moments, lbp), 1)
+        features_np = np.concatenate((colour_and_centroid, moments, lbp), 1)
         features = torch.tensor(features_np).float()
         
         if self.data_augmentation and self.aug_strat >= 3:
