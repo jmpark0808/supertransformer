@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 # from Blocks.swintransformer_original_rpe import SwinUTransformer
-from Blocks.swinunet_mix_crope import SwinUTransformer
+from Blocks.swinunet_mix_rope_only import SwinUTransformer
 # from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
 import numpy as np
