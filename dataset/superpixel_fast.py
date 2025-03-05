@@ -582,6 +582,7 @@ class SPOGMaskDataset(data.Dataset):
         lbp = features[:, -10:]
         features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), axis=1)
         
+        moments = log_moments(moments)
         features_np = np.concatenate((colour_and_centroid, features_amp, moments, lbp), 1)
         features = torch.tensor(features_np).float()
         

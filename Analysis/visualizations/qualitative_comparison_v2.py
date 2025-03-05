@@ -31,14 +31,14 @@ def f1score(y_pred, y_true):
 
 mask_dir = '/home/eddie/Datasets/DUTS/DUTS-TE/Mask/'
 img_dir = '/home/eddie/Datasets/DUTS/DUTS-TE/Image/'
-samnet_dir = '/home/eddie/Qualitative/SAMNet/DUTS-TE/DUTS-TE/'
-hvpnet_dir = '/home/eddie/Qualitative/HVPNet/DUTS-TE/'
+# samnet_dir = '/home/eddie/Qualitative/SAMNet/DUTS-TE/DUTS-TE/'
+# hvpnet_dir = '/home/eddie/Qualitative/HVPNet/DUTS-TE/'
 corrnet_dir = '/home/eddie/Qualitative/CorrNet/DUTS-TE/'
 seanet_dir = '/home/eddie/Qualitative/SeaNet/DUTS-TE/'
 meanet_dir = '/home/eddie/Qualitative/MEANet/DUTS-TE/'
 mshnet_dir = '/home/eddie/Qualitative/MSHNet/DUTS-TE/'
 isaanet_dir =  '/home/eddie/Qualitative/ISAANet/DUTS-TE/'
-sf_dir = '/home/eddie/Qualitative/SF/DUTS-TE/'
+sf_dir = '/home/eddie/Qualitative/SF-S/DUTS-TE/'
 
 samnet_file_names = os.listdir(samnet_dir)
 hvpnet_file_names = os.listdir(hvpnet_dir)
