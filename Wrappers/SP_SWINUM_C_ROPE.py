@@ -294,7 +294,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
                 
                 samples.append(plt_image)
 
-            samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
+            samples = torch.cat(samples, dim=0).cuda()
         else:
             samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
             samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
