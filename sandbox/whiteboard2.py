@@ -3,9 +3,10 @@ from util.util import S_object, eval_e, S_region
 import imageio.v2 as imageio
 import numpy as np
 import torch
+import torch.nn.functional as F
 data_directory = '/home/eddie/Datasets'
 pred_directory = '/home/eddie/Qualitative/iNas/'
-datasets = ['DUTS-TE', 'DUTS-OMRON', 'ECSSD', 'HKU-IS', 'PASCAL']
+datasets = ['HKU-IS', 'PASCAL']
 
 for dataset in datasets:
     preds = sorted([os.path.join(pred_directory, dataset, x) for x in os.listdir(os.path.join(pred_directory, dataset))])
@@ -14,7 +15,7 @@ for dataset in datasets:
     else:
 
         labels = sorted([os.path.join(data_directory, dataset,'Mask', x) for x in os.listdir(os.path.join(data_directory, dataset, 'Mask'))])
-
+    
     e_measure_scores = torch.zeros(255).cuda()
     s_measure_q = 0.0
     mean_num = 0
@@ -24,6 +25,9 @@ for dataset in datasets:
 
         res = torch.tensor(img_pred).cuda()
         gt = torch.tensor(img_label).cuda()
+        if res.size(0) != gt.size(0) or res.size(1) != gt.size(1):
+            print(pred, label)
+            res = F.interpolate(res, gt.size(), mode='bilinear')
         e_measure_scores += eval_e(res, gt, 255)
         y = gt.mean()
         if y == 0:
