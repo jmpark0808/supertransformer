@@ -1,29 +1,47 @@
+import os
+from util.util import S_object, eval_e, S_region
+import imageio.v2 as imageio
 import numpy as np
+import torch
+data_directory = '/home/eddie/Datasets'
+pred_directory = '/home/eddie/Qualitative/iNas/'
+datasets = ['DUTS-TE', 'DUTS-OMRON', 'ECSSD', 'HKU-IS', 'PASCAL']
 
-cvpr_dataset = '/home/eddie/Datasets/DUTS-3136/DUTS/DUTS-TR/SPFFFT/ILSVRC2012_test_00000004_features.npy'
-new_dataset = '/home/eddie/Datasets/DUTS/DUTS-TR/SPFFFT/ILSVRC2012_test_00000004_features.npy'
+for dataset in datasets:
+    preds = sorted([os.path.join(pred_directory, dataset, x) for x in os.listdir(os.path.join(pred_directory, dataset))])
+    if dataset == 'DUTS-TE':
+        labels = sorted([os.path.join(data_directory, 'DUTS', dataset,'Mask',  x) for x in os.listdir(os.path.join(data_directory, 'DUTS', dataset, 'Mask'))])
+    else:
 
-cvpr = np.load(cvpr_dataset)
-new = np.load(new_dataset)
+        labels = sorted([os.path.join(data_directory, dataset,'Mask', x) for x in os.listdir(os.path.join(data_directory, dataset, 'Mask'))])
+
+    e_measure_scores = torch.zeros(255).cuda()
+    s_measure_q = 0.0
+    mean_num = 0
+    for pred, label in zip(preds, labels):
+        img_pred = imageio.imread(pred, mode='L')/255.
+        img_label = imageio.imread(label, mode='L')/255.
+
+        res = torch.tensor(img_pred).cuda()
+        gt = torch.tensor(img_label).cuda()
+        e_measure_scores += eval_e(res, gt, 255)
+        y = gt.mean()
+        if y == 0:
+            x = res.mean()
+            Q = 1.0 -x
+        elif y == 1:
+            x = res.mean()
+            Q = x
+        else:
+            gt[gt>=0.5] = 1
+            gt[gt<0.5] = 0
+            Q = 0.5 * S_object(res, gt) + (1-0.5) * S_region(res, gt)
+            if Q.item() < 0:
+                Q = torch.FloatTensor([0.0])
+        s_measure_q += Q.item()
+        mean_num += 1
+        
+    print(e_measure_scores.max()/mean_num)
+    print(s_measure_q/mean_num)
 
 
-for i in range(cvpr.shape[0]):
-    
-    print(new[i, :].shape)
-    cvpr_amp = cvpr[i, 8:18]
-    cvpr_phase = cvpr[i, 18:28]
-    cvpr_lbp = cvpr[i, 28:]
-    new_amp = new[i, 8:23]
-    new_phase = new[i, 23:38]
-    new_moments = new[i, 38:46]
-    new_lbp = new[i, 46:]
-
-    print(cvpr_amp)
-    print(cvpr_phase)
-    print(cvpr_lbp)
-
-    print(new_amp)
-    print(new_phase)
-    print(new_moments)
-    print(new_lbp)
-    assert(0)
