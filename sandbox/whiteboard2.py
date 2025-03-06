@@ -1,51 +1,41 @@
-import os
-from util.util import S_object, eval_e, S_region
-import imageio.v2 as imageio
-import numpy as np
+
+
+
+from Blocks.swinunet_mix_rope import SwinUTransformer as ROPE
+from Blocks.swinunet_mix_ape import SwinUTransformer
+
+rpe = ROPE(img_size=72, in_chans=34, patch_size=1, window_size=9,
+                                       embed_dim=[48, 96, 176], depths=[2, 2, 6],
+                                         num_heads=[3, 6, 11], mlp_ratio=2, attn_drop_rate=0, drop_rate=0,
+                                         qkv_bias=False, drop_path_rate=0.1).cuda()
+
+
+ape = SwinUTransformer(img_size=72, in_chans=34, patch_size=1, window_size=9,
+                                       embed_dim=[32, 64, 128], depths=[2, 2, 6],
+                                         num_heads=[2, 4, 8], mlp_ratio=2, attn_drop_rate=0, drop_rate=0,
+                                         qkv_bias=False, drop_path_rate=0.1).cuda()
+
+
 import torch
-import torch.nn.functional as F
-data_directory = '/home/eddie/Datasets'
-pred_directory = '/home/eddie/Qualitative/iNas/'
-datasets = ['HKU-IS', 'PASCAL']
+inp = torch.randn(1, 36, 72, 72).cuda()
 
-for dataset in datasets:
-    preds = sorted([os.path.join(pred_directory, dataset, x) for x in os.listdir(os.path.join(pred_directory, dataset))])
-    if dataset == 'DUTS-TE':
-        labels = sorted([os.path.join(data_directory, 'DUTS', dataset,'Mask',  x) for x in os.listdir(os.path.join(data_directory, 'DUTS', dataset, 'Mask'))])
-    else:
+rpe.eval()
+ape.eval()
+import time
+rope_times = []
+ape_times=  []
+with torch.no_grad():
+    for _ in range(1000):
+        start = time.time()
+        rpe(inp)
+        end = time.time()
+        rope_times.append(end-start)
+        start = time.time()
+        ape(inp)
+        end = time.time()
+        ape_times.append(end-start)
 
-        labels = sorted([os.path.join(data_directory, dataset,'Mask', x) for x in os.listdir(os.path.join(data_directory, dataset, 'Mask'))])
-    
-    e_measure_scores = torch.zeros(255).cuda()
-    s_measure_q = 0.0
-    mean_num = 0
-    for pred, label in zip(preds, labels):
-        img_pred = imageio.imread(pred, mode='L')/255.
-        img_label = imageio.imread(label, mode='L')/255.
+import numpy as np
 
-        res = torch.tensor(img_pred).cuda()
-        gt = torch.tensor(img_label).cuda()
-        if res.size(0) != gt.size(0) or res.size(1) != gt.size(1):
-            print(pred, label)
-            res = F.interpolate(res, gt.size(), mode='bilinear')
-        e_measure_scores += eval_e(res, gt, 255)
-        y = gt.mean()
-        if y == 0:
-            x = res.mean()
-            Q = 1.0 -x
-        elif y == 1:
-            x = res.mean()
-            Q = x
-        else:
-            gt[gt>=0.5] = 1
-            gt[gt<0.5] = 0
-            Q = 0.5 * S_object(res, gt) + (1-0.5) * S_region(res, gt)
-            if Q.item() < 0:
-                Q = torch.FloatTensor([0.0])
-        s_measure_q += Q.item()
-        mean_num += 1
-        
-    print(e_measure_scores.max()/mean_num)
-    print(s_measure_q/mean_num)
-
-
+print(np.mean(rope_times))
+print(np.mean(ape_times))
