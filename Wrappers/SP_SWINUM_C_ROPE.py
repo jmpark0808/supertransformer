@@ -12,7 +12,8 @@ from util.util import get_input_dim
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 from dataset.mixup import MixupSaliency
 from util.util import eval_e, S_object, S_region
-
+import cv2
+import os
 class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
@@ -425,12 +426,11 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
 
         # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
         # tensorboard.add_images('Test Image', img, self.test_iteration)
-        # for sample, name in zip(samples, names):
-        #     name = name.split('/')[-1]
-        #     sample = ((sample > 0.5).float().permute(1, 2, 0).detach().cpu().numpy()*255).astype(np.uint8)
-            
- 
-        #     cv2.imwrite('/home/eddie/Qualitative/SF/DUTS-TE/'+name, sample)
+
+        for sample, name in zip(samples, names):
+            name = name.split('/')[-1]
+            sample = (sample.permute(1, 2, 0).detach().cpu().numpy()*255).astype(np.uint8)
+            cv2.imwrite(os.path.join('/home/eddie/Qualitative/SF-XXS',name), sample)
 
         mae = torch.sum(torch.mean(torch.abs((samples >= 0.5).float() - mask), dim=tuple(range(1, len(samples.size())))))
         self.maes += mae
@@ -480,7 +480,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         self.log('Final Test Max F Threshold', thlist[torch.argmax(f_score)])
 
         self.log('Final Test MAE', self.maes/self.mean_num)
-        self.log('Final Test E measure', self.e_measure_scores/self.mean_num)
+        self.log('Final Test E measure', torch.max(self.e_measure_scores)/self.mean_num)
         self.log('Final Test S measure', self.s_measure_q/self.mean_num)
 
 
