@@ -213,7 +213,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
 
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        if self.aug_strat == 4:
+        if self.aug_strat == 4 and 'RS' not in self.dataloader:
             seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
             features, seq_mask = self.mixup(features, seq_mask)
             
@@ -427,10 +427,10 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
         # tensorboard.add_images('Test Image', img, self.test_iteration)
 
-        for sample, name in zip(samples, names):
-            name = name.split('/')[-1]
-            sample = (sample.permute(1, 2, 0).detach().cpu().numpy()*255).astype(np.uint8)
-            cv2.imwrite(os.path.join('/home/eddie/Qualitative/SF-XXS',name), sample)
+        # for sample, name in zip(samples, names):
+        #     name = name.split('/')[-1]
+        #     sample = (sample.permute(1, 2, 0).detach().cpu().numpy()*255).astype(np.uint8)
+        #     cv2.imwrite(os.path.join('/home/eddie/Qualitative/SF-XXS',name), sample)
 
         mae = torch.sum(torch.mean(torch.abs((samples >= 0.5).float() - mask), dim=tuple(range(1, len(samples.size())))))
         self.maes += mae
