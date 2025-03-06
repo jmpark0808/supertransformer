@@ -12,9 +12,6 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
 from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA, BasicLayer, PatchMerging
 from Blocks.swin_encoder_rope import SwinTransformer
-WindowProcess = None
-WindowProcessReverse = None
-print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
 
 
     

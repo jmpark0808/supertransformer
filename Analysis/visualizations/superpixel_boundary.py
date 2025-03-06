@@ -14,6 +14,7 @@ import torch
 from torch_geometric.utils import scatter
 import torch.nn.functional as F
 from torch_scatter import scatter_std
+from util.util import S_object, S_region, eval_e
 
 dataset_images = '/home/eddie/Datasets/DUTS/DUTS-TR/Image'
 masks = '/home/eddie/Datasets/DUTS/DUTS-TR/Mask'
@@ -38,6 +39,9 @@ for compact in tqdm(compactness):
         H = []
         W = []
 
+        e_measure_scores = torch.zeros(255).cuda()
+        s_measure_q = 0.0
+        
         for file in tqdm(os.listdir(dataset_images)[:num_images]):
             name = file.split('.jpg')[0]
             image = os.path.join(dataset_images, name+'.jpg')
@@ -70,7 +74,7 @@ for compact in tqdm(compactness):
             max_num_iter=10,
             convert2lab=True,
             enforce_connectivity=False,
-            slic_zero=False)
+            slic_zero=True)
             
             
             # segments = quickshift(img, kernel_size=3, max_dist=6, ratio=0.5)
@@ -108,9 +112,28 @@ for compact in tqdm(compactness):
             for ind, coord in zip(regions['label'], regions['coords']):
                 seq_mask[ind-1] = 1 if np.sum(msk[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
 
+            plt_image = seq_mask[segments-1].reshape([img.shape[0], img.shape[1]])
+            
+            pred = torch.tensor(plt_image, device='cuda')
+            gt = torch.tensor(msk, device='cuda').float()
+
+            e_measure_scores += eval_e(pred, gt, 255)
+            y = gt.mean()
+            if y == 0:
+                x = pred.mean()
+                Q = 1.0 -x
+            elif y == 1:
+                x = pred.mean()
+                Q = x
+            else:
+                gt[gt>=0.5] = 1
+                gt[gt<0.5] = 0
+                Q = 0.5 * S_object(pred, gt) + (1-0.5) * S_region(pred, gt)
+                if Q.item() < 0:
+                    Q = torch.FloatTensor([0.0])
+            s_measure_q += Q.item()
             
 
-            plt_image = seq_mask[segments-1].reshape([img.shape[0], img.shape[1]])
             plt_image_skip = np.copy(plt_image)
             plt_image = np.ravel(plt_image)
             
@@ -153,12 +176,15 @@ for compact in tqdm(compactness):
     for i, j in zip(segment_numbers, all_maes):
         ax[1].text(i, j+0.002, '{}'.format(i))
 
+    print(all_ious, all_maes)
+    print(torch.max(e_measure_scores)/num_images)
+    print(s_measure_q/num_images)
     
 
     
 
-with open('segments_plot_data.pkl', 'wb') as f:
-    pickle.dump(d, f)
+# with open('segments_plot_data.pkl', 'wb') as f:
+#     pickle.dump(d, f)
 fs = 20
 ax[0].set_title(f'Segmentation boundary intersection accuracy', fontsize=fs)
 ax[0].set_xlabel('Segmentations', fontsize=fs)

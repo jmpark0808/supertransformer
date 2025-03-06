@@ -14,6 +14,7 @@ from dataset.mixup import MixupSaliency
 from util.util import eval_e, S_object, S_region
 import cv2
 import os
+import time
 class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
@@ -384,6 +385,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
 
         self.e_measure_scores = torch.zeros(255).cuda()
         self.s_measure_q = 0.0
+        self.times = []
 
 
 
@@ -402,10 +404,12 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         # forward pass
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
+        start = time.time()
         pred = self.forward(features)
-
+        end = time.time()
+        self.times.append(end-start)
         pred_numpy = torch.sigmoid(pred).detach().cpu() # batch, seq_len, 1
-    
+
         batch_size = mask.shape[0]
         img_size = self.size
         if torch.sum(segments) != 0 :
@@ -430,9 +434,9 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         # for sample, name in zip(samples, names):
         #     name = name.split('/')[-1]
         #     sample = (sample.permute(1, 2, 0).detach().cpu().numpy()*255).astype(np.uint8)
-        #     cv2.imwrite(os.path.join('/home/eddie/Qualitative/SF-XXS',name), sample)
+        #     cv2.imwrite(os.path.join('/home/eddie/Qualitative/SF-S',name), sample)
 
-        mae = torch.sum(torch.mean(torch.abs((samples >= 0.5).float() - mask), dim=tuple(range(1, len(samples.size())))))
+        mae = torch.sum(torch.mean(torch.abs(samples  - mask), dim=tuple(range(1, len(samples.size())))))
         self.maes += mae
         self.mean_num += features.size(0)
 
@@ -482,6 +486,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         self.log('Final Test MAE', self.maes/self.mean_num)
         self.log('Final Test E measure', torch.max(self.e_measure_scores)/self.mean_num)
         self.log('Final Test S measure', self.s_measure_q/self.mean_num)
+        self.log('Inference Time (ms)', np.mean(self.times)*1000)
 
 
 
