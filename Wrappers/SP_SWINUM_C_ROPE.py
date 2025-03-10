@@ -79,6 +79,9 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
                 checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
             
             self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
+            for name, param in self.supert.named_parameters():
+                if name in checkpoint['state_dict'].keys():
+                    param.requires_grad = False
         
         self.save_hyperparameters()
         
@@ -436,7 +439,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         #     sample = (sample.permute(1, 2, 0).detach().cpu().numpy()*255).astype(np.uint8)
         #     cv2.imwrite(os.path.join('/home/eddie/Qualitative/SF-S',name), sample)
 
-        mae = torch.sum(torch.mean(torch.abs(samples  - mask), dim=tuple(range(1, len(samples.size())))))
+        mae = torch.sum(torch.mean(torch.abs((samples >= 0.5).float()  - mask), dim=tuple(range(1, len(samples.size())))))
         self.maes += mae
         self.mean_num += features.size(0)
 

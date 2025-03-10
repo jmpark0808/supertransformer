@@ -58,7 +58,7 @@ skip_files = ['ILSVRC2012_test_00028731.png', 'sun_bivvtruztkqmtpnf.png',
                'ILSVRC2013_test_00008577.png','ILSVRC2012_test_00002350.png',
                'ILSVRC2013_test_00004480.png']
 
-num_rows = 8
+num_rows = 7
 
 fig, ax = plt.subplots(num_rows, 8, figsize = (8*2,num_rows*2))
 ind = 0
