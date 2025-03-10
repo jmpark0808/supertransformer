@@ -46,9 +46,9 @@ def get_mae_factors(data, metric='MAE'):
     data_dict['y_labels'] = y_labels
 
     # Arrow localization
-    arrow_dict = {'start_points': [(0.8, 0.04), (0.6, 0.04)],
-                  'end_points': [(0.3, 0.0381), (0.38, 0.0381)],
-                  'arrow_text': [0.32, 0.042],
+    arrow_dict = {'start_points': [(0.8, 0.038), (0.6, 0.038)],
+                  'end_points': [(0.3, 0.0361), (0.38, 0.0361)],
+                  'arrow_text': [1, 0.038],
                   }
     data_dict['arrow_dict'] = arrow_dict
 
@@ -77,9 +77,9 @@ def get_f1_factors(data, metric='F1'):
     data_dict['y_labels'] = y_labels
 
     # Arrow localization
-    arrow_dict = {'start_points': [(1, 0.870), (0.65, 0.870)],
-                  'end_points': [(0.34, 0.8765), (0.38, 0.877)],
-                  'arrow_text': [0.4, 0.863],
+    arrow_dict = {'start_points': [(1, 0.880), (0.65, 0.880)],
+                  'end_points': [(0.34, 0.8865), (0.38, 0.887)],
+                  'arrow_text': [0.4, 0.873],
                   }
     data_dict['arrow_dict'] = arrow_dict
 
@@ -224,10 +224,10 @@ def scatter_plot(metric='MAE', plt_path=None, add_metric=False, add_arrow=True, 
         arrow_dict = data_dict['arrow_dict']
         for i in range(2):
             ax[i].annotate('', xy=arrow_dict['end_points'][i], xytext=arrow_dict['start_points'][i],
-                           arrowprops=dict(facecolor='red', edgecolor='red', arrowstyle='->', lw=2))
+                           arrowprops=dict(facecolor='green', edgecolor='green', arrowstyle='->', lw=2))
             ax[i].text(arrow_dict['arrow_text'][0],
                        arrow_dict['arrow_text'][1],
-                       "Enhanced\nEfficiency!", color='red', fontsize=12)
+                       "Enhanced\nEfficiency!", color='green', fontsize=12)
 
     plt.tight_layout()
     plt.savefig(f'{plt_path}/scatter_{metric}.pdf', format='pdf')
@@ -493,15 +493,16 @@ def sf_FT(data_file, plt_path=None, _plt=False):
 def data_sf():
     """ Get the results values."""
     data = {
-        'Ours (XS)': {'Params': 1.12, 'FLOPs': 0.46, 'MAE': 0.0530, 'F1': 0.8470, 'size': 100, },
-        'HVPNet':    {'Params': 1.23, 'FLOPs': 1.10, 'MAE': 0.0580, 'F1': 0.8390, 'size': 150, },
-        'SAMNet':    {'Params': 1.33, 'FLOPs': 0.50, 'MAE': 0.0580, 'F1': 0.8350, 'size': 200, },
-        'Ours (S)':  {'Params': 2.18, 'FLOPs': 1.63, 'MAE': 0.0390, 'F1': 0.8760, 'size': 250, },
-        'SeaNet':    {'Params': 2.76, 'FLOPs': 1.70, 'MAE': 0.0450, 'F1': 0.8540, 'size': 300, },
-        'MEANet':    {'Params': 3.27, 'FLOPs': 9.62, 'MAE': 0.0454, 'F1': 0.8630, 'size': 400, },
-        'ISAANet':   {'Params': 3.59, 'FLOPs': 4.34, 'MAE': 0.0430, 'F1': 0.8750, 'size': 430, },
-        'MSHNet':    {'Params': 4.07, 'FLOPs': 6.11, 'MAE': 0.0651, 'F1': 0.8221, 'size': 500, 'MAE_original': 0.1251, 'F1_original': 0.7046, },
-        'CorrNet':   {'Params': 4.09, 'FLOPs': 21.1, 'MAE': 0.0466, 'F1': 0.8470, 'size': 500},
+        'Ours (XS)': {'Params': 1.12, 'FLOPs': 0.89, 'MAE': 0.0420, 'F1': 0.8640, 'size': 112, },
+        'HVPNet':    {'Params': 1.23, 'FLOPs': 1.10, 'MAE': 0.0580, 'F1': 0.8390, 'size': 123, },
+        'SAMNet':    {'Params': 1.33, 'FLOPs': 0.50, 'MAE': 0.0580, 'F1': 0.8350, 'size': 133, },
+        'EDN':       {'Params': 1.80, 'FLOPs': 1.02, 'MAE': 0.0450, 'F1': 0.8560, 'size': 180, },
+        'Ours (S)':  {'Params': 2.18, 'FLOPs': 1.63, 'MAE': 0.0360, 'F1': 0.8860, 'size': 218, },
+        'SeaNet':    {'Params': 2.76, 'FLOPs': 1.70, 'MAE': 0.0450, 'F1': 0.8540, 'size': 276, },
+        'MEANet':    {'Params': 3.27, 'FLOPs': 9.62, 'MAE': 0.0454, 'F1': 0.8630, 'size': 327, },
+        'ISAANet':   {'Params': 3.59, 'FLOPs': 4.34, 'MAE': 0.0430, 'F1': 0.8750, 'size': 359, },
+        'MSHNet':    {'Params': 4.07, 'FLOPs': 6.11, 'MAE': 0.0651, 'F1': 0.8221, 'size': 407, 'MAE_original': 0.1251, 'F1_original': 0.7046, },
+        'CorrNet':   {'Params': 4.09, 'FLOPs': 21.1, 'MAE': 0.0466, 'F1': 0.8470, 'size': 409},
     }
     return data
 
@@ -512,12 +513,12 @@ if __name__ == '__main__':
     plt_path = os.path.join(current_directory, 'figs')
     make_directory(plt_path)
 
-    # scatter_plot(metric='MAE', plt_path=plt_path, add_metric=False, add_arrow=True, _plt=True)
+    scatter_plot(metric='F1', plt_path=plt_path, add_metric=False, add_arrow=True, _plt=True)
 
     # data_file = f'{current_directory}/../sample_sp.npy'
     # sf_FT(data_file, plt_path, _plt=True)
 
 
-    recon_err_sp = f'{current_directory}/../reconstruction_error_sp.npy'
-    recon_err_ds = f'{current_directory}/../reconstruction_error_ds.npy'
-    sf_recos_err(recon_err_sp, recon_err_ds, _plt=True)
+    # recon_err_sp = f'{current_directory}/../reconstruction_error_sp.npy'
+    # recon_err_ds = f'{current_directory}/../reconstruction_error_ds.npy'
+    # sf_recos_err(recon_err_sp, recon_err_ds, _plt=True)
