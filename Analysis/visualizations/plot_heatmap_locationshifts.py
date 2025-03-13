@@ -30,44 +30,44 @@ num_images = 3000
 all_ys = []
 all_xs = []
 
-# for file in tqdm(os.listdir(dataset_images)[:num_images]):
-#     name = file.split('.jpg')[0]
-#     image = os.path.join(dataset_images, name+'.jpg')
-#     mask = os.path.join(masks, name+'.png')
+for file in tqdm(os.listdir(dataset_images)[:num_images]):
+    name = file.split('.jpg')[0]
+    image = os.path.join(dataset_images, name+'.jpg')
+    mask = os.path.join(masks, name+'.png')
 
-#     img = Image.open(image)
-#     msk = Image.open(mask)
-#     img = img.convert('RGB').resize((448, 448))
-#     msk = msk.convert('L').resize((448, 448))
-#     img = np.array(img)
-#     msk = np.array(msk)
+    img = Image.open(image)
+    msk = Image.open(mask)
+    img = img.convert('RGB').resize((448, 448))
+    msk = msk.convert('L').resize((448, 448))
+    img = np.array(img)
+    msk = np.array(msk)
     
     
-#     msk[msk>125] = 255
-#     msk[msk<=125] = 0
+    msk[msk>125] = 255
+    msk[msk<=125] = 0
 
-#     segments = slic(img, n_segments=3136,
-#     compactness=10,
-#     max_num_iter=10,
-#     convert2lab=True,
-#     enforce_connectivity=False,
-#     slic_zero=False)
+    segments = slic(img, n_segments=3136,
+    compactness=10,
+    max_num_iter=10,
+    convert2lab=True,
+    enforce_connectivity=False,
+    slic_zero=False)
     
-#     # plt.imshow(mark_boundaries(img, segments-1))
-#     # plt.show()
-#     regions = regionprops_table(segments, img, properties=('label', 'centroid'))
+    # plt.imshow(mark_boundaries(img, segments-1))
+    # plt.show()
+    regions = regionprops_table(segments, img, properties=('label', 'centroid'))
     
-#     if regions['label'][1000] == 1001:
-#         all_ys.append(regions['centroid-0'][1000])
-#         all_xs.append(regions['centroid-1'][1000])
+    if regions['label'][0] == 1:
+        all_ys.append(regions['centroid-0'][0])
+        all_xs.append(regions['centroid-1'][0])
     
 xedges = np.linspace(-1, 1, 50)
 yedges = np.linspace(-1, 1, 50)
-# all_ys = np.array(all_ys) - np.mean(all_ys)
-# all_xs = np.array(all_xs) - np.mean(all_xs)
-# np.save('centroid_shifts.npy', np.stack((all_xs, all_ys), axis=0))
+all_ys = np.array(all_ys) - np.mean(all_ys)
+all_xs = np.array(all_xs) - np.mean(all_xs)
+np.save('centroid_shifts_0.npy', np.stack((all_xs, all_ys), axis=0))
 
-
+assert(0)
 
 all_centroids = np.load('./Analysis/centroid_shifts.npy')
 distances = np.linalg.norm(all_centroids, axis=0)

@@ -8,6 +8,7 @@ from matplotlib.ticker import FuncFormatter
 import cv2
 from PIL import Image
 
+
 # Get the path of the currently running script
 current_directory = Path(__file__).parent
 
@@ -307,14 +308,14 @@ def plot_contours(fig, contour_array, xi, yi, xi_t, yi_t, ax, font_sizes, i_x=0,
     line2, = ax[i_x, i_y].plot(xi_t, yi_t, '-', color='black', label='Transformed')
 
     # Scatter plot for the first and second points with specific colors for the original contours
-    scatter1 = ax[i_x, i_y].scatter(xi[0], yi[0], c='blue', label='1st', s=50, edgecolors='blue', zorder=5)
-    scatter2 = ax[i_x, i_y].scatter(xi[1], yi[1], c='green', label='2nd', s=50, edgecolors='green', zorder=5)
+    # scatter1 = ax[i_x, i_y].scatter(xi[0], yi[0], c='blue', label='1st', s=50, edgecolors='blue', zorder=5)
+    # scatter2 = ax[i_x, i_y].scatter(xi[1], yi[1], c='green', label='2nd', s=50, edgecolors='green', zorder=5)
 
     # Adding legend manually to control the order and label
     if i_x == 0 and i_y == 0:
         # ax[i_x, i_y].set_ylabel('Contours', fontsize=font_sizes['ylabel_fontsize'])
-        ax[i_x, i_y].legend(handles=[line1, line2, scatter1, scatter2],
-                            labels=['Original', 'Transformed', 'Start', 'Second'],
+        ax[i_x, i_y].legend(handles=[line1, line2],#, scatter1, scatter2],
+                            labels=['Original', 'Transformed'],
                             loc='upper left', bbox_to_anchor=(-1.1, 1), fontsize=font_sizes['tick_fontsize'],
                             title='Contours')
 
@@ -344,7 +345,7 @@ def get_fft(contour_array):
 
 def sf_FT(data_file, plt_path=None, _plt=False):
     """
-    This function plots the Fourier Transform results of the SuperFormer Figure (S.4) of the paper.
+    This function plots the Fourier Transform results of the SuperF'ormer Figure (S.4) of the paper.
     Args:
         data_file:
         plt_path:
@@ -417,7 +418,7 @@ def sf_FT(data_file, plt_path=None, _plt=False):
     diff_phase_rot = phase_rot - phase_orig
 
     # --------------------- PLOT Figure --------------------------------
-    fig, ax = plt.subplots(5, 3, figsize=(10, 10))
+    fig, ax = plt.subplots(3, 3, figsize=(10, 6))
     font_sizes = {'title_fontsize': 12,
                   'ylabel_fontsize': 10,
                   'xlabel_fontsize': 10,
@@ -446,6 +447,7 @@ def sf_FT(data_file, plt_path=None, _plt=False):
 
 
     # AMPLITUDE Differences
+    ax[2, 0].set_ylim(-1, 1)
     ax[2, 0].stem(np.linspace(0, np.pi, len(amp_diff_tr))[1:], amp_diff_tr[1:], 'r', markerfmt=" ", basefmt="-r")
     ax[2, 1].stem(np.linspace(0, np.pi, len(amp_diff_sc))[1:], amp_diff_sc[1:], 'r', markerfmt=" ", basefmt="-r")
     ax[2, 2].stem(np.linspace(0, np.pi, len(amp_diff_rot))[1:], amp_diff_rot[1:], 'r', markerfmt=" ",  basefmt="-r")
@@ -459,27 +461,27 @@ def sf_FT(data_file, plt_path=None, _plt=False):
     ax[2, 2].set_xticks([])
 
     # PHASE
-    ax[3, 0].stem(np.linspace(0, np.pi, len(phase_tr))[1:], phase_tr[1:], 'k', markerfmt=" ", basefmt="-k")
-    ax[3, 1].stem(np.linspace(0, np.pi, len(phase_sc))[1:], phase_sc[1:], 'k', markerfmt=" ", basefmt="-k")
-    ax[3, 2].stem(np.linspace(0, np.pi, len(phase_rot))[1:], phase_rot[1:], 'k', markerfmt=" ", basefmt="-k")
+    # ax[3, 0].stem(np.linspace(0, np.pi, len(phase_tr))[1:], phase_tr[1:], 'k', markerfmt=" ", basefmt="-k")
+    # ax[3, 1].stem(np.linspace(0, np.pi, len(phase_sc))[1:], phase_sc[1:], 'k', markerfmt=" ", basefmt="-k")
+    # ax[3, 2].stem(np.linspace(0, np.pi, len(phase_rot))[1:], phase_rot[1:], 'k', markerfmt=" ", basefmt="-k")
 
-    ax[3, 0].legend(labels=['Phase (fs)'], loc='upper left', bbox_to_anchor=(-1.1, 0.65), fontsize=font_sizes['tick_fontsize'])
-    ax[3, 0].tick_params(axis='y', labelsize=font_sizes['tick_fontsize'])
-    ax[3, 1].tick_params(axis='y', labelsize=font_sizes['tick_fontsize'])
-    ax[3, 2].tick_params(axis='y', labelsize=font_sizes['tick_fontsize'])
-    ax[3, 0].set_xticks([])
-    ax[3, 1].set_xticks([])
-    ax[3, 2].set_xticks([])
+    # ax[3, 0].legend(labels=['Phase (fs)'], loc='upper left', bbox_to_anchor=(-1.1, 0.65), fontsize=font_sizes['tick_fontsize'])
+    # ax[3, 0].tick_params(axis='y', labelsize=font_sizes['tick_fontsize'])
+    # ax[3, 1].tick_params(axis='y', labelsize=font_sizes['tick_fontsize'])
+    # ax[3, 2].tick_params(axis='y', labelsize=font_sizes['tick_fontsize'])
+    # ax[3, 0].set_xticks([])
+    # ax[3, 1].set_xticks([])
+    # ax[3, 2].set_xticks([])
 
-    # PHASE Differences
-    ax[4, 0].stem(np.linspace(0, np.pi, len(diff_phase_tr))[1:], diff_phase_tr[1:], 'r', markerfmt=" ", basefmt="-r")
-    ax[4, 1].stem(np.linspace(0, np.pi, len(diff_phase_sc))[1:], diff_phase_sc[1:], 'r', markerfmt=" ", basefmt="-r")
-    ax[4, 2].stem(np.linspace(0, np.pi, len(diff_phase_rot))[1:], diff_phase_rot[1:], 'r', markerfmt=" ",  basefmt="-r")
+    # # PHASE Differences
+    # ax[4, 0].stem(np.linspace(0, np.pi, len(diff_phase_tr))[1:], diff_phase_tr[1:], 'r', markerfmt=" ", basefmt="-r")
+    # ax[4, 1].stem(np.linspace(0, np.pi, len(diff_phase_sc))[1:], diff_phase_sc[1:], 'r', markerfmt=" ", basefmt="-r")
+    # ax[4, 2].stem(np.linspace(0, np.pi, len(diff_phase_rot))[1:], diff_phase_rot[1:], 'r', markerfmt=" ",  basefmt="-r")
 
-    ax[4, 0].legend(labels=['Phase\nDifference'], loc='upper left', bbox_to_anchor=(-1.1, 0.65), fontsize=font_sizes['tick_fontsize'])
-    ax[4, 0].tick_params(axis='both', labelsize=font_sizes['tick_fontsize'])
-    ax[4, 1].tick_params(axis='both', labelsize=font_sizes['tick_fontsize'])
-    ax[4, 2].tick_params(axis='both', labelsize=font_sizes['tick_fontsize'])
+    # ax[4, 0].legend(labels=['Phase\nDifference'], loc='upper left', bbox_to_anchor=(-1.1, 0.65), fontsize=font_sizes['tick_fontsize'])
+    # ax[4, 0].tick_params(axis='both', labelsize=font_sizes['tick_fontsize'])
+    # ax[4, 1].tick_params(axis='both', labelsize=font_sizes['tick_fontsize'])
+    # ax[4, 2].tick_params(axis='both', labelsize=font_sizes['tick_fontsize'])
     
 
     plt.tight_layout()
@@ -513,10 +515,10 @@ if __name__ == '__main__':
     plt_path = os.path.join(current_directory, 'figs')
     make_directory(plt_path)
 
-    scatter_plot(metric='F1', plt_path=plt_path, add_metric=False, add_arrow=True, _plt=True)
+    # scatter_plot(metric='F1', plt_path=plt_path, add_metric=False, add_arrow=True, _plt=True)
 
-    # data_file = f'{current_directory}/../sample_sp.npy'
-    # sf_FT(data_file, plt_path, _plt=True)
+    data_file = f'{current_directory}/../sample_sp.npy'
+    sf_FT(data_file, plt_path, _plt=True)
 
 
     # recon_err_sp = f'{current_directory}/../reconstruction_error_sp.npy'
