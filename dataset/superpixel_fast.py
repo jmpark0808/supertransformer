@@ -498,8 +498,11 @@ class SPDataset(data.Dataset):
         else:
             moments = log_moments(moments)
         
-        # features_np = np.concatenate((colour_and_centroid, features_amp, moments, lbp), 1)
-        features_np = np.concatenate((colour_and_centroid, lbp), 1)
+       
+        if self.coeff != 0:
+            features_np = np.concatenate((colour_and_centroid, features_amp, lbp), 1)
+        else:
+            features_np = np.concatenate((colour_and_centroid, lbp), 1)
         features = torch.tensor(features_np).float()
         
         if self.data_augmentation and self.aug_strat >= 3:
