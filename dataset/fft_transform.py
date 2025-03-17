@@ -28,7 +28,7 @@ def horizontal_flip(array, coeff, chance, size, resolution, seq_mask=None):
     
 
     
-def horizontal_flip_moments(centroids, colour, amp, moments, lbp, chance, size, resolution, seq_mask=None):
+def horizontal_flip_moments(centroids, colour, amp, phase, moments, lbp, chance, size, resolution, seq_mask=None):
     if np.random.random() < chance:
         # Flip centroids
         xs = centroids[:, 1]
@@ -48,6 +48,10 @@ def horizontal_flip_moments(centroids, colour, amp, moments, lbp, chance, size, 
         amp = np.fliplr(amp)
         amp = amp.reshape(resolution[0]*resolution[1], -1)
 
+        phase = phase.reshape(resolution[0], resolution[1], -1)
+        phase = np.fliplr(phase)
+        phase = phase.reshape(resolution[0]*resolution[1], -1)
+
         moments = moments.reshape(resolution[0], resolution[1], -1)
         moments = np.fliplr(moments)
         moments = moments.reshape(resolution[0]*resolution[1], -1)
@@ -62,9 +66,9 @@ def horizontal_flip_moments(centroids, colour, amp, moments, lbp, chance, size, 
             seq_mask= np.fliplr(seq_mask)
             seq_mask= seq_mask.reshape(-1)
     if seq_mask is not None:
-        return centroids, colour, amp, moments, lbp, seq_mask
+        return centroids, colour, amp, phase, moments, lbp, seq_mask
     else:
-        return centroids, colour, amp, moments, lbp
+        return centroids, colour, amp, phase, moments, lbp
 
 def rotate_points(origin, point, angle):
     """
