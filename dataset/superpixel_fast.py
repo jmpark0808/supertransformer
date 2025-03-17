@@ -489,19 +489,26 @@ class SPDataset(data.Dataset):
             moments = log_moments(moments)
 
             
-            centroids, colour, features_amp, features_phase, moments, lbp, seq_mask = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
-                                                features_amp, features_phase, moments, lbp, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
+            # centroids, colour, features_amp, features_phase, moments, lbp, seq_mask = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
+            #                                     features_amp, features_phase, moments, lbp, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
             
-            colour_and_centroid = np.concatenate((centroids, colour), 1)
+            # colour_and_centroid = np.concatenate((centroids, colour), 1)
+
             # features = rotate(features, self.coeff, 15, 0.5, (self.size, self.size))
+            if self.coeff != 0:
+                features_np = np.concatenate((colour_and_centroid, features_amp, features_phase, lbp), 1)
+                features_np, seq_mask = horizontal_flip(features_np, self.coeff, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
+            else:
+                features_np = np.concatenate((colour_and_centroid, lbp), 1)
+            
         else:
             moments = log_moments(moments)
-        
+            if self.coeff != 0:
+                features_np = np.concatenate((colour_and_centroid, features_amp, features_phase, lbp), 1)
+            else:
+                features_np = np.concatenate((colour_and_centroid, lbp), 1)
        
-        if self.coeff != 0:
-            features_np = np.concatenate((colour_and_centroid, features_amp, features_phase, lbp), 1)
-        else:
-            features_np = np.concatenate((colour_and_centroid, lbp), 1)
+        
         features = torch.tensor(features_np).float()
         
         if self.data_augmentation and self.aug_strat >= 3:
