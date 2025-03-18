@@ -188,7 +188,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', help="batchsize, default = 1", default=1, type=int)
     parser.add_argument('--epoch', help='# of epochs. default = 20', default=20, type=int)
     parser.add_argument('--num_workers', help="# of dataloader cpu process", default=0, type=int)
-    parser.add_argument('--val_freq', help='How often to run validation set within a training epoch, i.e. 0.25 will run 4 validation runs in 1 training epoch', default=1.0, type=float)
+    parser.add_argument('--val_freq', help='How often to run validation set i.e. every n epochs', default=5, type=int)
     parser.add_argument('--es_patience', help='Max # of consecutive validation runs w/o improvment', default=5, type=int)
     parser.add_argument('--logdir', help='logdir for models and losses. default = .', default='./', type=str)
     parser.add_argument('--lr', help='learning_rate for pose. default = 0.0001', default=0.0001, type=float)
@@ -293,7 +293,7 @@ if __name__ == "__main__":
     logger = TensorBoardLogger(save_dir=dict_args['logdir'], version=now+'_'+dict_args["tag"], name='lightning_logs', log_graph=True)
     trainer = pl.Trainer(accelerator="gpu",
         callbacks=[checkpoint_callback, lr_monitor],
-        val_check_interval=dict_args['val_freq'],
+        check_val_every_n_epoch=dict_args['val_freq'],
         deterministic=False,
         profiler='simple',
         logger=logger,
