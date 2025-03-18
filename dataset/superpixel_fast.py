@@ -434,7 +434,7 @@ class SPDataset(data.Dataset):
         self.coeff = coeff
         self.data_augmentation = data_augmentation
         self.resample_points = int(((size**2)//num_seg)**0.5)*4
-        self.aug_strat = 4
+        self.aug_strat = aug_strat
 
             
 
