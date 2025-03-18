@@ -304,7 +304,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
             samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
             samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
         
-        mae = torch.sum(torch.mean(torch.abs((samples >= 0.5).float() - mask), dim=tuple(range(1, len(samples.size())))))
+        mae = torch.sum(torch.mean(torch.abs(samples - mask), dim=tuple(range(1, len(samples.size())))))
         
         if dataloader_idx == 0:
             self.maes += mae
@@ -439,7 +439,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         #     sample = (sample.permute(1, 2, 0).detach().cpu().numpy()*255).astype(np.uint8)
         #     cv2.imwrite(os.path.join('/home/eddie/Qualitative/SF-S',name), sample)
 
-        mae = torch.sum(torch.mean(torch.abs((samples >= 0.5).float()  - mask), dim=tuple(range(1, len(samples.size())))))
+        mae = torch.sum(torch.mean(torch.abs(samples  - mask), dim=tuple(range(1, len(samples.size())))))
         self.maes += mae
         self.mean_num += features.size(0)
 
