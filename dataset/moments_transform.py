@@ -1,9 +1,33 @@
 import numpy as np
+import math
+def rotate_points(origin, point, angle):
+    """
+    Rotate a point counterclockwise by a given angle around a given origin.
 
-def rotate_moments(moments, prob, rotation_angle_degrees):
+    The angle should be given in radians.
+    """
+    ox, oy = origin
+    px, py = point
+    zeros = np.argwhere(np.logical_and(px == 0 , py == 0))
+    qx = ox + math.cos(angle) * (px - ox) - math.sin(angle) * (py - oy)
+    qy = oy + math.sin(angle) * (px - ox) + math.cos(angle) * (py - oy)
+    qx[zeros] = 0
+    qy[zeros] = 0
+    return qx, qy
+
+
+
+def rotate_moments(moments, centroids, prob, rotation_angle_degrees, size):
     if np.random.random() < prob:
         random_degrees = np.random.randint(-rotation_angle_degrees, rotation_angle_degrees)
-        theta = np.deg2rad(random_degrees)
+        theta = math.radians(random_degrees)
+
+
+        ys = centroids[:, 0]
+        xs = centroids[:, 1]
+        new_xs, new_ys = rotate_points([size[0]//2, size[1]//2], [xs, ys], theta)
+        centroids[:, 0] = new_ys
+        centroids[:, 1] = new_xs
     
         # Extract second-order moments
         mu20 = moments[:, 2]
@@ -52,9 +76,9 @@ def rotate_moments(moments, prob, rotation_angle_degrees):
         rotated_moments[:, 7] = mu03_rot
         rotated_moments[:, 4] = mu21_rot
         rotated_moments[:, 5] = mu12_rot
-        return rotated_moments
+        return rotated_moments, centroids
     else:
-        return moments
+        return moments, centroids
     
 
 def flip_moments(moments, prob):
