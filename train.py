@@ -239,7 +239,7 @@ if __name__ == "__main__":
                         , default=False, action="store_true")
     parser.add_argument('--ec', help='Whether to enforce connectivity or not'
                         , default=False, action="store_true")
-    parser.add_argument('--aug_strat', help='Data augmentation strategy (between 1 and 4)', type=int, default=4)
+    parser.add_argument('--aug_strat', help='Data augmentation strategy (between 0 and 4)', type=int, default=4)
     
 
 
@@ -251,7 +251,7 @@ if __name__ == "__main__":
     repo = git.Repo(search_parent_directories=True)
     sha = repo.head.object.hexsha
     dict_args['git'] = sha
-    
+
     pl.seed_everything(dict_args['seed'], True)
 
     # Initialize model to train
