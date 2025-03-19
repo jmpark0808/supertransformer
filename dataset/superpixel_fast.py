@@ -622,6 +622,7 @@ class SPFDataModule(pl.LightningDataModule):
         self.debug = kwargs.get('debug', False)
         self.skip_train = kwargs.get('skip_train')
         self.ec = kwargs.get('ec')
+        self.aug_strat = kwargs.get('aug_strat')
         
         if not self.skip_train:
             self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
@@ -696,7 +697,7 @@ class SPFDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg,
                                 self.res, self.dataloader, True,
-                                  self.coeff)
+                                  self.coeff, self.aug_strat)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
                 num_workers=self.num_workers, shuffle=True, pin_memory=True, drop_last=True)
