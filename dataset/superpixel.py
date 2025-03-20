@@ -345,6 +345,7 @@ class ToTensorSPFFT(object):
         self.resample_points = resample_points
         
         def fourier_descriptors(region):
+            moments = compute_central_moments(region)
             region = (region*255).astype(np.uint8)
             contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
             if len(contour)>1:
@@ -364,20 +365,30 @@ class ToTensorSPFFT(object):
             contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
             contour_complex.real = contour_array[:, 0]
             contour_complex.imag = contour_array[:, 1]
-            fourier_result = np.fft.fft(contour_complex)
+            fourier_result = np.fft.fft(contour_complex)[1:]
 
-            # fourier_result_front = fourier_result[1:1+coeff//2]
-            # fourier_result_back = fourier_result[-coeff//2:]
-            # fourier_result = np.concatenate((fourier_result_front, fourier_result_back), axis=0)
-            fourier_result = fourier_result[1:]
 
             amp = abs(fourier_result)
+
+            front = math.ceil(self.coeff/2.)
+            back = self.coeff-front
+            assert (front+back) <= (self.resample_points-1)
+            amp = np.concatenate((amp[1:front+1], amp[-back:]), axis=0)
             phase = np.arctan2(fourier_result.imag, fourier_result.real)
 
             # return np.array(amp)
-            return np.concatenate((amp, phase))
-
+            return np.concatenate((amp, moments))
+        
         self.fourier_descriptors = fourier_descriptors
+
+        def lbp(region, intensities):
+            (hist, _) = np.histogram(intensities[region].ravel(),
+                    bins=np.arange(0, 8+3),
+                    range=(0, 8+2))
+            hist = hist.astype("float")
+            # hist /= (hist.sum() + 1e-7)
+            return hist
+        self.lbp = lbp
 
 
     def __call__(self, sample):
@@ -386,6 +397,7 @@ class ToTensorSPFFT(object):
         # ax[0].imshow(img)
         # ax[1].imshow(mask, cmap='gray')
         # plt.show()
+        img_gray = np.array(img.convert('L'))
         img_np = np.array(img)
         mask_np = np.array(mask)/255.
 
@@ -398,7 +410,7 @@ class ToTensorSPFFT(object):
             max_num_iter=10,
             convert2lab=True,
             enforce_connectivity=False,
-            slic_zero=True)
+            slic_zero=False)
 
         # plt.imshow(mark_boundaries(img_np, segments))
         # plt.show()
@@ -409,22 +421,18 @@ class ToTensorSPFFT(object):
         # vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
         # bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
     
-
+        lbp_np = local_binary_pattern(img_gray, 8, 1, method='uniform')
+        regions_lbp = regionprops_table(segments, intensity_image=lbp_np, extra_properties=[self.lbp])
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
                                                                                     'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
 
         seq_len = len(regions['label'])
         seq_mask = np.zeros([self.num_seg])
         label = regions['label']
-        features = np.zeros([self.num_seg, 8+2*(self.resample_points-1)+10])
+        features = np.zeros([self.num_seg, 8+(self.coeff)+8+10])
         
-        if self.ignore_phase:
-            features = np.zeros([self.num_seg, 8+(self.resample_points-1)])
-            for i in range(self.resample_points-1):
-                features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
-        else:
-            for i in range(2*(self.resample_points-1)):
-                features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
+        for i in range((self.coeff)+8):
+            features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
 
  
         features[label-1, 0] = regions['centroid-0']
@@ -437,8 +445,12 @@ class ToTensorSPFFT(object):
         features[label-1, 6] = regions['image_stdev-1']/255.
         features[label-1, 7] = regions['image_stdev-2']/255.
 
+        for ind in range(8+2):
+            # features[label-1, ind+8+(self.resample_points-1)*2] = regions_lbp[f'lbp-{ind}']
+            features[label-1, ind+8+(self.coeff)+8] = regions_lbp[f'lbp-{ind}']
+
         for ind, coord in zip(regions['label'], regions['coords']):
-            seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
+            seq_mask[ind-1] = np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0])
 
 
         # if self.fully_connected:
@@ -760,19 +772,25 @@ class SPDataModule(pl.LightningDataModule):
         self.coeff = kwargs.get('coeff')
         self.compactness = kwargs.get('compactness')
         self.ignore_phase = kwargs.get('ignore_phase')
+        self.debug = kwargs.get('debug', False)
+        self.skip_train = kwargs.get('skip_train')
+        self.ec = kwargs.get('ec')
+        self.aug_strat = kwargs.get('aug_strat')
 
-        self.image_list = np.array(sorted([os.path.join('{}/Image'.format(self.train_dir), f) for f in os.listdir('{}/Image'.format(self.train_dir))]))
-        self.mask_list = np.array(sorted([os.path.join('{}/Mask'.format(self.train_dir), f) for f in os.listdir('{}/Mask'.format(self.train_dir))]))
-
-
-        indices = np.array(list(range(len(self.image_list))))
-        np.random.shuffle(indices)
         
-        self.val_image_list = self.image_list[indices[int(len(self.image_list)*0.85):]]
-        self.val_mask_list = self.mask_list[indices[int(len(self.mask_list)*0.85):]]
-    
-        self.tr_image_list = self.image_list[indices[:int(len(self.image_list)*0.85)]]
-        self.tr_mask_list = self.mask_list[indices[:int(len(self.mask_list)*0.85)]]
+        if not self.skip_train:
+            self.image_list = np.array(sorted([os.path.join('{}/Image'.format(self.train_dir), f) for f in os.listdir('{}/Image'.format(self.train_dir))]))
+            self.mask_list = np.array(sorted([os.path.join('{}/Mask'.format(self.train_dir), f) for f in os.listdir('{}/Mask'.format(self.train_dir))]))
+
+
+            indices = np.array(list(range(len(self.image_list))))
+            np.random.shuffle(indices)
+            
+            self.val_image_list = self.image_list[indices[int(len(self.image_list)*0.85):]]
+            self.val_mask_list = self.mask_list[indices[int(len(self.mask_list)*0.85):]]
+        
+            self.tr_image_list = self.image_list[indices[:int(len(self.image_list)*0.85)]]
+            self.tr_mask_list = self.mask_list[indices[:int(len(self.mask_list)*0.85)]]
 
         self.test_image_list = sorted([os.path.join('{}/Image'.format(self.test_dir), f) for f in os.listdir('{}/Image'.format(self.test_dir))])
         self.test_mask_list = sorted([os.path.join('{}/Mask'.format(self.test_dir), f) for f in os.listdir('{}/Mask'.format(self.test_dir))])
