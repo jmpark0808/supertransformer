@@ -59,6 +59,7 @@ from Wrappers.SP_SWINUM_C_LPE import SP_SWINUM_C_LPE_Wrapper
 from Wrappers.SP_SWINUM_C_ROPE import SP_SWINUM_C_ROPE_Wrapper
 from Wrappers.SP_SWINUM_C_CPE import SP_SWINUM_C_CPE_Wrapper
 from Wrappers.SP_SWINUM_C_CROPE import SP_SWINUM_C_CROPE_Wrapper
+from Wrappers.SLIC_SWINUM_C_ROPE import SLIC_SWINUM_C_ROPE_Wrapper
 # from Wrappers.SP_MAMBA import SP_MAMBA_Wrapper
 
 
@@ -128,6 +129,7 @@ MODEL_DIRECTORY = {
     'SP_SWINUM_C_ROPE': SP_SWINUM_C_ROPE_Wrapper,
     'SP_SWINUM_C_CPE': SP_SWINUM_C_CPE_Wrapper,
     'SP_SWINUM_C_CROPE': SP_SWINUM_C_CROPE_Wrapper,
+    'SLIC_SWINUM_C_ROPE': SLIC_SWINUM_C_ROPE_Wrapper,
     # 'SP_MAMBA': SP_MAMBA_Wrapper,
     'SP_SWIN_Kernel': SP_SWIN_Kernel_Wrapper,
     'SP_SWIN_PyG': SP_SWIN_PyG_Wrapper,
@@ -148,6 +150,7 @@ DATALOADER_DIRECTORY = {
     'SPCNN': SPDataModule,
     'SPLAP': SPDataModule,
     "SPFFT": SPDataModule,
+    "SPSLIC": SPDataModule,
     'SPContour': SPDataModule,
     'SPGFFT': SPGDataModule,
     'SPG': SPGDataModule,
