@@ -164,6 +164,8 @@ def get_input_dim(args):
             return 6+(args.get('coeff'))+10
         else:
             return 6+args.get('coeff')+8+10
+    elif d == 'SPSLIC':
+        return 6+8+10
     elif d== 'SPGIFFT' or d == 'ImageNet_PyG':
         if args.get('ignore_phase'):
             return 6+(args.get('coeff'))

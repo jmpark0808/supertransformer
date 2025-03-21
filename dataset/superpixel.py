@@ -375,7 +375,7 @@ class ToTensorSPFFT(object):
             assert (front+back) <= (self.resample_points-1)
             amp = np.concatenate((amp[1:front+1], amp[-back:]), axis=0)
             phase = np.arctan2(fourier_result.imag, fourier_result.real)
-
+            # moments = np.zeros([8])
             # return np.array(amp)
             return np.concatenate((amp, moments))
         
@@ -421,8 +421,8 @@ class ToTensorSPFFT(object):
         # vs_diagonal_l = np.vstack([segments[1:,:-1].ravel(), segments[:-1,1:].ravel()])
         # bneighbors = np.unique(np.hstack([vs_right, vs_below, vs_diagonal_r, vs_diagonal_l]), axis=1)
     
-        lbp_np = local_binary_pattern(img_gray, 8, 1, method='uniform')
-        regions_lbp = regionprops_table(segments, intensity_image=lbp_np, extra_properties=[self.lbp])
+        # lbp_np = local_binary_pattern(img_gray, 8, 1, method='uniform')
+        # regions_lbp = regionprops_table(segments, intensity_image=lbp_np, extra_properties=[self.lbp])
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
                                                                                     'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
 
@@ -445,9 +445,9 @@ class ToTensorSPFFT(object):
         features[label-1, 6] = regions['image_stdev-1']/255.
         features[label-1, 7] = regions['image_stdev-2']/255.
 
-        for ind in range(8+2):
-            # features[label-1, ind+8+(self.resample_points-1)*2] = regions_lbp[f'lbp-{ind}']
-            features[label-1, ind+8+(self.coeff)+8] = regions_lbp[f'lbp-{ind}']
+        # for ind in range(8+2):
+        #     # features[label-1, ind+8+(self.resample_points-1)*2] = regions_lbp[f'lbp-{ind}']
+        #     features[label-1, ind+8+(self.coeff)+8] = regions_lbp[f'lbp-{ind}']
 
         for ind, coord in zip(regions['label'], regions['coords']):
             seq_mask[ind-1] = np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0])
@@ -475,6 +475,44 @@ class ToTensorSPFFT(object):
         features, seq_mask, segments, mask, img = torch.tensor(features).float(),  torch.tensor(seq_mask).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
         return {'features': features, 'seq_mask': seq_mask, 'segments': segments, 'mask': mask, 'img': img}
  
+
+class ToTensorSPSLIC(object):
+    def __init__(self, num_seg, compactness):
+        self.tensor = transforms.ToTensor()
+        self.num_seg = num_seg
+        self.compactness = compactness
+ 
+        def lbp(region, intensities):
+            (hist, _) = np.histogram(intensities[region].ravel(),
+                    bins=np.arange(0, 8+3),
+                    range=(0, 8+2))
+            hist = hist.astype("float")
+            # hist /= (hist.sum() + 1e-7)
+            return hist
+        self.lbp = lbp
+
+
+    def __call__(self, sample):
+        img, mask = sample['image'], sample['mask']
+        img_gray = np.array(img.convert('L'))
+        img_np = np.array(img)
+        
+        # img_np = np.ascontiguousarray(np.transpose(img.cpu().numpy()*255, (1, 2, 0))).astype(np.uint8)
+            
+        # slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
+        # segments = slic.iterate(img_np)+1
+        segments = slic(img_np, n_segments=self.num_seg,
+            compactness=self.compactness,
+            max_num_iter=10,
+            convert2lab=True,
+            enforce_connectivity=False,
+            slic_zero=False)
+    
+        lbp_np = local_binary_pattern(img_gray, 8, 1, method='uniform')
+        
+        lbp, segments, mask, img = torch.tensor(lbp_np).float(), torch.tensor(segments), self.tensor(mask), self.tensor(img)
+        return {'lbp': lbp, 'segments': segments, 'mask': mask, 'img': img}
+
 
 class ToTensorSPContour(object):
     def __init__(self, num_seg):
@@ -633,13 +671,15 @@ class SPDataset(data.Dataset):
             totensor = ToTensorSPCNN(num_seg, compactness)
         elif dataloader == 'SPContour':
             totensor = ToTensorSPContour(num_seg, compactness)
+        elif dataloader == 'SPSLIC':
+            totensor = ToTensorSPSLIC(num_seg, compactness)
         else:
             raise 'Unrecongized dataloader'
 
         self.transform = transforms.Compose(
             [RandomFlip(0.5),
-             RandomCrop(size, int(size*1.14)),
-             RandomAffine(15, 0.1, 0.1),
+            #  RandomCrop(size, int(size*1.14)),
+             RandomAffine(15, 0.2, 0.3),
              RandomColorJitter(0.2, 0.2, 0.2, 0.2),
              Resize(size),
              totensor])
