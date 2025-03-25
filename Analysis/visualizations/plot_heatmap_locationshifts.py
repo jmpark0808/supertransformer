@@ -30,50 +30,72 @@ num_images = 3000
 all_ys = []
 all_xs = []
 
-for file in tqdm(os.listdir(dataset_images)[:num_images]):
-    name = file.split('.jpg')[0]
-    image = os.path.join(dataset_images, name+'.jpg')
-    mask = os.path.join(masks, name+'.png')
+# for file in tqdm(os.listdir(dataset_images)[:num_images]):
+#     name = file.split('.jpg')[0]
+#     image = os.path.join(dataset_images, name+'.jpg')
+#     mask = os.path.join(masks, name+'.png')
 
-    img = Image.open(image)
-    msk = Image.open(mask)
-    img = img.convert('RGB').resize((448, 448))
-    msk = msk.convert('L').resize((448, 448))
-    img = np.array(img)
-    msk = np.array(msk)
+#     img = Image.open(image)
+#     msk = Image.open(mask)
+#     img = img.convert('RGB').resize((448, 448))
+#     msk = msk.convert('L').resize((448, 448))
+#     img = np.array(img)
+#     msk = np.array(msk)
     
     
-    msk[msk>125] = 255
-    msk[msk<=125] = 0
+#     msk[msk>125] = 255
+#     msk[msk<=125] = 0
 
-    segments = slic(img, n_segments=3136,
-    compactness=10,
-    max_num_iter=10,
-    convert2lab=True,
-    enforce_connectivity=False,
-    slic_zero=False)
+#     segments = slic(img, n_segments=3136,
+#     compactness=10,
+#     max_num_iter=10,
+#     convert2lab=True,
+#     enforce_connectivity=False,
+#     slic_zero=False)
     
-    # plt.imshow(mark_boundaries(img, segments-1))
-    # plt.show()
-    regions = regionprops_table(segments, img, properties=('label', 'centroid'))
+#     # plt.imshow(mark_boundaries(img, segments-1))
+#     # plt.show()
+#     regions = regionprops_table(segments, img, properties=('label', 'centroid'))
     
-    if regions['label'][0] == 1:
-        all_ys.append(regions['centroid-0'][0])
-        all_xs.append(regions['centroid-1'][0])
-    
-xedges = np.linspace(-1, 1, 50)
-yedges = np.linspace(-1, 1, 50)
-all_ys = np.array(all_ys) - np.mean(all_ys)
-all_xs = np.array(all_xs) - np.mean(all_xs)
-np.save('centroid_shifts_0.npy', np.stack((all_xs, all_ys), axis=0))
 
-assert(0)
+#     centroids_y = np.zeros([3136])
+#     centroids_x = np.zeros([3136])
+
+#     for label, x, y in zip(regions['label'],regions['centroid-1'], regions['centroid-0'] ):
+#         centroids_y[label-1] = y
+#         centroids_x[label-1] = x
+#     all_ys.append(centroids_y)
+#     all_xs.append(centroids_x)
+    
+
+# all_xs = np.stack(all_xs, axis=0)
+# all_ys = np.stack(all_ys, axis=0)
+
+# mask = all_xs != 0
+# sum_values_x = np.sum(all_xs*mask, axis=0)
+# sum_values_y = np.sum(all_ys*mask, axis=0)
+# count_nonzero = np.sum(mask, axis=0)
+
+# mean_x = sum_values_x / count_nonzero
+# mean_y = sum_values_y / count_nonzero
+
+# all_shifted_xs = np.where(mask, all_xs - mean_x, all_xs)
+# all_shifted_ys = np.where(mask, all_ys - mean_y, all_ys)
+
+
+# np.save('centroid_shifts.npy', np.stack((all_shifted_xs, all_shifted_ys), axis=0))
+
+# assert(0)
 
 all_centroids = np.load('./Analysis/centroid_shifts.npy')
+all_centroids = all_centroids[:, :20]
+all_centroids = all_centroids.reshape(2, -1)
+non_zero_mask = np.logical_and(all_centroids[0] == 0, all_centroids[1] == 0)
+all_centroids = all_centroids[:, ~non_zero_mask]
 distances = np.linalg.norm(all_centroids, axis=0)
 all_xs = all_centroids[0]
 all_ys = all_centroids[1]
-densObj = kde( all_centroids )
+densObj = kde( all_centroids)
 
 
 def makeColours( vals ):
@@ -88,14 +110,16 @@ def makeColours( vals ):
 colours = makeColours( densObj.evaluate( all_centroids ) )
 fig = plt.figure(figsize=(15, 10))
 plt.scatter( all_centroids[0], all_centroids[1], c=densObj.evaluate( all_centroids ), cmap='jet' )
-plt.colorbar()
+cbar = plt.colorbar()
+cbar.set_label('Probability Density', fontsize=20)
 plt.title('Kernel Density Estimation of Superpixel Centroids', fontsize=20)
-plt.xlim(-5, 5)
-plt.ylim(-5, 5)
+plt.xlim(-8, 8)
+plt.ylim(-8, 8)
 plt.tight_layout()
-plt.savefig('kde_centroids.pdf',format='pdf')
+plt.savefig('/mnt/hdd/Figures/kde_centroids.pdf',format='pdf')
 
 plt.show()
+assert(0)
 
 ind = 0
 for file in tqdm(os.listdir(dataset_images)[:num_images]):

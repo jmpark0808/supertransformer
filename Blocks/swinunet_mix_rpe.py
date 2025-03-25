@@ -15,7 +15,7 @@ from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA
 
 WindowProcess = None
 WindowProcessReverse = None
-print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
+
 
 class SwinUTransformer(nn.Module):
     r""" Swin Transformer

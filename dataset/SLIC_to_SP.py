@@ -27,7 +27,7 @@ def compute_superpixel_representation_batch(images, lbp_images, segmentation_map
         images_flat = images.permute(0, 2, 3, 1).view(B, -1, C)  # (B, H*W, 3)
         lbp_flat = lbp_images.view(B, -1).long()  # (B, H*W)
         seg_flat = segmentation_maps.view(B, -1)  # (B, H*W)
-        masks_flat = masks.view(B, -1) # (B, H*W)
+        
 
         ### 1. Compute Mean and Standard Deviation of RGB per Superpixel
         ones = torch.ones_like(seg_flat, dtype=torch.float32, device=device)
@@ -66,7 +66,12 @@ def compute_superpixel_representation_batch(images, lbp_images, segmentation_map
         mu21 = torch.zeros((B, num_superpixels), device=device).scatter_reduce_(1, seg_flat, dx ** 2 * dy, reduce="sum") 
         mu12 = torch.zeros((B, num_superpixels), device=device).scatter_reduce_(1, seg_flat, dx * dy ** 2, reduce="sum") 
 
-        seq_masks = torch.zeros((B, num_superpixels), device=device).scatter_reduce_(1, seg_flat, masks_flat, reduce="mean")
+        if masks is None:
+            seq_masks = None
+        else:
+
+            masks_flat = masks.view(B, -1) # (B, H*W)
+            seq_masks = torch.zeros((B, num_superpixels), device=device).scatter_reduce_(1, seg_flat, masks_flat, reduce="mean")
 
         shape_moments = torch.stack([superpixel_sizes, mu11, mu20, mu02, mu21, mu12, mu30, mu03], dim=2)  # (B, num_superpixels, 7)
     

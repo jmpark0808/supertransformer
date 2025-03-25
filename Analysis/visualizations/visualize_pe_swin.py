@@ -32,16 +32,16 @@ spg_dataset = SPDataset(image_list, mask_list, 1024, 320, 10, False, 'SPFFT',10,
 spg_loader = DL(spg_dataset, 1, False, num_workers=4)
 
 
-state_dict = torch.load('/home/eddie/1105-220615_52378818/epoch=296-step=1486188.ckpt')
+# state_dict = torch.load('/home/eddie/1105-220615_52378818/epoch=296-step=1486188.ckpt')
 
-for key in list(state_dict['state_dict'].keys()):
-    state_dict['state_dict'][key.replace('supert.', '')] = state_dict['state_dict'].pop(key)
+# for key in list(state_dict['state_dict'].keys()):
+#     state_dict['state_dict'][key.replace('supert.', '')] = state_dict['state_dict'].pop(key)
 
 # print(state_dict['state_dict'].keys())
 dummy_linear = nn.Linear(2, 64).cuda()
 # pyg = SP_SWIN(36, 32, 64, 8, 6, 0, 0, [4, 4, 4], 4).cuda()
-dummy_linear.weight = nn.Parameter(state_dict['state_dict']['locations.0.weight'])
-dummy_linear.bias = nn.Parameter(state_dict['state_dict']['locations.0.bias'])
+# dummy_linear.weight = nn.Parameter(state_dict['state_dict']['locations.0.weight'])
+# dummy_linear.bias = nn.Parameter(state_dict['state_dict']['locations.0.bias'])
 dummy_linear.eval()
 
 
@@ -69,6 +69,9 @@ for batch in spg_loader:
     
 
     centroids = features[:, :, :2]
+    centroids_h = features[:, :, None, :2]
+    centroids_w = features[:, None, :, :2]
+    relative_centroids = torch.sqrt(torch.sum(torch.pow(centroids_h - centroids_w, 2), -1))
   
     output = dummy_linear(centroids)[0]
     # plt.rcParams['axes.facecolor']='black'
@@ -79,21 +82,22 @@ for batch in spg_loader:
     #         plt.scatter(centroids[0, i*32:i*32+32, 1].detach().cpu().numpy(), -centroids[0, i*32:i*32+32, 0].detach().cpu().numpy(), c=list(range(32)), cmap='GnBu')
     
     # plt.show()
-    # cos = nn.CosineSimilarity(dim=0)
+    cos = nn.CosineSimilarity(dim=0)
     output = output.reshape(32, 32, -1)
+    relative_centroids_reshape_tensor = relative_centroids.reshape(32, 32, -1)
     centroids_reshape_tensor = centroids.reshape(32, 32, -1)
     import matplotlib.pyplot as plt
     import numpy as np
     # fig, ax = plt.subplots(32, 32)
     count = 0 
     l = 16
-    k = 16
+    k = 5
     patches = []
     for i in range(32):
         for j in range(32):
-            # patches.append(cos(output[k, l], output[i, j]).detach().cpu().numpy())
-            patches.append(torch.sqrt(torch.sum(torch.pow(output[k, l]-output[i, j], 2))).detach().cpu().numpy())
-            # patches.append(torch.sqrt(torch.sum(torch.pow(centroids_reshape_tensor[k, l]-centroids_reshape_tensor[i, j], 2))).detach().cpu().numpy())
+            patches.append(cos(relative_centroids_reshape_tensor[k, l], relative_centroids_reshape_tensor[i, j]).detach().cpu().numpy())
+            # patches.append(torch.sqrt(torch.sum(torch.pow(output[k, l]-output[i, j], 2))).detach().cpu().numpy())
+            # patches.append(torch.sqrt(torch.sum(torch.pow(relative_centroids_reshape_tensor[k, l]-relative_centroids_reshape_tensor[i, j], 2))).detach().cpu().numpy())
             
 
     # plt.imshow(np.array(patches).reshape(32, 32), cmap='hot')
