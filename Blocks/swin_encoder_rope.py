@@ -3,6 +3,7 @@ import torch.nn as nn
 from timm.models.layers import trunc_normal_
 from Blocks.swin_common import PatchEmbed
 from Blocks.swin_rope import BasicLayerRoPE, PatchMergingRoPE
+from util.util import TokenDropout
 
 class SwinTransformer(nn.Module):
     r""" Swin Transformer
@@ -59,7 +60,8 @@ class SwinTransformer(nn.Module):
         # absolute position embedding
  
 
-        self.pos_drop = nn.Dropout(p=drop_rate)
+        # self.pos_drop = nn.Dropout(p=drop_rate)
+        self.pos_drop = TokenDropout(drop_rate)
 
         # stochastic depth
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
@@ -124,8 +126,9 @@ class SwinTransformer(nn.Module):
 
         x = self.patch_embed(features)
  
-        x = self.pos_drop(x)
+        
         x = x + centroids
+        x = self.pos_drop(x)
 
         for layer in self.layers:
             ds, x = layer(x)

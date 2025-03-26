@@ -406,4 +406,29 @@ def compute_central_moments(binary_image):
                           moments_[0, 2], moments_[2, 1], moments_[1, 2], moments_[3, 0], moments_[0, 3]])
     return moments_
 
+class TokenDropout(nn.Module):
+    def __init__(self, p: float = 0.1):
+        """
+        Token-level dropout: randomly zero out entire token features with probability p.
+        
+        Args:
+        - p (float): Probability of dropping out each token.
+        """
+        super().__init__()
+        self.p = p
 
+    def forward(self, x):
+        """
+        Args:
+        - x: Input tensor of shape (B, N, D)
+        
+        Returns:
+        - Tensor with some tokens zeroed out.
+        """
+        if not self.training or self.p == 0.0:
+            return x  # No dropout during evaluation mode
+
+        B, N, D = x.shape
+        # Generate random mask of shape (B, N, 1)
+        mask = (torch.rand(B, N, 1, device=x.device) > self.p).float()
+        return x * mask  # Zero out selected tokens

@@ -76,7 +76,7 @@ class SwinUTransformer(nn.Module):
         # absolute position embedding
 
 
-        self.pos_drop = nn.Dropout(p=drop_rate)
+        self.pos_drop = swinencoder.pos_drop
 
         
         # build layers

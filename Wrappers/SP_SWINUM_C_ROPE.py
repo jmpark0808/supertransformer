@@ -11,7 +11,7 @@ from dataset.constants import *
 from util.util import get_input_dim
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 from dataset.mixup import MixupSaliency
-from util.util import eval_e, S_object, S_region
+from util.util import eval_e, S_object, S_region, TokenDropout
 import cv2
 import os
 import time
