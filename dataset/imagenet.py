@@ -218,7 +218,7 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
             max_num_iter=10,
             convert2lab=True,
             enforce_connectivity=False,
-            slic_zero=True)
+            slic_zero=False)
         # slic = SlicAvx2(num_components=self.num_seg, compactness=self.compactness)
         # segments = slic.iterate(img_np)+1
         # plt.imshow(mark_boundaries(img_np, segments))

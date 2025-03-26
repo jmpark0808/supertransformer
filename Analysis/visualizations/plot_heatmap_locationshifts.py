@@ -25,10 +25,10 @@ dataset_images = '/home/eddie/Datasets/DUTS/DUTS-TR/Image'
 masks = '/home/eddie/Datasets/DUTS/DUTS-TR/Mask'
 
 
-num_images = 3000
+num_images = 20
 
-all_ys = []
-all_xs = []
+# all_ys = []
+# all_xs = []
 
 # for file in tqdm(os.listdir(dataset_images)[:num_images]):
 #     name = file.split('.jpg')[0]
@@ -83,12 +83,12 @@ all_xs = []
 # all_shifted_ys = np.where(mask, all_ys - mean_y, all_ys)
 
 
-# np.save('centroid_shifts.npy', np.stack((all_shifted_xs, all_shifted_ys), axis=0))
+# np.save('./Analysis/centroid_shifts.npy', np.stack((all_shifted_xs, all_shifted_ys), axis=0))
 
 # assert(0)
 
 all_centroids = np.load('./Analysis/centroid_shifts.npy')
-all_centroids = all_centroids[:, :20]
+all_centroids = all_centroids[:, :]
 all_centroids = all_centroids.reshape(2, -1)
 non_zero_mask = np.logical_and(all_centroids[0] == 0, all_centroids[1] == 0)
 all_centroids = all_centroids[:, ~non_zero_mask]
@@ -97,26 +97,42 @@ all_xs = all_centroids[0]
 all_ys = all_centroids[1]
 densObj = kde( all_centroids)
 
+x_grid = np.linspace(-8, 8, 1000)
+y_grid = np.linspace(-8, 8, 1000)
+X, Y = np.meshgrid(x_grid, y_grid)
+Z = densObj.evaluate(np.vstack([X.ravel(), Y.ravel()])).reshape(X.shape)
 
-def makeColours( vals ):
-    colours = np.zeros( (len(vals),3) )
-    norm = Normalize( vmin=vals.min(), vmax=vals.max() )
+# def makeColours( vals ):
+#     colours = np.zeros( (len(vals),3) )
+#     norm = Normalize( vmin=vals.min(), vmax=vals.max() )
 
-    #Can put any colormap you like here.
-    colours = [cm.ScalarMappable( norm=norm, cmap='jet').to_rgba( val ) for val in vals]
+#     #Can put any colormap you like here.
+#     colours = [cm.ScalarMappable( norm=norm, cmap='jet').to_rgba( val ) for val in vals]
 
-    return colours
+#     return colours
 
-colours = makeColours( densObj.evaluate( all_centroids ) )
-fig = plt.figure(figsize=(15, 10))
-plt.scatter( all_centroids[0], all_centroids[1], c=densObj.evaluate( all_centroids ), cmap='jet' )
-cbar = plt.colorbar()
-cbar.set_label('Probability Density', fontsize=20)
-plt.title('Kernel Density Estimation of Superpixel Centroids', fontsize=20)
-plt.xlim(-8, 8)
-plt.ylim(-8, 8)
-plt.tight_layout()
-plt.savefig('/mnt/hdd/Figures/kde_centroids.pdf',format='pdf')
+# colours = makeColours( densObj.evaluate( all_centroids ) )
+fig, ax = plt.subplots(1, 2, figsize=(12, 5))
+
+ax[0].scatter( all_centroids[0], all_centroids[1], c='b', alpha=0.5)
+contour = ax[1].contourf(X, Y, Z, levels=20, cmap='jet')
+
+
+cbar = fig.colorbar(contour, ax= ax[1])
+cbar.set_label('Probability Density', fontsize=15)
+
+# cbar = plt.colorbar()
+# 
+ax[0].set_title('Scatterplot of Superpixel Centroids', fontsize=20)
+ax[1].set_title('KDE of Superpixel Centroids', fontsize=20)
+ax[1].set_xlim(-8, 8)
+ax[1].set_ylim(-8, 8)
+ax[0].set_xlim(-8, 8)
+ax[0].set_ylim(-8, 8)
+ax[0].set_aspect('equal')
+ax[1].set_aspect('equal')
+fig.tight_layout()
+fig.savefig('/mnt/hdd/Figures/SuperFormer/kde_centroids.pdf',format='pdf')
 
 plt.show()
 assert(0)
