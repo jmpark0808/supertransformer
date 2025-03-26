@@ -140,11 +140,43 @@ class SwinUTransformer(nn.Module):
         relative_centroids = relative_centroids.reshape(relative_centroids.size(0),
                                                          int(relative_centroids.size(1)**0.5),
                                                           int(relative_centroids.size(1)**0.5) , -1)
-        centroids = self.locations(relative_centroids)
-        centroids = centroids.reshape(centroids.size(0), -1, centroids.size(3))
+
+        centroids_linear = self.locations(relative_centroids)
+
+        # if self.training is False:
+        #     import matplotlib.pyplot as plt
+        #     import numpy as np
+  
+        #     cos = nn.CosineSimilarity(dim=0)
+        #     relative_centroids_reshape_tensor = centroids_linear[0]
+            
+        #     # fig, ax = plt.subplots(32, 32)
+        #     count = 0 
+        #     l =0
+        #     k = 0
+        #     patches = []
+        #     for i in range(56):
+        #         for j in range(56):
+        #             # patches.append(cos(relative_centroids_reshape_tensor[k, l], relative_centroids_reshape_tensor[i, j]).detach().cpu().numpy())
+        #             # patches.append(torch.sqrt(torch.sum(torch.pow(output[k, l]-output[i, j], 2))).detach().cpu().numpy())
+        #             patches.append(torch.sqrt(torch.sum(torch.pow(relative_centroids_reshape_tensor[k, l]-relative_centroids_reshape_tensor[i, j], 2))).detach().cpu().numpy())
+                    
+
+        #     # plt.imshow(np.array(patches).reshape(32, 32), cmap='hot')
+        #     centroids_reshape = centroids[0].detach().cpu().numpy()
+        #     centroids_flat = centroids[0].reshape(-1, 2)
+        #     plt.figure(figsize=(5,5))
+        #     plt.scatter(centroids_flat[:, 1].detach().cpu().numpy(), -centroids_flat[:, 0].detach().cpu().numpy(), c=patches, cmap='jet')
+        #     plt.scatter(centroids_reshape[k, l, 1], -centroids_reshape[k, l, 0], c='red', marker='*', s=100)
+        #     plt.title(f'Seed row {k}, column {l}')
+        #     plt.axis('off')
+        #     plt.show()
+        #     plt.clf()
+        #     assert(0)
+        centroids_linear = centroids_linear.reshape(centroids_linear.size(0), -1, centroids_linear.size(3))
         
         x = self.patch_embed(features)
-        x = x + centroids
+        x = x + centroids_linear
         x = self.pos_drop(x)
 
      

@@ -33,8 +33,8 @@ num_images = 3000
 compactness = [0.1, 1, 10, 100]
 
 
-y_indices, x_indices = np.meshgrid(np.arange(56), np.arange(56), indexing='ij')
-patch_centroids = np.stack([x_indices, y_indices], axis=-1).reshape(3136, 2)+1.5
+y_indices, x_indices = np.meshgrid(np.arange(56)*8, np.arange(56)*8, indexing='ij')
+patch_centroids = np.stack([x_indices, y_indices], axis=-1).reshape(3136, 2)+3.5
 average_norms = []
 for compact in compactness:
     count = 0 
@@ -68,17 +68,14 @@ for compact in compactness:
             all_norms += np.linalg.norm(patch_centroids[label-1] - np.array([x, y]))
             count += 1
 
+
+
     average_norms.append(all_norms/count)
-   
 
-
-
-# Plot heatmap
-plt.plot(compactness, average_norms)
-plt.title("Centroid Displacement as a Function of Compactness")
-plt.ylabel('Average Pixel Displacement (L2 norm)')
-plt.xlabel('Compactness')
-plt.xticks([0.1, 1, 10, 100])
+plt.plot(average_norms)
+plt.ylabel('Average Pixel Displacement (L2 Norm)', fontsize=15)
+plt.xlabel('Compactness', fontsize=15)
+plt.xticks([0, 1, 2, 3], [0.1, 1, 10, 100])
 plt.tight_layout()
 plt.savefig('/mnt/hdd/Figures/SuperFormer/centroid_displacement.pdf', format='pdf')
 plt.show()
