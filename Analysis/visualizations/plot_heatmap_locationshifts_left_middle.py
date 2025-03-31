@@ -25,7 +25,7 @@ dataset_images = '/home/eddie/Datasets/DUTS/DUTS-TR/Image'
 masks = '/home/eddie/Datasets/DUTS/DUTS-TR/Mask'
 
 
-num_images = 20
+num_images = 3000
 
 # all_ys = []
 # all_xs = []
@@ -58,12 +58,17 @@ num_images = 20
 #     regions = regionprops_table(segments, img, properties=('label', 'centroid'))
     
 
-#     centroids_y = np.zeros([3136])
-#     centroids_x = np.zeros([3136])
+#     centroids_y = np.zeros([2])
+#     centroids_x = np.zeros([2])
 
 #     for label, x, y in zip(regions['label'],regions['centroid-1'], regions['centroid-0'] ):
-#         centroids_y[label-1] = y
-#         centroids_x[label-1] = x
+#         if label == 1:
+#             centroids_y[0] = y
+#             centroids_x[0] = x
+#         elif label == 1596:
+#             centroids_y[1] = y
+#             centroids_x[1] = x
+
 #     all_ys.append(centroids_y)
 #     all_xs.append(centroids_x)
     
@@ -83,24 +88,43 @@ num_images = 20
 # all_shifted_ys = np.where(mask, all_ys - mean_y, all_ys)
 
 
-# np.save('./Analysis/centroid_shifts.npy', np.stack((all_shifted_xs, all_shifted_ys), axis=0))
+# np.save('./Analysis/centroid_shifts_left_middle.npy', np.stack((all_shifted_xs, all_shifted_ys), axis=0))
 
 # assert(0)
 
-all_centroids = np.load('./Analysis/centroid_shifts.npy')
-all_centroids = all_centroids[:, :]
-all_centroids = all_centroids.reshape(2, -1)
-non_zero_mask = np.logical_and(all_centroids[0] == 0, all_centroids[1] == 0)
-all_centroids = all_centroids[:, ~non_zero_mask]
-distances = np.linalg.norm(all_centroids, axis=0)
-all_xs = all_centroids[0]
-all_ys = all_centroids[1]
-densObj = kde( all_centroids)
+all_centroids = np.load('./Analysis/centroid_shifts_left_middle.npy')
+
+all_centroids_left = all_centroids[:, :, 0]
+all_centroids_middle = all_centroids[:, :, 1]
+
+
+non_zero_mask_left = np.logical_and(all_centroids_left[0] == 0, all_centroids_left[1] == 0)
+non_zero_mask_middle = np.logical_and(all_centroids_middle[0] == 0, all_centroids_middle[1] == 0)
+
+all_centroids_left = all_centroids_left[:, ~non_zero_mask_left]
+all_centroids_middle = all_centroids_middle[:, ~non_zero_mask_middle]
+
+# distances = np.linalg.norm(all_centroids, axis=0)
+all_centroids_left[1] = -all_centroids_left[1]
+all_centroids_middle[1] = -all_centroids_middle[1]
+densObj_left = kde( all_centroids_left)
+densObj_middle = kde( all_centroids_middle)
 
 x_grid = np.linspace(-8, 8, 1000)
 y_grid = np.linspace(-8, 8, 1000)
 X, Y = np.meshgrid(x_grid, y_grid)
-Z = densObj.evaluate(np.vstack([X.ravel(), Y.ravel()])).reshape(X.shape)
+Z_left = densObj_left.evaluate(np.vstack([X.ravel(), Y.ravel()])).reshape(X.shape)
+Z_middle = densObj_middle.evaluate(np.vstack([X.ravel(), Y.ravel()])).reshape(X.shape)
+
+Z_left /= np.sum(Z_left)
+Z_middle /= np.sum(Z_middle)
+
+Z_log_left = np.log(Z_left)
+Z_sqrt_left = np.power(Z_left, 0.25)
+
+
+Z_log_middle = np.log(Z_middle)
+Z_sqrt_middle = np.power(Z_middle, 0.25)
 
 # def makeColours( vals ):
 #     colours = np.zeros( (len(vals),3) )
@@ -112,27 +136,61 @@ Z = densObj.evaluate(np.vstack([X.ravel(), Y.ravel()])).reshape(X.shape)
 #     return colours
 
 # colours = makeColours( densObj.evaluate( all_centroids ) )
-fig, ax = plt.subplots(1, 2, figsize=(12, 5))
 
-ax[0].scatter( all_centroids[0], all_centroids[1], c='b', alpha=0.5)
-contour = ax[1].contourf(X, Y, Z, levels=20, cmap='jet')
+import matplotlib as mpl
+fig = plt.figure(figsize=(15, 10))
+spec = mpl.gridspec.GridSpec(ncols=3, nrows=4, wspace=0.1,hspace=0.3,left=0.01,right=0.99,top=0.95,bottom=0.01)
+
+ax1 = fig.add_subplot(spec[1:3,0])
+ax2 = fig.add_subplot(spec[0:2,1])
+ax3 = fig.add_subplot(spec[2:4,1])
+ax4 = fig.add_subplot(spec[0:2,2])
+ax5 = fig.add_subplot(spec[2:4,2])
+
+ax1.plot([0, 448, 448, 0, 0], [0, 0, 448, 448, 0], c='red', linewidth=5)
+ax1.scatter([15], [430], marker='*', s=100, zorder=1)
+ax1.scatter([224], [224], marker='*', s=100, zorder=1)
+ax1.text(20, 410, 'A', fontsize=15)
+ax1.text(229, 204, 'B', fontsize=15)
 
 
-cbar = fig.colorbar(contour, ax= ax[1])
-cbar.set_label('Probability Density', fontsize=15)
+ax2.scatter( all_centroids_left[0], all_centroids_left[1], c='b', alpha=0.5)
+ax3.scatter( all_centroids_middle[0], all_centroids_middle[1], c='b', alpha=0.5)
+contour0 = ax4.contourf(X, Y, Z_sqrt_left, levels=50, cmap='jet')
+contour1 = ax5.contourf(X, Y, Z_sqrt_middle, levels=50, cmap='jet')
+# contour0 = ax[0, 1].imshow(Z_left, extent=[-8, 8, -8, 8], cmap=
+# 'jet')
+# contour1 = ax[1, 1].imshow(Z_middle, extent=[-8, 8, -8, 8], cmap='jet')
 
-# cbar = plt.colorbar()
+# cbar = fig.colorbar(contour0, ax= ax[1])
+# cbar.set_label('Probability Density', fontsize=15)
+
+# cbar0 = plt.colorbar(contour0, ax= ax[0, 1])
+# cbar1 = plt.colorbar(contour1, ax= ax[1, 1])
 # 
-ax[0].set_title('Scatterplot of Superpixel Centroids', fontsize=20)
-ax[1].set_title('KDE of Superpixel Centroids', fontsize=20)
-ax[1].set_xlim(-8, 8)
-ax[1].set_ylim(-8, 8)
-ax[0].set_xlim(-8, 8)
-ax[0].set_ylim(-8, 8)
-ax[0].set_aspect('equal')
-ax[1].set_aspect('equal')
-fig.tight_layout()
-fig.savefig('/mnt/hdd/Figures/SuperFormer/kde_centroids.pdf',format='pdf')
+ax2.set_title('"A" Superpixel Centroids', fontsize=15)
+ax3.set_title('"B" Superpixel Centroids', fontsize=15)
+
+ax4.set_title('KDE of "A" Superpixel Centroids', fontsize=15)
+ax5.set_title('KDE of "B" Superpixel Centroids', fontsize=15)
+
+ax1.set_xlim(0, 448)
+ax1.set_ylim(0, 448)
+ax2.set_xlim(-8, 8)
+ax2.set_ylim(-8, 8)
+ax3.set_xlim(-8, 8)
+ax3.set_ylim(-8, 8)
+ax4.set_xlim(-8, 8)
+ax4.set_ylim(-8, 8)
+ax5.set_xlim(-8, 8)
+ax5.set_ylim(-8, 8)
+ax1.axis('off')
+ax2.set_aspect('equal')
+ax3.set_aspect('equal')
+ax4.set_aspect('equal')
+ax5.set_aspect('equal')
+# fig.tight_layout()
+fig.savefig('/mnt/hdd/Figures/SuperFormer/kde_centroids_left_middle.pdf',format='pdf')
 
 plt.show()
 assert(0)
