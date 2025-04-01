@@ -121,14 +121,15 @@ class SwinTransformer(nn.Module):
     def forward_features(self, x):
         features = x[:, 2:, :, :]
         centroids = x[:, :2, :, :].permute(0, 2, 3, 1)
+        with torch.no_grad():
 
-        centroids_h = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, :, None, :]
-        centroids_w = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, None, :, :]
+            centroids_h = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, :, None, :]
+            centroids_w = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, None, :, :]
 
-        relative_centroids = torch.sqrt(torch.sum(torch.pow(centroids_h - centroids_w, 2), -1))
-        relative_centroids = relative_centroids.reshape(relative_centroids.size(0),
-                                                         int(relative_centroids.size(1)**0.5),
-                                                          int(relative_centroids.size(1)**0.5) , -1)
+            relative_centroids = torch.sqrt(torch.sum(torch.pow(centroids_h - centroids_w, 2), -1))
+            relative_centroids = relative_centroids.reshape(relative_centroids.size(0),
+                                                            int(relative_centroids.size(1)**0.5),
+                                                            int(relative_centroids.size(1)**0.5) , -1)
 
 
         centroids = self.locations(relative_centroids)
