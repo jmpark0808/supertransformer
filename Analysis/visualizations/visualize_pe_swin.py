@@ -83,20 +83,22 @@ for batch in spg_loader:
     
     # plt.show()
     cos = nn.CosineSimilarity(dim=0)
-    output = output.reshape(32, 32, -1)
+    layernorm = nn.LayerNorm([64]).cuda()
+    output = layernorm(output.reshape(32, 32, -1))
     relative_centroids_reshape_tensor = relative_centroids.reshape(32, 32, -1)
+    
     centroids_reshape_tensor = centroids.reshape(32, 32, -1)
     import matplotlib.pyplot as plt
     import numpy as np
     # fig, ax = plt.subplots(32, 32)
     count = 0 
-    l = 16
-    k = 5
+    l = 0
+    k = 16
     patches = []
     for i in range(32):
         for j in range(32):
-            patches.append(cos(relative_centroids_reshape_tensor[k, l], relative_centroids_reshape_tensor[i, j]).detach().cpu().numpy())
-            # patches.append(torch.sqrt(torch.sum(torch.pow(output[k, l]-output[i, j], 2))).detach().cpu().numpy())
+            # patches.append(cos(relative_centroids_reshape_tensor[k, l], relative_centroids_reshape_tensor[i, j]).detach().cpu().numpy())
+            patches.append(torch.sqrt(torch.sum(torch.pow(output[k, l]-output[i, j], 2))).detach().cpu().numpy())
             # patches.append(torch.sqrt(torch.sum(torch.pow(relative_centroids_reshape_tensor[k, l]-relative_centroids_reshape_tensor[i, j], 2))).detach().cpu().numpy())
             
 

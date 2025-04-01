@@ -52,7 +52,8 @@ class SwinTransformer(nn.Module):
 
         self.patch_embed = PatchEmbed(
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim[0],
-            norm_layer=norm_layer if self.patch_norm else None)
+            norm_layer=None)
+        self.ln = nn.LayerNorm(embed_dim[0])
         num_patches = self.patch_embed.num_patches
         patches_resolution = self.patch_embed.patches_resolution
         self.patches_resolution = patches_resolution
@@ -92,7 +93,7 @@ class SwinTransformer(nn.Module):
             self.embed_dims.append(embed_dim[i_layer])
             self.layers.append(layer)
 
-        self.locations = nn.Sequential(*[nn.Linear(2, embed_dim[0]), nn.LayerNorm([img_size, img_size, embed_dim[0]])])
+        self.locations = nn.Sequential(*[nn.Linear(img_size[0]*img_size[1], embed_dim[0]), nn.LayerNorm([embed_dim[0]])])
 
         self.norm = norm_layer(self.num_features)
         self.avgpool = nn.AdaptiveAvgPool1d(1)
@@ -120,7 +121,17 @@ class SwinTransformer(nn.Module):
     def forward_features(self, x):
         features = x[:, 2:, :, :]
         centroids = x[:, :2, :, :].permute(0, 2, 3, 1)
-        centroids = self.locations(centroids)
+
+        centroids_h = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, :, None, :]
+        centroids_w = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, None, :, :]
+
+        relative_centroids = torch.sqrt(torch.sum(torch.pow(centroids_h - centroids_w, 2), -1))
+        relative_centroids = relative_centroids.reshape(relative_centroids.size(0),
+                                                         int(relative_centroids.size(1)**0.5),
+                                                          int(relative_centroids.size(1)**0.5) , -1)
+
+
+        centroids = self.locations(relative_centroids)
         centroids = centroids.reshape(centroids.size(0), -1, centroids.size(3))
         
 
@@ -128,6 +139,7 @@ class SwinTransformer(nn.Module):
  
         
         x = x + centroids
+        x = self.ln(x)
         x = self.pos_drop(x)
 
         for layer in self.layers:
