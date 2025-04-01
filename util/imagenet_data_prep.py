@@ -17,7 +17,7 @@ if __name__ == "__main__":
     parser.add_argument('--num_seg', help="Number of segmentation for SLIC", default=1024, type=int)
     parser.add_argument('--size', help="Resolution for raw image before SLIC", default=320, type=int)
     parser.add_argument('--coeff', help="Number of coefficients used in FFT", default=10, type=int)
-    parser.add_argument('--compactness', help="Compactness parameter in SLIC", default=10, type=int)
+    parser.add_argument('--compactness', help="Compactness parameter in SLIC", default=10, type=float)
     parser.add_argument('--ec', help='Whether to enforce connectivity or not'
                         , default=False, action="store_true")
     parser.add_argument('--moments', help='Whether to use moments vs Fourier Descriptors'
