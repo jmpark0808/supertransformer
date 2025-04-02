@@ -70,12 +70,12 @@ class ImageNetDataset(data.Dataset):
         colour_and_centroid = features[:, :8]
         lbp = features[:, -10:]
         features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), 1)
-
+        features_phase = np.concatenate((features_phase[:, :front], features_phase[:, -back:]), 1)
         if self.augmentation:
-            moments = rotate_moments(moments, 0.5, 15)
+            # moments = rotate_moments(moments, 0.5, 15)
         
-            centroids, colour, features_amp, moments, lbp = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
-                                                  features_amp, moments, lbp, 0.5, self.size, (res, res))
+            centroids, colour, features_amp,features_phase, moments, lbp = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
+                                                  features_amp, features_phase, moments, lbp, 0.5, self.size, (res, res))
             colour_and_centroid = np.concatenate((centroids, colour), 1)
         
         if self.coeff == 0:
@@ -88,7 +88,7 @@ class ImageNetDataset(data.Dataset):
         # Colour augmentations
         if self.augmentation:
             randaug = RandAugment(5)
-            erase = transforms.RandomErasing(0.25)
+            # erase = transforms.RandomErasing(0.25)
             color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
             # fig, ax = plt.subplots(1, 2)
             # ax[0].imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
@@ -98,7 +98,7 @@ class ImageNetDataset(data.Dataset):
                 color_space = randaug(color_space)
                 color_space = color_space.float()
                 color_space /= 255.
-            color_space = erase(color_space)
+            # color_space = erase(color_space)
             
             # ax[1].imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
             # ax[1].set_title(op_names)

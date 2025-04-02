@@ -70,8 +70,13 @@ for batch in spg_loader:
 
     centroids = features[:, :, :2]
     centroids_h = features[:, :, None, :2]
+
+    
+    desired_indices = torch.arange(0, centroids_h.size(1), 16)
+
     centroids_w = features[:, None, :, :2]
-    relative_centroids = torch.sqrt(torch.sum(torch.pow(centroids_h - centroids_w, 2), -1))
+    relative_centroids = torch.norm(centroids_h - centroids_w, p=2, dim=-1)
+    
   
     output = dummy_linear(centroids)[0]
     # plt.rcParams['axes.facecolor']='black'
@@ -92,13 +97,13 @@ for batch in spg_loader:
     import numpy as np
     # fig, ax = plt.subplots(32, 32)
     count = 0 
-    l = 0
+    l = 16
     k = 16
     patches = []
     for i in range(32):
         for j in range(32):
-            # patches.append(cos(relative_centroids_reshape_tensor[k, l], relative_centroids_reshape_tensor[i, j]).detach().cpu().numpy())
-            patches.append(torch.sqrt(torch.sum(torch.pow(output[k, l]-output[i, j], 2))).detach().cpu().numpy())
+            patches.append(cos(relative_centroids_reshape_tensor[k, l], relative_centroids_reshape_tensor[i, j]).detach().cpu().numpy())
+            # patches.append(torch.sqrt(torch.sum(torch.pow(output[k, l]-output[i, j], 2))).detach().cpu().numpy())
             # patches.append(torch.sqrt(torch.sum(torch.pow(relative_centroids_reshape_tensor[k, l]-relative_centroids_reshape_tensor[i, j], 2))).detach().cpu().numpy())
             
 

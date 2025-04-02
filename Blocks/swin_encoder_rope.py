@@ -93,7 +93,8 @@ class SwinTransformer(nn.Module):
             self.embed_dims.append(embed_dim[i_layer])
             self.layers.append(layer)
 
-        self.locations = nn.Sequential(*[nn.Linear(img_size[0]*img_size[1], embed_dim[0]), nn.LayerNorm([embed_dim[0]])])
+        # self.locations = nn.Sequential(*[nn.Linear(img_size[0]*img_size[1], embed_dim[0])])
+        self.locations = nn.Sequential(*[nn.Linear(2, embed_dim[0])])
 
         self.norm = norm_layer(self.num_features)
         self.avgpool = nn.AdaptiveAvgPool1d(1)
@@ -122,18 +123,23 @@ class SwinTransformer(nn.Module):
         features = x[:, 2:, :, :]
         centroids = x[:, :2, :, :].permute(0, 2, 3, 1)
 
-        centroids_h = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, :, None, :]
-        centroids_w = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, None, :, :]
-
-        relative_centroids = torch.sqrt(torch.sum(torch.pow(centroids_h - centroids_w, 2), -1))
-        relative_centroids = relative_centroids.reshape(relative_centroids.size(0),
-                                                         int(relative_centroids.size(1)**0.5),
-                                                          int(relative_centroids.size(1)**0.5) , -1)
+        # centroids_h = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, :, None, :]
+        # centroids_w = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, None, :, :]
 
 
-        centroids = self.locations(relative_centroids)
-        centroids = centroids.reshape(centroids.size(0), -1, centroids.size(3))
+        # all_centroids = []
+        # for chunk in torch.chunk(centroids_w, 10, dim=2):
+        #     centroids = torch.sqrt(torch.sum(torch.pow(centroids_h - chunk, 2), -1))
+        #     centroids = centroids.reshape(centroids.size(0),
+        #                                                     int(centroids.size(1)**0.5),
+        #                                                     int(centroids.size(1)**0.5) , -1)
+        #     all_centroids.append(centroids)
+        # all_centroids = torch.cat(all_centroids, dim=-1)
+        # centroids = self.locations(all_centroids)
+        # centroids = centroids.reshape(centroids.size(0), -1, centroids.size(3))
         
+        centroids = self.locations(centroids)
+        centroids = centroids.reshape(centroids.size(0), -1, centroids.size(3))
 
         x = self.patch_embed(features)
  
