@@ -82,7 +82,7 @@ class ImageNetDataset(data.Dataset):
             moments_zeros = np.zeros_like(moments)
             features_np = np.concatenate((colour_and_centroid, moments_zeros, lbp), 1)
         else:
-            features_np = np.concatenate((colour_and_centroid, features_amp, moments, lbp), 1)
+            features_np = np.concatenate((colour_and_centroid, np.power(features_amp, 0.25), features_phase, np.power(moments, 0.25), lbp), 1)
             
         features = torch.tensor(features_np).float()
         # Colour augmentations
