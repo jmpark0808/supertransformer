@@ -77,7 +77,8 @@ if __name__ == "__main__":
     for _ in tqdm(train_source_loader):
         pass
 
-
+    del train_source_loader
+    del train_dataset
     for _ in tqdm(test_source_loader):
         pass
 
