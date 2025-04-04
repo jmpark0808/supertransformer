@@ -31,8 +31,8 @@ def horizontal_flip(array, coeff, chance, size, resolution, seq_mask=None):
 def horizontal_flip_moments(centroids, colour, amp, phase, moments, lbp, chance, size, resolution, seq_mask=None):
     if np.random.random() < chance:
         # Flip centroids
-        xs = centroids[:, 1]
-        centroids[:, 1] = size - xs
+        # xs = centroids[:, 1]
+        centroids[:, 1] = -centroids[:, 1]
         # Flip moments
         moments = moments*np.array([1, -1, 1, 1, -1, 1, 1, -1]) 
         # LR all

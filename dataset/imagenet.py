@@ -41,6 +41,12 @@ class ImageNetDataset(data.Dataset):
         self.augmentation = augmentation
         self.resample_points = int(((size**2)//num_seg)**0.5)*4
 
+        ps = int((size*size//num_seg)**0.5)
+        xs = np.arange(ps//2, ps//2+ps*56, ps)
+        ys = np.arange(ps//2, ps//2+ps*56, ps)
+        xv, yv = np.meshgrid(xs, ys, indexing='ij')
+        self.grid = np.stack((xv, yv), axis=2)
+
       
         for file in os.listdir(root_dir):
             if '_target' in file:
@@ -67,7 +73,10 @@ class ImageNetDataset(data.Dataset):
         front = math.ceil(self.coeff/2.)
         back = self.coeff-front
         assert (front+back) <= (self.resample_points-1)
-        colour_and_centroid = features[:, :8]
+        colour = features[:, 2:8]
+        centroid = features[:, 0:2] - self.grid.reshape(-1, 2)
+        colour_and_centroid = np.concatenate((centroid, colour), axis=1)
+
         lbp = features[:, -10:]
         features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), 1)
         features_phase = np.concatenate((features_phase[:, :front], features_phase[:, -back:]), 1)
