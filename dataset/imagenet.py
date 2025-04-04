@@ -88,7 +88,7 @@ class ImageNetDataset(data.Dataset):
         # Colour augmentations
         if self.augmentation:
             randaug = RandAugment(5)
-            # erase = transforms.RandomErasing(0.25)
+            erase = transforms.RandomErasing(0.25)
             color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
             # fig, ax = plt.subplots(1, 2)
             # ax[0].imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
@@ -98,7 +98,7 @@ class ImageNetDataset(data.Dataset):
                 color_space = randaug(color_space)
                 color_space = color_space.float()
                 color_space /= 255.
-            # color_space = erase(color_space)
+            color_space = erase(color_space)
             
             # ax[1].imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
             # ax[1].set_title(op_names)

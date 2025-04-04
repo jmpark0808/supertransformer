@@ -1,37 +1,56 @@
-import torch
 import torch.nn as nn
-print(f"gpu used {torch.cuda.max_memory_allocated()} memory")
-# gpu used 0 memory
+import torch
+
+class TokenDropout(nn.Module):
+    def __init__(self, p: float = 0.1):
+        """
+        Token-level dropout: randomly zero out entire token features with probability p.
+        
+        Args:
+        - p (float): Probability of dropping out each token.
+        """
+        super().__init__()
+        self.p = p
+
+    def forward(self, x):
+        """
+        Args:
+        - x: Input tensor of shape (B, N, D)
+        
+        Returns:
+        - Tensor with some tokens zeroed out.
+        """
+        if not self.training or self.p == 0.0:
+            return x  # No dropout during evaluation mode
+
+        B, N, D = x.shape
+        # Generate random mask of shape (B, N, 1)
+        mask = (torch.rand(B, N, 1, device=x.device) > self.p).float()
+        return x * mask  # Zero out selected tokens
+    
+from PIL import Image
+from torchvision.transforms import ToTensor
+image1 = Image.open('/home/eddie/Datasets/DUTS/DUTS-TE/Image/ILSVRC2012_test_00000003.jpg').resize((224, 224))
+image2 = Image.open('/home/eddie/Datasets/DUTS/DUTS-TE/Image/ILSVRC2012_test_00000023.jpg').resize((224, 224))
+image3 = Image.open('/home/eddie/Datasets/DUTS/DUTS-TE/Image/ILSVRC2012_test_00000025.jpg').resize((224, 224))
+image4 = Image.open('/home/eddie/Datasets/DUTS/DUTS-TE/Image/ILSVRC2012_test_00000034.jpg').resize((224, 224))
+tt = ToTensor()
+
+image_tensor1 = tt(image1)
+image_tensor2 = tt(image2)
+image_tensor3 = tt(image3)
+image_tensor4 = tt(image4)
 
 
-centroids = torch.randn(100, 56, 56, 2).cuda()
-locations = nn.Linear(3136, 32).cuda()
-centroids_h = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, :, None, :]
-centroids_w = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, None, :, :]
+batch = torch.stack((image_tensor1, image_tensor2, image_tensor3, image_tensor4), dim=0).reshape(4, 3, -1).permute(0, 2, 1)
 
-centroids = torch.sqrt(torch.sum(torch.pow(centroids_h - centroids_w, 2), -1)).triu(diagonal=1) 
-# centroids = centroids.reshape(centroids.size(0),
-#                                                     int(centroids.size(1)**0.5),
-#                                                     int(centroids.size(1)**0.5) , -1)
+dropout = TokenDropout(0.5)
+batch_dropout = dropout(batch).reshape(4, 224, 224, 3).permute(0, 3, 1, 2)
+import matplotlib.pyplot as plt
+fig, ax = plt.subplots(2, 2)
+ax[0,0].imshow(batch_dropout[0].permute(1, 2, 0).detach().numpy())
+ax[0,1].imshow(batch_dropout[1].permute(1, 2, 0).detach().numpy())
+ax[1,0].imshow(batch_dropout[2].permute(1, 2, 0).detach().numpy())
+ax[1,1].imshow(batch_dropout[3].permute(1, 2, 0).detach().numpy())
+plt.show()
 
-
-# centroids = locations(centroids)
-# centroids = centroids.reshape(centroids.size(0), -1, centroids.size(3))
-print(f"gpu used {torch.cuda.max_memory_allocated()/(1024**2)} memory")
-# gpu used 8192 memory
-
-# # should return same memory usage as nothing was deleted
-# torch.cuda.reset_peak_memory_stats(device=None)
-# print(f"gpu used {torch.cuda.max_memory_allocated(device=None)} memory")
-# # gpu used 8192 memory
-
-# # delete tensors and reduce peak memory usage
-# del y
-# torch.cuda.reset_peak_memory_stats(device=None)
-# print(f"gpu used {torch.cuda.max_memory_allocated(device=None)} memory")
-# # gpu used 4096 memory
-
-# del x
-# torch.cuda.reset_peak_memory_stats(device=None)
-# print(f"gpu used {torch.cuda.max_memory_allocated(device=None)} memory")
-# # gpu used 0 memory

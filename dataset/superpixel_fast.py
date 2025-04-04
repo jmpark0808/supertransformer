@@ -487,7 +487,7 @@ class SPDataset(data.Dataset):
         if self.data_augmentation:
             if self.aug_strat > 0:
                 moments, colour_and_centroid = rotate_moments(moments, colour_and_centroid, 0.5, 15, (self.size, self.size))
-            moments = log_moments(moments)
+            # moments = log_moments(moments)
 
             if self.aug_strat > 1:
                 centroids, colour, features_amp, features_phase, moments, lbp, seq_mask = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
@@ -502,14 +502,14 @@ class SPDataset(data.Dataset):
             # else:
             #     features_np = np.concatenate((colour_and_centroid, lbp), 1)
             
-        else:
-            moments = log_moments(moments)
+        
             
        
         if self.coeff != 0:
-            features_np = np.concatenate((colour_and_centroid, features_amp, moments, lbp), 1)
+            features_np = np.concatenate((colour_and_centroid, features_amp, features_phase, moments, lbp), 1)
         else:
-            features_np = np.concatenate((colour_and_centroid, lbp), 1)
+            moments = np.zeros_like(moments)
+            features_np = np.concatenate((colour_and_centroid, moments, lbp), 1)
         features = torch.tensor(features_np).float()
         
         # if self.data_augmentation and self.aug_strat >= 3:
