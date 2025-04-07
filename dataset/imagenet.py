@@ -76,7 +76,7 @@ class ImageNetDataset(data.Dataset):
         colour = features[:, 2:8]
         centroid = features[:, 0:2] - self.grid.reshape(-1, 2)
         colour_and_centroid = np.concatenate((centroid, colour), axis=1)
-
+        
         lbp = features[:, -10:]
         features_amp = np.concatenate((features_amp[:, :front], features_amp[:, -back:]), 1)
         features_phase = np.concatenate((features_phase[:, :front], features_phase[:, -back:]), 1)
