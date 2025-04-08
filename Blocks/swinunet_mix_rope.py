@@ -50,7 +50,7 @@ class SwinUTransformer(nn.Module):
         super().__init__()
 
 
-        swinencoder = SwinTransformer(img_size=img_size, patch_size=patch_size, in_chans=16, num_classes=num_classes,
+        swinencoder = SwinTransformer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, num_classes=num_classes,
                                       embed_dim=embed_dim, depths=depths, num_heads=num_heads,
                                       window_size=window_size, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                                       drop_rate=drop_rate, attn_drop_rate=attn_drop_rate, drop_path_rate=drop_path_rate,
@@ -104,7 +104,7 @@ class SwinUTransformer(nn.Module):
 
         self.upsample = nn.Upsample(size=img_size[0])
         self.sod_head = nn.Linear(sum(embed_dim), 1)
-        self.locations = nn.Linear(2+in_chans-16, embed_dim[0])
+        self.locations = nn.Linear(2, embed_dim[0])
 
         
         self.apply(self._init_weights)
@@ -131,12 +131,9 @@ class SwinUTransformer(nn.Module):
         return {'relative_position_bias_table'}
 
     def forward_features(self, x):
-        colour = x[:, 2:8, :, :]
-        lbp = x[:, -10:, :, :]
+        features = x[:, 2:, :, :]
         centroids = x[:, :2, :, :].permute(0, 2, 3, 1)
-        shape = x[:, 8:-10, :, :].permute(0, 2, 3, 1)
-        features = torch.cat((colour, lbp), dim=1)
-        centroids = torch.cat((centroids, shape), dim=-1)
+     
         
         # centroids_h = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, :, None, :]
         # centroids_w = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, None, :, :]
