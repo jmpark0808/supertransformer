@@ -112,25 +112,24 @@ class SwinUTransformer(nn.Module):
         self.shallow = nn.Conv2d(4, 1, 1)
         # self.locations = swinencoder.locations
 
-        self.refinement = BasicLayerRoPE(dim=4,
-                                  out_dim=4,
-                               input_resolution=(224,
-                                                 224),
-                               depth=4,
-                               num_heads=1,
-                               window_size=7,
-                               mlp_ratio=2,
-                               qkv_bias=qkv_bias, qk_scale=qk_scale,
-                               drop=drop_rate, attn_drop=attn_drop_rate,
-                               drop_path=0,
-                               norm_layer=norm_layer,
-                               downsample=None,
-                               use_checkpoint=use_checkpoint,
-                               fused_window_process=fused_window_process)
-        # self.refinement = nn.Sequential(*[nn.ConvTranspose2d(sum(embed_dim), sum(embed_dim), 4, 2, 1, groups=sum(embed_dim)),
-        #                                    nn.Conv2d(sum(embed_dim), 16, 1),
-        #                                      nn.ReLU(),
-        #                                        nn.ConvTranspose2d(16, 1, 4, 2, 1)])
+        # self.refinement = BasicLayerRoPE(dim=4,
+        #                           out_dim=4,
+        #                        input_resolution=(224,
+        #                                          224),
+        #                        depth=4,
+        #                        num_heads=1,
+        #                        window_size=7,
+        #                        mlp_ratio=2,
+        #                        qkv_bias=qkv_bias, qk_scale=qk_scale,
+        #                        drop=drop_rate, attn_drop=attn_drop_rate,
+        #                        drop_path=0,
+        #                        norm_layer=norm_layer,
+        #                        downsample=None,
+        #                        use_checkpoint=use_checkpoint,
+        #                        fused_window_process=fused_window_process)
+        self.refinement = nn.Sequential(*[nn.Conv2d(1, 32, 3, 1, 1),
+                                             nn.ReLU(),
+                                               nn.Conv2d(32, 1, 3, 1, 1)])
         
         self.apply(self._init_weights)
        
@@ -190,8 +189,9 @@ class SwinUTransformer(nn.Module):
 
     def forward(self, x, segments):
         x = self.forward_features(x)
-        intermediate = self.intermediate_head(x)
-        x = self.sod_head(x)
+        x = self.intermediate_head(x)
+        intermediate = x
+        # x = self.sod_head(x)
         D = x.size(-1)
         B, H, W = segments.size()
         segments = segments.reshape([x.size(0), -1])-1 # batch, img_size^2
@@ -201,12 +201,12 @@ class SwinUTransformer(nn.Module):
         spx_selected = x[batch_indices, segments]  # (B, H*W, D)
 
         # Reshape to (B, H, W, D)
-        x = spx_selected #.view(B, H, W, D).permute(0, 3, 1, 2)
+        x = spx_selected.view(B, H, W, D).permute(0, 3, 1, 2)
 
         # x = x.reshape(x.size(0), self.img_size, self.img_size, -1).permute(0, 3, 1, 2)
-        x, _ = self.refinement(x)
-        x = x.reshape(x.size(0), H, W, -1).permute(0, 3, 1, 2)
-        x = self.shallow(x)
+        x = self.refinement(x)
+        # x = x.reshape(x.size(0), H, W, -1).permute(0, 3, 1, 2)
+        # x = self.shallow(x)
         return intermediate, x
  
 
