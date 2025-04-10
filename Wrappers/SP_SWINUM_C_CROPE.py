@@ -57,9 +57,9 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
                                          num_heads=self.heads, mlp_ratio=self.mlp_ratio, attn_drop_rate=self.dropout_edge, drop_rate=self.dropout,
                                          drop_path_rate=self.dp, rope_div_factor=rope_div_factor)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
-
+        
         kwargs['parameters'] = parameter_count(self.supert)['']
-        inp = torch.randn([1, input_dim+2, res, res])
+        inp = (torch.randn([1, input_dim+2, res, res]), torch.ones([1, self.size, self.size]).long())
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
         self.flops = kwargs['flops']
@@ -159,7 +159,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
             for pg in optimizer.param_groups:
                 pg["lr"] = lr_scale * self.lr
 
-    def forward(self, input):
+    def forward(self, input, segments):
         """
         Forward pass through model
         :param x: Input features
@@ -182,7 +182,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         # third = input[:,  -10:]
         # input = torch.cat((first, second_amp_front, second_amp_back, second_phase_front, second_phase_back, third), dim=1)
         
-        pred = self.supert(input)
+        pred = self.supert(input, segments)
 
         return pred
 
@@ -223,28 +223,27 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
 
         # forward pass
         
-        pred = self.forward(features)
-
-        loss = self.loss(pred, seq_mask)
+        pred = self.forward(features, segments)
+        loss = self.loss(pred, mask)
         
-        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
-        seq_mask_numpy = seq_mask.detach().cpu().numpy()
-        batch_size = mask.shape[0]
-        img_size = mask.shape[2]
-        if torch.sum(segments) != 0 :
+        # pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
+        # seq_mask_numpy = seq_mask.detach().cpu().numpy()
+        # batch_size = mask.shape[0]
+        # img_size = mask.shape[2]
+        # if torch.sum(segments) != 0 :
 
-            segments = segments.reshape([batch_size, -1]) # batch, img_size^2
+        #     segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
-            samples = []
-            for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-                plt_image = masked[labels-1].reshape([img_size, img_size])
-                samples.append(plt_image)
+        #     samples = []
+        #     for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+        #         plt_image = masked[labels-1].reshape([img_size, img_size])
+        #         samples.append(plt_image)
 
-            samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
-        else:
-            samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
-            samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
-            
+        #     samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
+        # else:
+        #     samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
+        #     samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
+        samples = torch.sigmoid(pred)    
         
         prec, recall = torch.zeros(samples.shape[0], 1), torch.zeros(samples.shape[0], 1)
         pred = samples.reshape(samples.shape[0], -1)
@@ -278,28 +277,29 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
 
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        pred = self.forward(features)
-        res = int(self.num_seg**0.5)
-        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
-        seq_mask_numpy = seq_mask.detach().cpu().numpy()
-        batch_size = mask.shape[0]
-        img_size = mask.shape[2]
-        segments = segments.reshape([batch_size, -1]) # batch, img_size^2
+        pred = self.forward(features, segments)
+        # res = int(self.num_seg**0.5)
+        # pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
+        # seq_mask_numpy = seq_mask.detach().cpu().numpy()
+        # batch_size = mask.shape[0]
+        # img_size = mask.shape[2]
+        # segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
-        if torch.sum(segments) != 0 :
+        # if torch.sum(segments) != 0 :
 
-            segments = segments.reshape([batch_size, -1]) # batch, img_size^2
+        #     segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
-            samples = []
-            for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-                plt_image = masked[labels-1].reshape([img_size, img_size])
-                samples.append(plt_image)
+        #     samples = []
+        #     for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+        #         plt_image = masked[labels-1].reshape([img_size, img_size])
+        #         samples.append(plt_image)
 
-            samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
-        else:
-            samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
-            samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
-        
+        #     samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
+        # else:
+        #     samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
+        #     samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
+        samples = torch.sigmoid(pred) 
+        samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear') 
         mae = torch.sum(torch.mean(torch.abs(samples - mask), dim=tuple(range(1, len(samples.size())))))
         
         if dataloader_idx == 0:
@@ -398,26 +398,26 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         # forward pass
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        pred = self.forward(features)
+        pred = self.forward(features, segments)
 
-        pred_numpy = torch.sigmoid(pred).detach().cpu() # batch, seq_len, 1
+        # pred_numpy = torch.sigmoid(pred).detach().cpu() # batch, seq_len, 1
     
-        batch_size = mask.shape[0]
-        img_size = self.size
-        if torch.sum(segments) != 0 :
+        # batch_size = mask.shape[0]
+        # img_size = self.size
+        # if torch.sum(segments) != 0 :
 
-            segments = segments.reshape([batch_size, -1]) # batch, img_size^2
+        #     segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
-            samples = []
-            for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-                plt_image = masked[labels-1].reshape([img_size, img_size])
-                plt_image = F.interpolate(plt_image.unsqueeze(0).unsqueeze(0), (mask.size(2), mask.size(3)), mode='bilinear')
-                samples.append(plt_image)
+        #     samples = []
+        #     for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+        #         plt_image = masked[labels-1].reshape([img_size, img_size])
+        #         plt_image = F.interpolate(plt_image.unsqueeze(0).unsqueeze(0), (mask.size(2), mask.size(3)), mode='bilinear')
+        #         samples.append(plt_image)
 
-            samples = torch.cat(samples, dim=0).cuda()
-        else:
-            samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
-            samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear').detach().cpu()
+        #     samples = torch.cat(samples, dim=0).cuda()
+        # else:
+        #     samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
+        #     samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear').detach().cpu()
         # tensorboard.add_images('Test Pred', samples, self.test_iteration)
 
         # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
@@ -428,7 +428,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
             
  
         #     cv2.imwrite('/home/eddie/Qualitative/SF/DUTS-TE/'+name, sample)
-
+        samples = torch.sigmoid(pred)  
         mae = torch.sum(torch.mean(torch.abs((samples >= 0.5).float() - mask), dim=tuple(range(1, len(samples.size())))))
         self.maes += mae
         self.mean_num += features.size(0)

@@ -106,9 +106,15 @@ class SwinUTransformer(nn.Module):
             self.upsample_layers.append(layer)
 
         self.upsample = nn.Upsample(size=img_size[0])
-        self.sod_head = nn.Linear(sum(embed_dim), 1)
+        self.sod_head = nn.Linear(sum(embed_dim), 32)
         # self.locations = swinencoder.locations
 
+        self.refinement = nn.Sequential(*[nn.Conv2d(32, 16, 3, 1, 1),
+                                           nn.BatchNorm2d(16), nn.ReLU(), nn.Conv2d(16, 1, 3, 1, 1)])
+        # self.refinement = nn.Sequential(*[nn.ConvTranspose2d(sum(embed_dim), sum(embed_dim), 4, 2, 1, groups=sum(embed_dim)),
+        #                                    nn.Conv2d(sum(embed_dim), 16, 1),
+        #                                      nn.ReLU(),
+        #                                        nn.ConvTranspose2d(16, 1, 4, 2, 1)])
         
         self.apply(self._init_weights)
        
@@ -166,10 +172,23 @@ class SwinUTransformer(nn.Module):
 
 
 
-    def forward(self, x):
+    def forward(self, x, segments):
         x = self.forward_features(x)
         x = self.sod_head(x)
+        D = x.size(-1)
+        B, H, W = segments.size()
+        segments = segments.reshape([x.size(0), -1])-1 # batch, img_size^2
 
+
+        batch_indices = torch.arange(x.size(0), device=x.device).unsqueeze(-1)  # (B, 1)
+        spx_selected = x[batch_indices, segments]  # (B, H*W, D)
+
+        # Reshape to (B, H, W, D)
+        x = spx_selected.view(B, H, W, D).permute(0, 3, 1, 2)
+
+        # x = x.reshape(x.size(0), self.img_size, self.img_size, -1).permute(0, 3, 1, 2)
+        x = self.refinement(x)
+        
         return x
  
 
