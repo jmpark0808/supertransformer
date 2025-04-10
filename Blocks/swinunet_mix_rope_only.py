@@ -12,6 +12,7 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
 from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA, BasicLayer, PatchMerging
 from Blocks.swin_encoder_rope import SwinTransformer
+from Blocks.swin_rope import BasicLayerRoPE
 WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
@@ -106,11 +107,26 @@ class SwinUTransformer(nn.Module):
             self.upsample_layers.append(layer)
 
         self.upsample = nn.Upsample(size=img_size[0])
-        self.sod_head = nn.Linear(sum(embed_dim), 32)
+        self.sod_head = nn.Linear(sum(embed_dim), 4)
+        self.intermediate_head = nn.Linear(sum(embed_dim), 1)
+        self.shallow = nn.Conv2d(4, 1, 1)
         # self.locations = swinencoder.locations
 
-        self.refinement = nn.Sequential(*[nn.Conv2d(32, 16, 3, 1, 1),
-                                           nn.BatchNorm2d(16), nn.ReLU(), nn.Conv2d(16, 1, 3, 1, 1)])
+        self.refinement = BasicLayerRoPE(dim=4,
+                                  out_dim=4,
+                               input_resolution=(224,
+                                                 224),
+                               depth=4,
+                               num_heads=1,
+                               window_size=7,
+                               mlp_ratio=2,
+                               qkv_bias=qkv_bias, qk_scale=qk_scale,
+                               drop=drop_rate, attn_drop=attn_drop_rate,
+                               drop_path=0,
+                               norm_layer=norm_layer,
+                               downsample=None,
+                               use_checkpoint=use_checkpoint,
+                               fused_window_process=fused_window_process)
         # self.refinement = nn.Sequential(*[nn.ConvTranspose2d(sum(embed_dim), sum(embed_dim), 4, 2, 1, groups=sum(embed_dim)),
         #                                    nn.Conv2d(sum(embed_dim), 16, 1),
         #                                      nn.ReLU(),
@@ -174,6 +190,7 @@ class SwinUTransformer(nn.Module):
 
     def forward(self, x, segments):
         x = self.forward_features(x)
+        intermediate = self.intermediate_head(x)
         x = self.sod_head(x)
         D = x.size(-1)
         B, H, W = segments.size()
@@ -184,11 +201,12 @@ class SwinUTransformer(nn.Module):
         spx_selected = x[batch_indices, segments]  # (B, H*W, D)
 
         # Reshape to (B, H, W, D)
-        x = spx_selected.view(B, H, W, D).permute(0, 3, 1, 2)
+        x = spx_selected #.view(B, H, W, D).permute(0, 3, 1, 2)
 
         # x = x.reshape(x.size(0), self.img_size, self.img_size, -1).permute(0, 3, 1, 2)
-        x = self.refinement(x)
-        
-        return x
+        x, _ = self.refinement(x)
+        x = x.reshape(x.size(0), H, W, -1).permute(0, 3, 1, 2)
+        x = self.shallow(x)
+        return intermediate, x
  
 

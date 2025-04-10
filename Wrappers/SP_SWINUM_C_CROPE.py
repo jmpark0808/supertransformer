@@ -182,9 +182,9 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         # third = input[:,  -10:]
         # input = torch.cat((first, second_amp_front, second_amp_back, second_phase_front, second_phase_back, third), dim=1)
         
-        pred = self.supert(input, segments)
+        inter, pred = self.supert(input, segments)
 
-        return pred
+        return inter, pred
 
     def on_train_epoch_start(self):
         self.train_fscores = 0
@@ -223,8 +223,10 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
 
         # forward pass
         
-        pred = self.forward(features, segments)
+        inter, pred = self.forward(features, segments)
+        loss_inter = self.loss(inter, seq_mask)
         loss = self.loss(pred, mask)
+        loss = loss + loss_inter
         
         # pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         # seq_mask_numpy = seq_mask.detach().cpu().numpy()
@@ -274,10 +276,10 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         seq_mask = batch['seq_mask']
         segments = batch['segments']
         mask = batch['mask']
-
+        tensorboard = self.logger.experiment
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        pred = self.forward(features, segments)
+        _, pred = self.forward(features, segments)
         # res = int(self.num_seg**0.5)
         # pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         # seq_mask_numpy = seq_mask.detach().cpu().numpy()
@@ -305,6 +307,10 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         if dataloader_idx == 0:
             self.maes += mae
             self.mean_num += features.size(0)
+            if batch_idx == 0:
+                tensorboard.add_images('Test Pred', samples)
+
+                tensorboard.add_images('Test GT', mask)
         elif dataloader_idx == 1:
             self.maes_test += mae
             self.mean_num_test += features.size(0)
@@ -398,7 +404,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         # forward pass
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        pred = self.forward(features, segments)
+        _, pred = self.forward(features, segments)
 
         # pred_numpy = torch.sigmoid(pred).detach().cpu() # batch, seq_len, 1
     
