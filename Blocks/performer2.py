@@ -14,7 +14,7 @@ from Blocks.performer_diffpool import TransformerDecoder as PerformerDecoder
 from Blocks.TransformerBlocks import Transformer as TFM
 from Blocks.diffslic_og import DiffSLIC, spixel_upsampling
 from Blocks.local_attention import LocalAttention, WindowAttention, GlobalAttention, DilatedAttention, WindowSampling, WindowFMT
-
+from typing import Any, Optional, Tuple
 
 from torch_geometric.utils import scatter
 
@@ -48,6 +48,67 @@ class Always(nn.Module):
 
     def forward(self, *args, **kwargs):
         return self.val
+
+
+def init_t_xy(end_x: int, end_y: int, zero_center=False):
+    t = torch.arange(end_x * end_y, dtype=torch.float32)
+    t_x = (t % end_x).float()
+    t_y = torch.div(t, end_x, rounding_mode='floor').float()
+    
+    return t_x, t_y
+
+def init_random_2d_freqs(head_dim: int, num_heads: int, theta: float = 10.0, rotate: bool = True):
+    freqs_x = []
+    freqs_y = []
+    theta = theta
+    mag = 1 / (theta ** (torch.arange(0, head_dim, 4)[: (head_dim // 4)].float() / head_dim))
+    for i in range(num_heads):
+        angles = torch.rand(1) * 2 * torch.pi if rotate else torch.zeros(1)
+        fx = torch.cat([mag * torch.cos(angles), mag * torch.cos(torch.pi/2 + angles)], dim=-1)
+        fy = torch.cat([mag * torch.sin(angles), mag * torch.sin(torch.pi/2 + angles)], dim=-1)
+        freqs_x.append(fx)
+        freqs_y.append(fy)
+    freqs_x = torch.stack(freqs_x, dim=0)
+    freqs_y = torch.stack(freqs_y, dim=0)
+    freqs = torch.stack([freqs_x, freqs_y], dim=0)
+    return freqs
+
+def compute_cis(freqs, t_x, t_y):
+    N = t_x.shape[0]
+    # No float 16 for this range
+    with torch.amp.autocast('cuda', enabled=False):
+        freqs_x = (t_x.unsqueeze(-1) @ freqs[0].unsqueeze(-2))
+        freqs_y = (t_y.unsqueeze(-1) @ freqs[1].unsqueeze(-2))
+        
+        freqs_cis = torch.polar(torch.ones_like(freqs_x), freqs_x + freqs_y)
+        
+    return freqs_cis
+
+
+def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
+    ndim = x.ndim
+    assert 0 <= 1 < ndim
+    # assert freqs_cis.shape == (x.shape[-2], x.shape[-1])
+    if freqs_cis.shape == (x.shape[-2], x.shape[-1]):
+        shape = [d if i >= ndim-2 else 1 for i, d in enumerate(x.shape)]
+    elif freqs_cis.shape == (x.shape[-3], x.shape[-2], x.shape[-1]):
+        shape = [d if i >= ndim-3 else 1 for i, d in enumerate(x.shape)]
+        
+    return freqs_cis.view(*shape)
+
+
+def apply_rotary_emb(
+    xq: torch.Tensor,
+    xk: torch.Tensor,
+    freqs_cis: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
+    xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
+    freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
+    xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
+    xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
+    return xq_out.type_as(xq).to(xq.device), xk_out.type_as(xk).to(xk.device)
+
 
 # kernel functions
 
@@ -272,7 +333,7 @@ class Attention(nn.Module):
         self.global_heads = (heads - local_heads)
         # self.local_attn = LocalAttention(window_size = local_window_size, causal = causal, autopad = True, dropout = dropout, look_forward = int(not causal), use_rotary_pos_emb=False) if local_heads > 0 else None
         if local_heads != 0:
-            self.local_attn = WindowAttention(window_size = local_window_size,  qk_scale=dim_head**0.5, attn_drop=dropout)
+            self.local_attn = FastAttention(dim_head, nb_features, causal = causal, generalized_attention = generalized_attention, kernel_fn = kernel_fn, no_projection = no_projection)
             # self.local_attn = GlobalAttention(qk_scale=dim_head**0.5, attn_drop=0)
 
         # self.to_q = SeparableLinear(dim, inner_dim, tokens, bias = qkv_bias)
@@ -285,6 +346,19 @@ class Attention(nn.Module):
         self.scale = dim_head ** -0.5
         self.to_out = nn.Linear(inner_dim, dim, bias = attn_out_bias)
         self.dropout = nn.Dropout(dropout)
+        self.window_size = local_window_size
+        # if dim < 48:
+        t_x, t_y = init_t_xy(end_x=local_window_size, end_y=local_window_size)
+        self.register_buffer('rope_t_x', t_x)
+        self.register_buffer('rope_t_y', t_y)
+
+        freqs = init_random_2d_freqs(
+            head_dim=dim // heads, num_heads=heads, theta=10.0, 
+            rotate=True
+        )
+        
+        self.rope_freqs = nn.Parameter(freqs, requires_grad=True)
+        
         
 
     def forward(self, x, pos_emb = None, context = None, mask = None, context_mask = None, **kwargs):
@@ -314,6 +388,7 @@ class Attention(nn.Module):
 
             if exists(pos_emb) and not cross_attend:
                 q, k = apply_rotary_pos_emb(q, k, pos_emb)
+            
 
             out = self.fast_attention(q, k, v)
             # out = self.dropout(out)
@@ -321,7 +396,34 @@ class Attention(nn.Module):
 
         if not empty(lq):
             assert not cross_attend, 'local attention is not compatible with cross attention'
+
+            B, H, N, C = lq.shape
+            height = int(N**0.5)
+            width = int(N**0.5)
+            lq = lq.reshape(B, H, height, width, C)
+            lq = lq.view(B, H, height // self.window_size, self.window_size, width // self.window_size, self.window_size, C)
+            lq = lq.permute(0, 2, 4, 1, 3, 5, 6).contiguous().view(-1, H, self.window_size*self.window_size, C)
+
+            lk = lk.reshape(B, H, height, width, C)
+            lk = lk.view(B, H, height // self.window_size, self.window_size, width // self.window_size, self.window_size, C)
+            lk = lk.permute(0, 2, 4, 1, 3, 5, 6).contiguous().view(-1, H, self.window_size*self.window_size, C)
+
+            lv = lv.reshape(B, H, height, width, C)
+            lv = lv.view(B, H, height // self.window_size, self.window_size, width // self.window_size, self.window_size, C)
+            lv = lv.permute(0, 2, 4, 1, 3, 5, 6).contiguous().view(-1, H, self.window_size*self.window_size, C) # BWW, H, L*L, C
+
+
+            freqs_cis = compute_cis(self.rope_freqs, self.rope_t_x, self.rope_t_y)
+
+        
+            lq, lk = apply_rotary_emb(lq, lk, freqs_cis)
+
+
             out = self.local_attn(lq, lk, lv)
+
+            out = out.view(B, height // self.window_size, width // self.window_size, H, self.window_size, self.window_size, -1) # B, W, W, H, L, L, C
+            out = out.permute(0, 3, 1, 4, 2, 5, 6).contiguous().view(B, H, N, -1) # B, N (=L*L*W*W), C*H  -> B, H, N (=L*L*W*W), C
+        
             attn_outs.append(out)
 
         out = torch.cat(attn_outs, dim = 1)

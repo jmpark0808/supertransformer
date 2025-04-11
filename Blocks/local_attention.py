@@ -292,15 +292,16 @@ class WindowAttention(nn.Module):
         v = v.permute(0, 2, 4, 1, 3, 5, 6).contiguous().view(-1, H, self.window_size*self.window_size, C) # BWW, H, L*L, C
 
 
-        q = q * self.scale
-        attn = (q @ k.transpose(-2, -1))
+        # q = q * self.scale
+        # attn = (q @ k.transpose(-2, -1))
 
        
-        attn = self.softmax(attn) # BWW, H, L*L, L*L
+        # attn = self.softmax(attn) # BWW, H, L*L, L*L
 
-        attn = self.attn_drop(attn)
+        # attn = self.attn_drop(attn)
 
-        x = (attn @ v) # BWW, H, L*L, C 
+        # x = (attn @ v) # BWW, H, L*L, C 
+
        
         x = x.view(B, height // self.window_size, width // self.window_size, H, self.window_size, self.window_size, -1) # B, W, W, H, L, L, C
         x = x.permute(0, 3, 1, 4, 2, 5, 6).contiguous().view(B, H, N, -1) # B, N (=L*L*W*W), C*H  -> B, H, N (=L*L*W*W), C

@@ -13,6 +13,7 @@ import math
 from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA, BasicLayer, PatchMerging
 from Blocks.swin_encoder_rope import SwinTransformer
 from Blocks.swin_rope import BasicLayerRoPE
+from Blocks.performer2 import Transformer
 WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
@@ -107,9 +108,9 @@ class SwinUTransformer(nn.Module):
             self.upsample_layers.append(layer)
 
         self.upsample = nn.Upsample(size=img_size[0])
-        self.sod_head = nn.Linear(sum(embed_dim), 4)
+        self.sod_head = nn.Linear(sum(embed_dim), 8)
         self.intermediate_head = nn.Linear(sum(embed_dim), 1)
-        self.shallow = nn.Conv2d(4, 1, 1)
+        self.shallow = nn.Conv2d(8, 1, 1)
         # self.locations = swinencoder.locations
 
         # self.refinement = BasicLayerRoPE(dim=4,
@@ -127,9 +128,10 @@ class SwinUTransformer(nn.Module):
         #                        downsample=None,
         #                        use_checkpoint=use_checkpoint,
         #                        fused_window_process=fused_window_process)
-        self.refinement = nn.Sequential(*[nn.Conv2d(1, 32, 3, 1, 1),
-                                             nn.ReLU(),
-                                               nn.Conv2d(32, 1, 3, 1, 1)])
+        # self.refinement = nn.Sequential(*[nn.Conv2d(1, 32*28*28, 28, 28),
+        #                                      nn.ReLU(),
+        #                                        nn.Conv2d(32*28*28, 28*28, 1)])
+        self.refinement = Transformer(8, 2, 1, 1, 8, 16, 0, 0, 224)
         
         self.apply(self._init_weights)
        
@@ -189,9 +191,9 @@ class SwinUTransformer(nn.Module):
 
     def forward(self, x, segments):
         x = self.forward_features(x)
-        x = self.intermediate_head(x)
-        intermediate = x
-        # x = self.sod_head(x)
+        intermediate = self.intermediate_head(x)
+
+        x = self.sod_head(x)
         D = x.size(-1)
         B, H, W = segments.size()
         segments = segments.reshape([x.size(0), -1])-1 # batch, img_size^2
@@ -201,12 +203,13 @@ class SwinUTransformer(nn.Module):
         spx_selected = x[batch_indices, segments]  # (B, H*W, D)
 
         # Reshape to (B, H, W, D)
-        x = spx_selected.view(B, H, W, D).permute(0, 3, 1, 2)
+        # x = spx_selected.view(B, H, W, D).permute(0, 3, 1, 2)
 
         # x = x.reshape(x.size(0), self.img_size, self.img_size, -1).permute(0, 3, 1, 2)
-        x = self.refinement(x)
-        # x = x.reshape(x.size(0), H, W, -1).permute(0, 3, 1, 2)
-        # x = self.shallow(x)
+        x, _ = self.refinement(spx_selected)
+        # x = x.reshape(x.size(0), 28, 28, 8, 8).permute(0, 1, 3, 2, 4).reshape(x.size(0), 1, H, W)
+        x = x.reshape(x.size(0), H, W, -1).permute(0, 3, 1, 2)
+        x = self.shallow(x)
         return intermediate, x
  
 
