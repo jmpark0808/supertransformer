@@ -224,9 +224,8 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         # forward pass
         
         inter, pred = self.forward(features, segments)
-        loss_inter = self.loss(inter, seq_mask)
-        loss = self.loss(pred, mask)
-        loss = loss + loss_inter
+        loss = self.loss(inter, seq_mask)
+
         
         # pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         # seq_mask_numpy = seq_mask.detach().cpu().numpy()

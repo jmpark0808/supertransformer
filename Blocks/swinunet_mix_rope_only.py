@@ -14,6 +14,7 @@ from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA, BasicLayer, Pat
 from Blocks.swin_encoder_rope import SwinTransformer
 from Blocks.swin_rope import BasicLayerRoPE
 from Blocks.performer2 import Transformer
+import torch.nn.functional as F
 WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
@@ -55,7 +56,7 @@ class SwinUTransformer(nn.Module):
         super().__init__()
 
 
-        swinencoder = SwinTransformer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, num_classes=num_classes,
+        swinencoder = SwinTransformer(img_size=img_size, patch_size=patch_size, in_chans=32, num_classes=num_classes,
                                       embed_dim=embed_dim, depths=depths, num_heads=num_heads,
                                       window_size=window_size, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                                       drop_rate=drop_rate, attn_drop_rate=attn_drop_rate, drop_path_rate=drop_path_rate,
@@ -108,9 +109,10 @@ class SwinUTransformer(nn.Module):
             self.upsample_layers.append(layer)
 
         self.upsample = nn.Upsample(size=img_size[0])
-        self.sod_head = nn.Linear(sum(embed_dim), 8)
+        inter_dim = 16
+        # self.sod_head = nn.Linear(sum(embed_dim), inter_dim)
         self.intermediate_head = nn.Linear(sum(embed_dim), 1)
-        self.shallow = nn.Conv2d(8, 1, 1)
+        # self.shallow = nn.Conv2d(inter_dim, 1, 1)
         # self.locations = swinencoder.locations
 
         # self.refinement = BasicLayerRoPE(dim=4,
@@ -131,8 +133,10 @@ class SwinUTransformer(nn.Module):
         # self.refinement = nn.Sequential(*[nn.Conv2d(1, 32*28*28, 28, 28),
         #                                      nn.ReLU(),
         #                                        nn.Conv2d(32*28*28, 28*28, 1)])
-        self.refinement = Transformer(8, 2, 1, 1, 8, 16, 0, 0, 224)
-        
+        # self.refinement = Transformer(inter_dim, 2, 1, 1, inter_dim, inter_dim*2, 0, 0, 224)
+        self.pos_linear = nn.Parameter(torch.randn(14*14, 16))
+        self.pos_bias = nn.Parameter(torch.zeros(16))
+
         self.apply(self._init_weights)
        
         self.resolutions = resolutions.copy()
@@ -156,12 +160,46 @@ class SwinUTransformer(nn.Module):
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
 
-    def forward_features(self, x):
-        x = x[:, 2:, :, :]
+    def forward_features(self, x, segments):
+        x = torch.cat((x[:, 2:8, :, :], x[:, -10:, :, :]), dim=1)
         # centroids = x[:, :2, :, :].permute(0, 2, 3, 1)
         # centroids = self.locations(centroids)
         # centroids = centroids.reshape(centroids.size(0), -1, centroids.size(3))
+
+        K = x.size(-2) * x.size(-1)
+ 
+        B, H, W = segments.shape
+        D = self.pos_linear.shape[1]
+        M = 14
+        device = segments.device
+
+        batch_idx, ys, xs = torch.meshgrid(
+            torch.arange(B, device=device),
+            torch.arange(H, device=device),
+            torch.arange(W, device=device),
+            indexing='ij'
+        )
+        batch_idx = batch_idx.reshape(-1)
+        ys = ys.reshape(-1)
+        xs = xs.reshape(-1)
+        seg_flat = segments.reshape(-1)-1  # (B*H*W,)
+
+        # Get tile index per pixel
+        tile_idx = (ys % M) * M + (xs % M)  # (B*H*W,)
+        tile_feats = self.pos_linear[tile_idx]  # (B*H*W, D)
+
+        # Combine batch and label to index across B*K
+        global_label_idx = batch_idx * K + seg_flat  # (B*H*W,)
+
+        # Aggregate into (B*K, D)
+        out = torch.zeros(B * K, D, device=device)
+        out.index_add_(0, global_label_idx, tile_feats)
+
+        # Reshape back to (B, K, D)
+        pooled = out.view(B, K, D)+self.pos_bias.view(1, 1, -1)
+        pooled = pooled.reshape(B, int(K**0.5), int(K**0.5), -1).permute(0, 3, 1, 2)        
         
+        x = torch.cat((x, pooled), dim=1)
         x = self.patch_embed(x)
         # x = x + centroids
         x = self.pos_drop(x)
@@ -190,26 +228,19 @@ class SwinUTransformer(nn.Module):
 
 
     def forward(self, x, segments):
-        x = self.forward_features(x)
-        intermediate = self.intermediate_head(x)
-
-        x = self.sod_head(x)
+        x = self.forward_features(x, segments)
+        x = self.intermediate_head(x)
+        intermediate = x
+ 
         D = x.size(-1)
         B, H, W = segments.size()
         segments = segments.reshape([x.size(0), -1])-1 # batch, img_size^2
 
 
         batch_indices = torch.arange(x.size(0), device=x.device).unsqueeze(-1)  # (B, 1)
-        spx_selected = x[batch_indices, segments]  # (B, H*W, D)
+        x = x[batch_indices, segments]  # (B, H*W, D)
+        x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2)
 
-        # Reshape to (B, H, W, D)
-        # x = spx_selected.view(B, H, W, D).permute(0, 3, 1, 2)
-
-        # x = x.reshape(x.size(0), self.img_size, self.img_size, -1).permute(0, 3, 1, 2)
-        x, _ = self.refinement(spx_selected)
-        # x = x.reshape(x.size(0), 28, 28, 8, 8).permute(0, 1, 3, 2, 4).reshape(x.size(0), 1, H, W)
-        x = x.reshape(x.size(0), H, W, -1).permute(0, 3, 1, 2)
-        x = self.shallow(x)
         return intermediate, x
  
 
