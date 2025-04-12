@@ -134,8 +134,9 @@ class SwinUTransformer(nn.Module):
         #                                      nn.ReLU(),
         #                                        nn.Conv2d(32*28*28, 28*28, 1)])
         # self.refinement = Transformer(inter_dim, 2, 1, 1, inter_dim, inter_dim*2, 0, 0, 224)
-        self.pos_linear = nn.Parameter(torch.randn(14*14, 16))
-        self.pos_bias = nn.Parameter(torch.zeros(16))
+        self.filter = nn.Conv2d(
+            1, 1, kernel_size=56, stride=56
+        )  # acts like 
 
         self.apply(self._init_weights)
        
@@ -169,34 +170,37 @@ class SwinUTransformer(nn.Module):
         K = x.size(-2) * x.size(-1)
  
         B, H, W = segments.shape
-        D = self.pos_linear.shape[1]
-        M = 14
+        M = 56
         device = segments.device
 
-        batch_idx, ys, xs = torch.meshgrid(
-            torch.arange(B, device=device),
-            torch.arange(H, device=device),
-            torch.arange(W, device=device),
-            indexing='ij'
-        )
-        batch_idx = batch_idx.reshape(-1)
-        ys = ys.reshape(-1)
-        xs = xs.reshape(-1)
-        seg_flat = segments.reshape(-1)-1  # (B*H*W,)
+        # Apply the spatial filter to a dummy constant mask
+        mask = torch.ones(B, 1, H, W, device=device)
+        filtered = self.filter(mask)  # (B, 1, H//M, W//M)
+        _, _, Hf, Wf = filtered.shape
+        D = Hf * Wf
 
-        # Get tile index per pixel
-        tile_idx = (ys % M) * M + (xs % M)  # (B*H*W,)
-        tile_feats = self.pos_linear[tile_idx]  # (B*H*W, D)
+        # Get coordinate indices for each pixel → map to D-dim index
+        y_coords = torch.arange(H, device=device).view(1, H, 1).expand(B, H, W)
+        x_coords = torch.arange(W, device=device).view(1, 1, W).expand(B, H, W)
 
-        # Combine batch and label to index across B*K
-        global_label_idx = batch_idx * K + seg_flat  # (B*H*W,)
+        i = (y_coords // M) * Wf + (x_coords // M)  # (B, H, W), values in [0, D-1]
 
-        # Aggregate into (B*K, D)
+        # Flatten everything
+        seg_flat = segments.reshape(-1)-1                  # (B*H*W,)
+        index_flat = i.reshape(-1)                      # (B*H*W,)
+        batch_idx = torch.arange(B, device=device).view(B, 1, 1).expand(B, H, W).reshape(-1)
+        global_seg_idx = batch_idx * K + seg_flat       # (B*H*W,)
+
+        # Get filter values for each pixel
+        filter_flat = filtered.view(B, D)               # (B, D)
+        pixel_values = filter_flat[batch_idx, index_flat]  # (B*H*W,)
+
+        # Accumulate to (B*K, D)
         out = torch.zeros(B * K, D, device=device)
-        out.index_add_(0, global_label_idx, tile_feats)
+        out.index_add_(0, global_seg_idx, F.one_hot(index_flat, D).float() * pixel_values.unsqueeze(1))
 
         # Reshape back to (B, K, D)
-        pooled = out.view(B, K, D)+self.pos_bias.view(1, 1, -1)
+        pooled = out.view(B, K, D)
         pooled = pooled.reshape(B, int(K**0.5), int(K**0.5), -1).permute(0, 3, 1, 2)        
         
         x = torch.cat((x, pooled), dim=1)
