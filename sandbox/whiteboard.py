@@ -1,41 +1,99 @@
+
 import torch
-import torchsparse
-import torchsparse.nn as spnn
-from torchsparse import SparseTensor
+import matplotlib.pyplot as plt
+import numpy as np
 
-# Step 1: Create a batch of 2 sparse 2D images
-batch_size, H, W = 2, 5, 5
-dense_batch = torch.zeros((batch_size, H, W), dtype=torch.float32)
+def generate_grid_segmentation(h=224, w=224, patch_size=4):
+    """
+    Generate a dummy segmentation map where each superpixel is a square patch.
+    The labels range from 0 to (H // patch_size) * (W // patch_size) - 1.
 
-# Add sparse values to each image
-dense_batch[0, 1, 1] = 1.0
-dense_batch[0, 2, 2] = 2.0
-dense_batch[1, 3, 3] = 3.0
-dense_batch[1, 4, 4] = 4.0
+    Returns:
+        seg_map: (H, W) LongTensor with labels from 0 to K-1
+    """
+    assert h % patch_size == 0 and w % patch_size == 0, "Patch size must divide dimensions evenly"
 
-# Step 2: Extract non-zero coords and features for the whole batch
-coords_list = []
-features_list = []
+    n_rows = h // patch_size
+    n_cols = w // patch_size
+    K = n_rows * n_cols
 
-for b in range(batch_size):
-    coords = torch.nonzero(dense_batch[b], as_tuple=False)  # (Nᵢ, 2)
-    batch_idx = torch.full((coords.shape[0], 1), b, dtype=torch.long)
-    coords = torch.cat([batch_idx, coords], dim=1)  # (Nᵢ, 3)
+    # Create label grid (n_rows, n_cols)
+    labels = torch.arange(K).view(n_rows, n_cols)  # (56, 56)
+
+    # Repeat each label in both H and W directions
+    seg_map = labels.repeat_interleave(patch_size, dim=0).repeat_interleave(patch_size, dim=1)  # (224, 224)
+
+    return seg_map.long()
+
+def visualize_fft(mag_crop, phase_crop, batch_idx=0, label_idx=0):
+    """
+    Visualize FFT magnitude and phase for a specific batch and label index.
     
-    feats = dense_batch[b, coords[:, 1], coords[:, 2]].unsqueeze(1)
-    coords_list.append(coords)
-    features_list.append(feats)
+    Args:
+        mag_crop: (B, K, k, k) magnitude tensor
+        phase_crop: (B, K, k, k) phase tensor
+        batch_idx: which image in the batch to visualize
+        label_idx: which label in the segmentation to visualize
+    """
+    # Convert to numpy
+    mag = mag_crop[batch_idx, label_idx].cpu().numpy()
+    phase = phase_crop[batch_idx, label_idx].cpu().numpy()
 
-coords = torch.cat(coords_list, dim=0)      # (N_total, 3)
-features = torch.cat(features_list, dim=0)  # (N_total, 1)
+    # Log scale for better dynamic range (add small epsilon to avoid log(0))
+    mag_log = np.log1p(mag)
 
-# Step 3: Build SparseTensor
-sparse_input = SparseTensor(coords=coords, feats=features)
+    # Create figure
+    fig, axs = plt.subplots(1, 2, figsize=(10, 4))
 
-# Step 4: Sparse convolution
-conv = spnn.Conv2d(1, 4, kernel_size=3, stride=1)
-sparse_output = conv(sparse_input)  # still a SparseTensor
+    axs[0].imshow(mag_log, cmap='gray')
+    axs[0].set_title(f'Magnitude Spectrum (log1p), B={batch_idx}, L={label_idx}')
+    axs[0].axis('off')
 
-# Step 5: Convert to dense (optional)
-dense_output = sparse_output.to_dense(shape=(batch_size, 4, H, W))  # (B, C, H, W)
-print("Output shape:", dense_output.shape)
+    im = axs[1].imshow(phase, cmap='twilight', vmin=-np.pi, vmax=np.pi)
+    axs[1].set_title(f'Phase Spectrum, B={batch_idx}, L={label_idx}')
+    axs[1].axis('off')
+
+    plt.colorbar(im, ax=axs[1], orientation='vertical', fraction=0.046, pad=0.04)
+    plt.tight_layout()
+    plt.show()
+
+# segmentation = torch.randint(0, 3136, (4, 224, 224)).cuda()  # B=4, H=W=64, K=5
+segmentation = generate_grid_segmentation().unsqueeze(0).repeat(1, 1, 1)
+B, H, W = segmentation.shape
+device = segmentation.device
+N = H * W
+num_labels = 3136
+k = 10
+
+
+# Flatten spatial dimension
+seg_flat = segmentation.view(B, -1)  # (B, N)
+
+# Create one-hot masks via scatter
+one_hot = torch.zeros(B, num_labels, N, device=device, dtype=torch.float32)
+one_hot.scatter_(1, seg_flat.unsqueeze(1), 1.0)  # (B, K, N)
+
+# Reshape to binary masks: (B, K, H, W)
+masks = one_hot.view(B, num_labels, H, W)
+
+# Apply 2D FFT to each mask (parallel over B and K)
+fft_complex = torch.fft.fft2(masks)  # (B, K, H, W)
+fft_shifted = torch.fft.fftshift(fft_complex, dim=(-2, -1))  # shift DC to center
+
+
+fft_mag = torch.abs(fft_shifted)  # (B, K, H, W)
+fft_phase = torch.angle(fft_shifted)  # (B, K, H, W)
+
+visualize_fft(fft_mag, fft_phase, 0, 0)
+
+
+# Center crop
+h_center = H // 2
+w_center = W // 2
+half_k = k // 2
+
+crop_h = slice(h_center - half_k, h_center + half_k)
+crop_w = slice(w_center - half_k, w_center + half_k)
+
+fft_mag_crop = fft_mag[:, :, crop_h, crop_w]  # (B, K, k, k)
+fft_phase_crop = fft_phase[:, :, crop_h, crop_w]  # (B, K, k, k)

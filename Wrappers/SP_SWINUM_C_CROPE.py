@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 # from Blocks.swintransformer_original_rpe import SwinUTransformer
-from Blocks.swinunet_mix_rope_only import SwinUTransformer
+from Blocks.swinunet_mix_rope_only_images import SwinUTransformer
 # from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
 import numpy as np
@@ -11,6 +11,8 @@ from dataset.constants import *
 from util.util import get_input_dim
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 from dataset.mixup import MixupSaliency
+import torch.nn as nn
+
 
 class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
@@ -57,11 +59,17 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
                                          num_heads=self.heads, mlp_ratio=self.mlp_ratio, attn_drop_rate=self.dropout_edge, drop_rate=self.dropout,
                                          drop_path_rate=self.dp, rope_div_factor=rope_div_factor)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
-        
-        kwargs['parameters'] = parameter_count(self.supert)['']
-        inp = (torch.randn([1, input_dim+2, res, res]), torch.ones([1, self.size, self.size]).long())
+        self.pre_conv = nn.Sequential(
+            nn.Conv2d(3, self.dims[0], kernel_size=3, padding=1),
+            nn.BatchNorm2d(self.dims[0]),
+            nn.ReLU(inplace=True)
+        )
+        kwargs['parameters'] = parameter_count(self.supert)[''] + parameter_count(self.pre_conv)['']
+        inp = (torch.randn([1, res*res, self.dims[0]]), torch.ones([1, self.size, self.size]).long())
+        inp_conv = torch.randn([1, 3, 224, 224])
         flops = FlopCountAnalysis(self.supert, inp)
-        kwargs['flops'] = flops.total()
+        flops_conv = FlopCountAnalysis(self.pre_conv, inp_conv)
+        kwargs['flops'] = flops.total() + flops_conv.total()
         self.flops = kwargs['flops']
         self.num_parameters = kwargs['parameters']
         # print(flop_count_table(flops))
@@ -208,18 +216,48 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         logging resources:
         https://pytorch-lightning.readthedocs.io/en/latest/starter/introduction_guide.html
         """
-        features = batch['features']
-        seq_mask = batch['seq_mask']
+        img = batch['img']
         segments = batch['segments']
         mask = batch['mask']
 
+        B, _, H, W = img.shape
+        K = self.num_seg
+        # Step 1: CNN feature extraction
+        feat = self.pre_conv(img)  # (B, C, H, W)
+        B, C, H, W = feat.shape
+
+        # Step 2: Flatten
+        feat_flat = feat.view(B, C, -1).permute(0, 2, 1)  # (B, H*W, C)
+        seg_flat = segments.view(B, -1)-1                        # (B, H*W)
+
+        # Step 3: Combine batch and spatial dimensions
+        feat_flat = feat_flat.reshape(-1, C)              # (B*H*W, C)
+        mask_flat = mask.reshape(-1)
+        seg_flat = seg_flat + torch.arange(B, device=segments.device).view(-1, 1) * K  # (B, H*W)
+        seg_flat = seg_flat.view(-1)                      # (B*H*W,)
+
+        # Step 4: Scatter sum into (B*K, C)
+        out = torch.zeros(B * K, C, device=img.device)
+        out.scatter_add_(0, seg_flat.unsqueeze(-1).expand(-1, C), feat_flat)
+
+        seq_mask = torch.zeros(B*K, 1, device=img.device)
+        seq_mask.scatter_reduce_(0, seg_flat.unsqueeze(-1), mask_flat.unsqueeze(-1), reduce='mean')
+        # Step 6: Reshape back to (B, K, C)
+        features = out.view(B, K, C)
+        seq_mask = seq_mask.view(B, K)
 
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
         seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
+        # import matplotlib.pyplot as plt
+        # fig, ax = plt.subplots(1, 2)
+        # ax[0].imshow(seq_mask[0].detach().cpu().numpy(), cmap='gray')
+        # ax[1].imshow(mask[0, 0].detach().cpu().numpy(), cmap='gray')
+        # plt.show()
         features, seq_mask = self.mixup(features, seq_mask)
         
         seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
+        features = features.reshape(features.size(0), -1, res*res).permute(0, 2, 1)
 
         # forward pass
         
@@ -271,13 +309,35 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         Compute the metrics for validation batch
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
-        features = batch['features']
-        seq_mask = batch['seq_mask']
+        img = batch['img']
         segments = batch['segments']
         mask = batch['mask']
         tensorboard = self.logger.experiment
         res = int(self.num_seg**0.5)
-        features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
+        
+        B, _, H, W = img.shape
+        K = self.num_seg
+        # Step 1: CNN feature extraction
+        feat = self.pre_conv(img)  # (B, C, H, W)
+        B, C, H, W = feat.shape
+
+        # Step 2: Flatten
+        feat_flat = feat.view(B, C, -1).permute(0, 2, 1)  # (B, H*W, C)
+        seg_flat = segments.view(B, -1)-1                        # (B, H*W)
+
+        # Step 3: Combine batch and spatial dimensions
+        feat_flat = feat_flat.reshape(-1, C)              # (B*H*W, C)
+        mask_flat = mask.reshape(-1)
+        seg_flat = seg_flat + torch.arange(B, device=segments.device).view(-1, 1) * K  # (B, H*W)
+        seg_flat = seg_flat.view(-1)                      # (B*H*W,)
+
+        # Step 4: Scatter sum into (B*K, C)
+        out = torch.zeros(B * K, C, device=img.device)
+        out.scatter_add_(0, seg_flat.unsqueeze(-1).expand(-1, C), feat_flat)
+
+        # Step 6: Reshape back to (B, K, C)
+        features = out.view(B, K, C)
+
         _, pred = self.forward(features, segments)
         # res = int(self.num_seg**0.5)
         # pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
@@ -393,16 +453,36 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         Compute the metrics for validation batch
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
-        features = batch['features']
-        seq_mask = batch['seq_mask']
+        img = batch['img']
         segments = batch['segments']
         mask = batch['mask']
-        names = batch['file_name']
-
 
         # forward pass
         res = int(self.num_seg**0.5)
-        features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
+        
+        B, _, H, W = img.shape
+        K = self.num_seg
+        # Step 1: CNN feature extraction
+        feat = self.pre_conv(img)  # (B, C, H, W)
+        B, C, H, W = feat.shape
+
+        # Step 2: Flatten
+        feat_flat = feat.view(B, C, -1).permute(0, 2, 1)  # (B, H*W, C)
+        seg_flat = segments.view(B, -1)-1                        # (B, H*W)
+
+        # Step 3: Combine batch and spatial dimensions
+        feat_flat = feat_flat.reshape(-1, C)              # (B*H*W, C)
+        mask_flat = mask.reshape(-1)
+        seg_flat = seg_flat + torch.arange(B, device=segments.device).view(-1, 1) * K  # (B, H*W)
+        seg_flat = seg_flat.view(-1)                      # (B*H*W,)
+
+        # Step 4: Scatter sum into (B*K, C)
+        out = torch.zeros(B * K, C, device=img.device)
+        out.scatter_add_(0, seg_flat.unsqueeze(-1).expand(-1, C), feat_flat)
+
+        # Step 6: Reshape back to (B, K, C)
+        features = out.view(B, K, C)
+
         _, pred = self.forward(features, segments)
 
         # pred_numpy = torch.sigmoid(pred).detach().cpu() # batch, seq_len, 1

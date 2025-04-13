@@ -71,7 +71,7 @@ class SwinUTransformer(nn.Module):
         self.mlp_ratio = mlp_ratio
 
         # split image into non-overlapping patches
-        self.patch_embed = swinencoder.patch_embed
+        # self.patch_embed = swinencoder.patch_embed
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
         patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
@@ -112,12 +112,8 @@ class SwinUTransformer(nn.Module):
         inter_dim = 16
         # self.sod_head = nn.Linear(sum(embed_dim), inter_dim)
         self.intermediate_head = nn.Linear(sum(embed_dim), 1)
-        self.pre_conv = nn.Sequential(
-            nn.Conv2d(3, embed_dim[0], kernel_size=3, padding=1),
-            nn.BatchNorm2d(embed_dim[0]),
-            nn.ReLU(inplace=True)
-        )
-
+        
+        
         self.apply(self._init_weights)
        
         self.resolutions = resolutions.copy()
@@ -141,51 +137,7 @@ class SwinUTransformer(nn.Module):
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
 
-    def forward_features(self, x, segments):
-        x = torch.cat((x[:, 2:8, :, :], x[:, -10:, :, :]), dim=1)
-        # centroids = x[:, :2, :, :].permute(0, 2, 3, 1)
-        # centroids = self.locations(centroids)
-        # centroids = centroids.reshape(centroids.size(0), -1, centroids.size(3))
-
-        K = x.size(-2) * x.size(-1)
- 
-        B, H, W = segments.shape
-        M = 56
-        device = segments.device
-
-        # Apply the spatial filter to a dummy constant mask
-        mask = torch.ones(B, 1, H, W, device=device)
-        filtered = self.filter(mask)  # (B, 1, H//M, W//M)
-        _, _, Hf, Wf = filtered.shape
-        D = Hf * Wf
-
-        # Get coordinate indices for each pixel → map to D-dim index
-        y_coords = torch.arange(H, device=device).view(1, H, 1).expand(B, H, W)
-        x_coords = torch.arange(W, device=device).view(1, 1, W).expand(B, H, W)
-
-        i = (y_coords // M) * Wf + (x_coords // M)  # (B, H, W), values in [0, D-1]
-
-        # Flatten everything
-        seg_flat = segments.reshape(-1)-1                  # (B*H*W,)
-        index_flat = i.reshape(-1)                      # (B*H*W,)
-        batch_idx = torch.arange(B, device=device).view(B, 1, 1).expand(B, H, W).reshape(-1)
-        global_seg_idx = batch_idx * K + seg_flat       # (B*H*W,)
-
-        # Get filter values for each pixel
-        filter_flat = filtered.view(B, D)               # (B, D)
-        pixel_values = filter_flat[batch_idx, index_flat]  # (B*H*W,)
-
-        # Accumulate to (B*K, D)
-        out = torch.zeros(B * K, D, device=device)
-        out.index_add_(0, global_seg_idx, F.one_hot(index_flat, D).float() * pixel_values.unsqueeze(1))
-
-        # Reshape back to (B, K, D)
-        pooled = out.view(B, K, D)
-        pooled = pooled.reshape(B, int(K**0.5), int(K**0.5), -1).permute(0, 3, 1, 2)        
-        
-        x = torch.cat((x, pooled), dim=1)
-        x = self.patch_embed(x)
-        # x = x + centroids
+    def forward_features(self, x):
         x = self.pos_drop(x)
 
      
@@ -212,7 +164,7 @@ class SwinUTransformer(nn.Module):
 
 
     def forward(self, x, segments):
-        x = self.forward_features(x, segments)
+        x = self.forward_features(x)
         x = self.intermediate_head(x)
         intermediate = x
  
