@@ -52,8 +52,8 @@ class SwinTransformer(nn.Module):
 
         self.patch_embed = PatchEmbed(
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim[0],
-            norm_layer=None)
-        self.ln = nn.LayerNorm(embed_dim[0])
+            norm_layer=nn.LayerNorm)
+
         num_patches = self.patch_embed.num_patches
         patches_resolution = self.patch_embed.patches_resolution
         self.patches_resolution = patches_resolution
@@ -145,7 +145,6 @@ class SwinTransformer(nn.Module):
  
         
         x = x + centroids
-        x = self.ln(x)
         x = self.pos_drop(x)
 
         for layer in self.layers:

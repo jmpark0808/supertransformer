@@ -341,7 +341,6 @@ class BasicLayerUpsampleMA(nn.Module):
         features = torch.cat(feats, dim=3)
         features = features.reshape(features.size(0), -1, features.size(3))
         features = self.linear(features)
-        
         out = self.blocks(x_q, features)
         
 

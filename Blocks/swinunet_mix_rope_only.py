@@ -13,6 +13,7 @@ import math
 from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA, BasicLayer, PatchMerging
 from Blocks.swin_encoder_rope import SwinTransformer
 from Blocks.swin_rope import BasicLayerRoPE
+from Blocks.swin_common import PatchEmbed
 from Blocks.performer2 import Transformer
 import torch.nn.functional as F
 WindowProcess = None
@@ -47,7 +48,7 @@ class SwinUTransformer(nn.Module):
         use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False
     """
 
-    def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000,
+    def __init__(self, img_size=224, resolution_size=56, patch_size=4, in_chans=3, num_classes=1000,
                  embed_dim=[96, 96*2, 96*4, 96*8], depths=[2, 2, 6, 2], num_heads=[3, 6, 12, 24],
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
@@ -56,7 +57,7 @@ class SwinUTransformer(nn.Module):
         super().__init__()
 
 
-        swinencoder = SwinTransformer(img_size=img_size, patch_size=patch_size, in_chans=embed_dim[0], num_classes=num_classes,
+        swinencoder = SwinTransformer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, num_classes=num_classes,
                                       embed_dim=embed_dim, depths=depths, num_heads=num_heads,
                                       window_size=window_size, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                                       drop_rate=drop_rate, attn_drop_rate=attn_drop_rate, drop_path_rate=drop_path_rate,
@@ -69,6 +70,7 @@ class SwinUTransformer(nn.Module):
         self.ape = ape
         self.patch_norm = patch_norm
         self.mlp_ratio = mlp_ratio
+        self.resolution_size = resolution_size
 
         # split image into non-overlapping patches
         self.patch_embed = swinencoder.patch_embed
@@ -97,8 +99,8 @@ class SwinUTransformer(nn.Module):
         self.upsample_layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
             layer = BasicLayerUpsampleMA(dim=embed_dims[i_layer],
-                                       total_dim=sum(embed_dim),
-                               input_resolution=resolutions,
+                                       total_dim=sum(embed_dim)+embed_dims[-1]//2,
+                               input_resolution=[(self.resolution_size//2, self.resolution_size//2)]+resolutions,
                                num_heads=num_heads[self.num_layers-i_layer-1],
                                mlp_ratio=self.mlp_ratio,
                                qkv_bias=qkv_bias, 
@@ -108,19 +110,45 @@ class SwinUTransformer(nn.Module):
                                use_checkpoint=use_checkpoint)
             self.upsample_layers.append(layer)
 
-        self.upsample = nn.Upsample(size=img_size[0])
-        inter_dim = 16
-        # self.sod_head = nn.Linear(sum(embed_dim), inter_dim)
-        self.intermediate_head = nn.Linear(sum(embed_dim), 1)
-        self.pre_conv = nn.Sequential(
-            nn.Conv2d(3, embed_dim[0], kernel_size=3, padding=1),
-            nn.BatchNorm2d(embed_dim[0]),
-            nn.ReLU(inplace=True)
-        )
+        
+        self.upsample_layers.append(BasicLayerUpsampleMA(dim=embed_dims[-1]//2,
+                                       total_dim=sum(embed_dim)+embed_dims[-1]//2,
+                               input_resolution=[(self.resolution_size//2, self.resolution_size//2)]+resolutions,
+                               num_heads=num_heads[0],
+                               mlp_ratio=self.mlp_ratio,
+                               qkv_bias=qkv_bias, 
+                               qk_scale=qk_scale, 
+                               drop=drop_rate, 
+                               attn_drop=attn_drop_rate,
+                               use_checkpoint=use_checkpoint))
 
+        self.upsample = nn.Upsample(size=self.resolution_size//2)
+
+        self.sod_head = nn.Linear(sum(embed_dim)+embed_dims[-1]//2, 1)
+        
+        self.shallow = nn.Sequential(*[nn.Conv2d(3, embed_dims[-1]//2, 5, 2, 2), nn.BatchNorm2d(embed_dims[-1]//2), nn.ReLU()])
+        # self.shallow = nn.Sequential(*[PatchEmbed(
+        #     img_size=self.resolution_size, patch_size=2, in_chans=3, embed_dim=embed_dim[0]//2,
+        #     norm_layer=nn.LayerNorm), BasicLayerRoPE(dim=embed_dim[0]//2,
+        #                           out_dim=embed_dim[0]//2,
+        #                        input_resolution=(self.resolution_size//2, self.resolution_size//2),
+        #                        depth=depths[0],
+        #                        num_heads=num_heads[0],
+        #                        window_size=window_size,
+        #                        mlp_ratio=mlp_ratio,
+        #                        qkv_bias=qkv_bias, qk_scale=qk_scale,
+        #                        drop=drop_rate, attn_drop=attn_drop_rate,
+        #                        drop_path=0,
+        #                        norm_layer=norm_layer,
+        #                        downsample=None,
+        #                        use_checkpoint=use_checkpoint,
+        #                        fused_window_process=fused_window_process)])
+        
+        
+        
         self.apply(self._init_weights)
        
-        self.resolutions = resolutions.copy()
+        self.resolutions = [(self.resolution_size//2, self.resolution_size//2)]+resolutions.copy()
         self.resolutions.reverse()
         del swinencoder
 
@@ -141,55 +169,18 @@ class SwinUTransformer(nn.Module):
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
 
-    def forward_features(self, x, segments):
-        x = torch.cat((x[:, 2:8, :, :], x[:, -10:, :, :]), dim=1)
+    def forward_features(self, x, img):
+        x = x[:, 2:, :, :]
         # centroids = x[:, :2, :, :].permute(0, 2, 3, 1)
         # centroids = self.locations(centroids)
         # centroids = centroids.reshape(centroids.size(0), -1, centroids.size(3))
-
-        K = x.size(-2) * x.size(-1)
- 
-        B, H, W = segments.shape
-        M = 56
-        device = segments.device
-
-        # Apply the spatial filter to a dummy constant mask
-        mask = torch.ones(B, 1, H, W, device=device)
-        filtered = self.filter(mask)  # (B, 1, H//M, W//M)
-        _, _, Hf, Wf = filtered.shape
-        D = Hf * Wf
-
-        # Get coordinate indices for each pixel → map to D-dim index
-        y_coords = torch.arange(H, device=device).view(1, H, 1).expand(B, H, W)
-        x_coords = torch.arange(W, device=device).view(1, 1, W).expand(B, H, W)
-
-        i = (y_coords // M) * Wf + (x_coords // M)  # (B, H, W), values in [0, D-1]
-
-        # Flatten everything
-        seg_flat = segments.reshape(-1)-1                  # (B*H*W,)
-        index_flat = i.reshape(-1)                      # (B*H*W,)
-        batch_idx = torch.arange(B, device=device).view(B, 1, 1).expand(B, H, W).reshape(-1)
-        global_seg_idx = batch_idx * K + seg_flat       # (B*H*W,)
-
-        # Get filter values for each pixel
-        filter_flat = filtered.view(B, D)               # (B, D)
-        pixel_values = filter_flat[batch_idx, index_flat]  # (B*H*W,)
-
-        # Accumulate to (B*K, D)
-        out = torch.zeros(B * K, D, device=device)
-        out.index_add_(0, global_seg_idx, F.one_hot(index_flat, D).float() * pixel_values.unsqueeze(1))
-
-        # Reshape back to (B, K, D)
-        pooled = out.view(B, K, D)
-        pooled = pooled.reshape(B, int(K**0.5), int(K**0.5), -1).permute(0, 3, 1, 2)        
         
-        x = torch.cat((x, pooled), dim=1)
         x = self.patch_embed(x)
         # x = x + centroids
         x = self.pos_drop(x)
 
      
-        ft = []
+        ft = [img]
         for layer in self.layers:
             ds, x = layer(x)
             ft.append(ds)
@@ -203,7 +194,7 @@ class SwinUTransformer(nn.Module):
             res = self.resolutions[idx]
             x = x.reshape(x.size(0), res[0], res[1], -1).permute(0, 3, 1, 2)
             x = self.upsample(x).permute(0, 2, 3, 1)
-            x = x.reshape(x.size(0), self.img_size**2, -1)
+            x = x.reshape(x.size(0), (self.resolution_size//2)*(self.resolution_size//2), -1)
             up_ft.append(x)
 
         up_ft = torch.cat(up_ft, dim=2)
@@ -211,20 +202,13 @@ class SwinUTransformer(nn.Module):
 
 
 
-    def forward(self, x, segments):
-        x = self.forward_features(x, segments)
-        x = self.intermediate_head(x)
-        intermediate = x
- 
-        D = x.size(-1)
-        B, H, W = segments.size()
-        segments = segments.reshape([x.size(0), -1])-1 # batch, img_size^2
+    def forward(self, x, img):
+        img = self.shallow(img)
+        img = img.reshape(img.size(0), -1, (self.resolution_size//2)*(self.resolution_size//2)).permute(0, 2, 1)
+        x = self.forward_features(x, img)
+        x = self.sod_head(x) # B, N, 1
+        x = x.reshape(x.size(0), self.resolution_size//2, self.resolution_size//2, 1).permute(0, 3, 1, 2)
+        x = F.interpolate(x, (self.resolution_size, self.resolution_size))
+        return x
 
-
-        batch_indices = torch.arange(x.size(0), device=x.device).unsqueeze(-1)  # (B, 1)
-        x = x[batch_indices, segments]  # (B, H*W, D)
-        x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2)
-
-        return intermediate, x
- 
 

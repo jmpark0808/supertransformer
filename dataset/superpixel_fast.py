@@ -25,6 +25,7 @@ from dataset.fft_transform import *
 from dataset.moments_transform import *
 import torch.nn.functional as F
 from util.util import merge_contours, compute_central_moments
+from torchvision.transforms import ToTensor
 
 class Resize(object):
     def __init__(self, size):
@@ -107,6 +108,60 @@ class RandomColorJitter(object):
         img = self.transform(img)
 
         return {'image': img, 'mask': mask}
+
+def cutmix_superpixel_collate_fn(batch):
+    # batch: [(K x D, seg_map H x W, label H//2 x W//2), ...]
+
+    sp_feats = torch.stack([sample['features'] for sample in batch])  # (B, K, D)
+    seg_maps = torch.stack([sample['segments'] for sample in batch])          # (B, H, W)
+    labels   = torch.stack([sample['mask'] for sample in batch])
+    seq_mask = torch.stack([sample['seq_mask'] for sample in batch])
+    images = torch.stack([sample['images'] for sample in batch])
+
+
+    B, K, D = sp_feats.shape
+    _, _, H, W = labels.shape
+
+    # Shuffle across batch
+    indices = torch.randperm(B)
+    sp_feats2 = sp_feats[indices]
+    labels2   = labels[indices]
+    images2   = images[indices]
+
+    # Sample CutMix bounding box
+    lam = np.random.beta(1.0, 1.0)
+    cut_ratio = np.sqrt(1. - lam)
+    cut_w, cut_h = int(W * cut_ratio), int(H * cut_ratio)
+    cx = torch.randint(W, (1,))
+    cy = torch.randint(H, (1,))
+    bbx1 = torch.clamp(cx - cut_w // 2, 0, W)
+    bby1 = torch.clamp(cy - cut_h // 2, 0, H)
+    bbx2 = torch.clamp(cx + cut_w // 2, 0, W)
+    bby2 = torch.clamp(cy + cut_h // 2, 0, H)
+
+    # CutMix images
+    images[:, :, bby1:bby2, bbx1:bbx2] = images2[:, :, bby1:bby2, bbx1:bbx2]
+    # Create region mask: (B, H, W)
+    region_mask = torch.zeros((B, H, W), dtype=torch.bool, device=seg_maps.device)
+    region_mask[:, bby1:bby2, bbx1:bbx2] = True
+
+    # Find superpixels overlapping with CutMix region
+    seg_maps_flat = seg_maps.view(B, -1)-1               # (B, H*W)
+    region_mask_flat = region_mask.view(B, -1)            # (B, H*W)
+
+    used_sps = torch.zeros((B, K), dtype=torch.bool, device=sp_feats.device)
+    for b in range(B):  # ← loop only over batch, still quite fast
+        sp_ids = torch.unique(seg_maps_flat[b][region_mask_flat[b]])
+        used_sps[b, sp_ids] = True
+
+    # Mix the superpixel features (B, K, D)
+    sp_feats_mixed = torch.where(used_sps.unsqueeze(-1), sp_feats2, sp_feats)
+
+    # Mix the pixel-wise saliency labels (B, 1, H, W)
+    labels_mixed = labels.clone()
+    labels_mixed[:, :, bby1:bby2, bbx1:bbx2] = labels2[:, :, bby1:bby2, bbx1:bbx2]
+
+    return {'features': sp_feats_mixed, 'mask': labels_mixed, 'seq_mask': seq_mask, 'segments': seg_maps, 'images': images}
 
 
 
@@ -435,6 +490,7 @@ class SPDataset(data.Dataset):
         self.data_augmentation = data_augmentation
         self.resample_points = int(((size**2)//num_seg)**0.5)*4
         self.aug_strat = aug_strat
+        self.tt = ToTensor()
 
             
 
@@ -462,6 +518,11 @@ class SPDataset(data.Dataset):
         seq_mask = np.load(sp_file_path_seq_mask)
         segments = np.load(sp_file_path_segments)
         mask = np.load(sp_file_path_mask)
+
+        
+        img = Image.open(self.image_list[item])
+        img = img.convert('RGB').resize((self.size, self.size))
+        img = self.tt(img)
         
         # features_first = features[:, :8]
         # features_last = features[:, -10:]
@@ -529,8 +590,8 @@ class SPDataset(data.Dataset):
         
 
         return {'features': features, 'seq_mask': torch.tensor(seq_mask),
-                 'segments': torch.tensor(segments), 'mask': mask, 
-                   'file_name':self.image_list[item]}
+                 'segments': torch.tensor(segments), 'mask': torch.tensor(mask), 
+                   'file_name':self.image_list[item], 'images':img}
     
 
 class SPOGMaskDataset(data.Dataset):
@@ -700,7 +761,7 @@ class SPFDataModule(pl.LightningDataModule):
                                   self.coeff, self.aug_strat)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
-                num_workers=self.num_workers, shuffle=True, pin_memory=True, drop_last=True)
+                num_workers=self.num_workers, shuffle=True, pin_memory=True, drop_last=True, collate_fn=cutmix_superpixel_collate_fn)
 
     def val_dataloader(self):
         data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg,
