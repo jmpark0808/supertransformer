@@ -307,9 +307,22 @@ class ToTensorSPFFT(object):
         
         
         for ind, coord in zip(regions['label'], regions['coords']):
-            seq_mask[ind-1] = 1 if np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
+            seq_mask[ind-1] = np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0])
 
+        # seg_map = segments.astype(np.int32)
+        # saliency = mask_np.astype(np.float32)
 
+        # H, W = seg_map.shape
+        # output = np.zeros((H, W), dtype=np.float32)
+
+        # unique_labels = np.unique(seg_map)
+        # for label in unique_labels:
+        #     mask = seg_map == label
+        #     avg_saliency = saliency[mask].mean()
+        #     output[mask] = avg_saliency
+
+        # plt.imshow(output, cmap='gray')
+        # plt.show()
         # if self.fully_connected:
         #     neighbor_array = np.ones([self.num_seg, self.num_seg])
         # else:
@@ -546,8 +559,8 @@ class SPDataset(data.Dataset):
         # plt.plot(features_phase[0])
         # plt.show()         
         if self.data_augmentation:
-            if self.aug_strat > 0:
-                moments, colour_and_centroid = rotate_moments(moments, colour_and_centroid, 0.5, 15, (self.size, self.size))
+            # if self.aug_strat > 0:
+            #     moments, colour_and_centroid = rotate_moments(moments, colour_and_centroid, 0.5, 15, (self.size, self.size))
             # moments = log_moments(moments)
 
             if self.aug_strat > 1:
@@ -573,20 +586,20 @@ class SPDataset(data.Dataset):
             features_np = np.concatenate((colour_and_centroid, moments, lbp), 1)
         features = torch.tensor(features_np).float()
         
-        # if self.data_augmentation and self.aug_strat >= 3:
-        #     randaug = RandAugment(5)
-        #     res = int(self.num_seg**0.5)
-        #     color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
-        #     if np.random.random() < 0.5:
-        #         color_space = (color_space*255).to(torch.uint8)
-        #         color_space = randaug(color_space)
-        #         color_space = color_space.float()
-        #         color_space /= 255.
-        #     # plt.imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
-        #     # plt.show()
-        #     color_space = color_space.reshape(3, self.num_seg).permute(1, 0)
+        if self.data_augmentation and self.aug_strat >= 3:
+            randaug = RandAugment(5)
+            res = int(self.num_seg**0.5)
+            color_space = features[:, 2:5].reshape(res, res, 3).permute(2, 0, 1)
+            if np.random.random() < 0.5:
+                color_space = (color_space*255).to(torch.uint8)
+                color_space = randaug(color_space)
+                color_space = color_space.float()
+                color_space /= 255.
+            # plt.imshow(color_space.permute(1, 2, 0).detach().cpu().numpy())
+            # plt.show()
+            color_space = color_space.reshape(3, self.num_seg).permute(1, 0)
             
-        #     features[:, 2:5] = color_space
+            features[:, 2:5] = color_space
         
 
         return {'features': features, 'seq_mask': torch.tensor(seq_mask),

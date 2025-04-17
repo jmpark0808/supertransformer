@@ -69,6 +69,21 @@ def apply_rotary_emb(
     xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
     return xq_out.type_as(xq).to(xq.device), xk_out.type_as(xk).to(xk.device)
 
+def apply_rotary_emb_sep(
+    xq: torch.Tensor,
+    xk: torch.Tensor,
+    freqs_q: torch.Tensor,
+    freqs_k: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
+    xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
+    freqs_q = reshape_for_broadcast(freqs_q, xq_)
+    freqs_k = reshape_for_broadcast(freqs_k, xk_)
+    xq_out = torch.view_as_real(xq_ * freqs_q).flatten(3)
+    xk_out = torch.view_as_real(xk_ * freqs_k).flatten(3)
+    return xq_out.type_as(xq).to(xq.device), xk_out.type_as(xk).to(xk.device)
+
+
 class WindowAttentionRoPE(nn.Module):
     r""" Window based multi-head self attention (W-MSA) module with relative position bias.
     It supports both of shifted and non-shifted window.

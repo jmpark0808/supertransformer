@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
-from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA, BasicLayer, PatchMerging
+from Blocks.umix_decoder import BasicLayerUpsampleMA
 from Blocks.swin_encoder_rope import SwinTransformer
 from Blocks.swin_rope import BasicLayerRoPE
 from Blocks.swin_common import PatchEmbed

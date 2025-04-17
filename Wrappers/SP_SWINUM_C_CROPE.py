@@ -182,9 +182,9 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         # third = input[:,  -10:]
         # input = torch.cat((first, second_amp_front, second_amp_back, second_phase_front, second_phase_back, third), dim=1)
         
-        pred = self.supert(input, segments)
+        inter, pre_refined, pred = self.supert(input, segments)
 
-        return pred
+        return inter, pre_refined, pred
 
     def on_train_epoch_start(self):
         self.train_fscores = 0
@@ -233,7 +233,8 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
 
         # forward pass
         
-        pred = self.forward(features, images)
+        inter, pre_refined, pred = self.forward(features, segments)
+        loss_inter = self.loss(inter, seq_mask)
         loss = self.loss(pred, mask)
         
         # pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
@@ -287,9 +288,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         tensorboard = self.logger.experiment
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-
-
-        pred = self.forward(features, images)
+        _, pre_refined,  pred = self.forward(features, segments)
         # res = int(self.num_seg**0.5)
         # pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         # seq_mask_numpy = seq_mask.detach().cpu().numpy()
@@ -311,15 +310,16 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         #     samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
         #     samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
         samples = torch.sigmoid(pred) 
-        samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear') 
+        samples_pre = torch.sigmoid(pre_refined)
+        # samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear') 
         mae = torch.sum(torch.mean(torch.abs(samples - mask), dim=tuple(range(1, len(samples.size())))))
         
         if dataloader_idx == 0:
             self.maes += mae
             self.mean_num += features.size(0)
             if batch_idx == 0:
-                tensorboard.add_images('Test Pred', samples, self.global_step)
-
+                tensorboard.add_images('Test Refined', samples, self.global_step)
+                tensorboard.add_images('Test Pre-Refined', samples_pre, self.global_step)
                 tensorboard.add_images('Test GT', mask, self.global_step)
         elif dataloader_idx == 1:
             self.maes_test += mae
@@ -414,7 +414,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         # forward pass
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        pred = self.forward(features, images)
+        _, pre_refined, pred = self.forward(features, segments)
 
         # pred_numpy = torch.sigmoid(pred).detach().cpu() # batch, seq_len, 1
     

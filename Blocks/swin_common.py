@@ -5,7 +5,7 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
 from einops import rearrange, repeat
 from Blocks.performer2 import Attention
-from Blocks.merge import PatchMerging, PatchExpandLowerDim, BasicLayerUpsampleMA, Mlp
+from Blocks.merge import PatchMerging, PatchExpandLowerDim, Mlp
 WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")

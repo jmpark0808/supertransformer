@@ -7,7 +7,7 @@ from timm.layers import trunc_normal_, DropPath
 from math import ceil
 from functools import partial
 from contextlib import contextmanager
-from Blocks.merge import PatchMerging, PatchExpandLowerDim, BasicLayerUpsampleMA
+from Blocks.merge import PatchMerging, PatchExpandLowerDim
 from Blocks.performer_diffpool import TFMDecoder
 from Blocks.performer_diffpool import PerformerEncoderToken, TransformerEncoderToken
 from Blocks.performer_diffpool import TransformerDecoder as PerformerDecoder

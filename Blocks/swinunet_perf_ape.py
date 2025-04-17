@@ -10,7 +10,8 @@ import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
-from Blocks.merge import  BasicLayerUpsampleMA, PatchMerging, UMixDecoder
+from Blocks.merge import  PatchMerging
+from Blocks.umix_decoder import UMixDecoder
 from Blocks.swin_common import PatchEmbed, BasicLayer
 from Blocks.performer2 import TransformerDecoder
 WindowProcess = None

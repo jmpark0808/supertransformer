@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
-from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA, BasicLayer, PatchMerging
+from Blocks.umix_decoder import BasicLayerUpsampleMA
 from Blocks.swin_encoder_rope import SwinTransformer
 
 
@@ -87,11 +87,13 @@ class SwinUTransformer(nn.Module):
         embed_dims.reverse()
             
             
-
+        resolutions_reverse = resolutions.copy()
+        resolutions_reverse.reverse()
         self.upsample_layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
             layer = BasicLayerUpsampleMA(dim=embed_dims[i_layer],
                                        total_dim=sum(embed_dim),
+                                       q_resolution=resolutions_reverse[i_layer][0],
                                input_resolution=resolutions,
                                num_heads=num_heads[self.num_layers-i_layer-1],
                                mlp_ratio=self.mlp_ratio,
