@@ -224,7 +224,8 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
             seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
 
         # forward pass
-        
+        if torch.sum(torch.isnan(features)) > 0:
+            assert 0 
         pred = self.forward(features)
 
         loss = self.loss(pred, seq_mask)
@@ -262,7 +263,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         f_score = f_score.sum(dim=0)
         self.train_fscores += f_score
         self.num_samples += features.size(0)
-        self.log('loss', loss.item())
+        self.log('loss', loss.item(), prog_bar=True)
         self.iteration += 1
         if self.current_epoch >= self.warmup_epochs:
             self.scheduler.step()
