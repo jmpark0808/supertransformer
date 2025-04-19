@@ -10,10 +10,8 @@ import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
-from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA, BasicLayer, PatchMerging
+from Blocks.umix_decoder import BasicLayerUpsampleMA
 from Blocks.swin_encoder_rope import SwinTransformer
-from Blocks.swin_rope import BasicLayerRoPE
-from Blocks.performer2 import Transformer
 import torch.nn.functional as F
 WindowProcess = None
 WindowProcessReverse = None
@@ -56,7 +54,7 @@ class SwinUTransformer(nn.Module):
         super().__init__()
 
 
-        swinencoder = SwinTransformer(img_size=img_size, patch_size=patch_size, in_chans=embed_dim[0], num_classes=num_classes,
+        swinencoder = SwinTransformer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, num_classes=num_classes,
                                       embed_dim=embed_dim, depths=depths, num_heads=num_heads,
                                       window_size=window_size, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                                       drop_rate=drop_rate, attn_drop_rate=attn_drop_rate, drop_path_rate=drop_path_rate,
@@ -71,7 +69,7 @@ class SwinUTransformer(nn.Module):
         self.mlp_ratio = mlp_ratio
 
         # split image into non-overlapping patches
-        # self.patch_embed = swinencoder.patch_embed
+        self.patch_embed = swinencoder.patch_embed
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
         patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
@@ -92,13 +90,15 @@ class SwinUTransformer(nn.Module):
         resolutions = swinencoder.resolutions
         embed_dims.reverse()
             
-            
+        resolutions_reverse = resolutions.copy()
+        resolutions_reverse.reverse()
 
         self.upsample_layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
             layer = BasicLayerUpsampleMA(dim=embed_dims[i_layer],
                                        total_dim=sum(embed_dim),
                                input_resolution=resolutions,
+                               q_resolution=resolutions_reverse[i_layer][0],
                                num_heads=num_heads[self.num_layers-i_layer-1],
                                mlp_ratio=self.mlp_ratio,
                                qkv_bias=qkv_bias, 
@@ -109,9 +109,10 @@ class SwinUTransformer(nn.Module):
             self.upsample_layers.append(layer)
 
         self.upsample = nn.Upsample(size=img_size[0])
-        inter_dim = 16
+        
         # self.sod_head = nn.Linear(sum(embed_dim), inter_dim)
         self.intermediate_head = nn.Linear(sum(embed_dim), 1)
+        self.locations = nn.Linear(2, embed_dim[0])
         
         
         self.apply(self._init_weights)
@@ -138,6 +139,14 @@ class SwinUTransformer(nn.Module):
         return {'relative_position_bias_table'}
 
     def forward_features(self, x):
+        features = x[:, 2:, :, :]
+        centroids = x[:, :2, :, :].permute(0, 2, 3, 1)
+
+        centroids_linear = self.locations(centroids)
+        centroids_linear = centroids_linear.reshape(centroids_linear.size(0), -1, centroids_linear.size(3))
+        
+        x = self.patch_embed(features)
+        x = x + centroids_linear
         x = self.pos_drop(x)
 
      
@@ -161,9 +170,46 @@ class SwinUTransformer(nn.Module):
         up_ft = torch.cat(up_ft, dim=2)
         return up_ft
 
+    def box_filter(self, x, r):
+        """Efficient box filter using depthwise convolution."""
+        kernel_size = 2 * r + 1
+        weight = torch.ones((x.size(1), 1, kernel_size, kernel_size), device=x.device) / (kernel_size ** 2)
+        return F.conv2d(x, weight, padding=r, groups=x.size(1))
 
+    def guided_filter_rgb(self, I, P, r=8, eps=1e-4):
+        """
+        Guided filter for RGB guidance and grayscale input.
+        I: guidance image, (B, 3, H, W), float in [0, 1]
+        P: filtering input (saliency), (B, 1, H, W), float in [0, 1]
+        r: window radius
+        eps: regularization term
+        Returns: (B, 1, H, W) refined output
+        """
+        B, C, H, W = I.shape
 
-    def forward(self, x, segments):
+        # Compute means
+        mean_I = self.box_filter(I, r)           # (B, 3, H, W)
+        mean_P = self.box_filter(P, r)           # (B, 1, H, W)
+        mean_II = self.box_filter(I * I, r)      # (B, 3, H, W)
+        mean_IP = self.box_filter(I * P, r)      # (B, 3, H, W)
+
+        # Variance of I and covariance of I and P
+        var_I = mean_II - mean_I * mean_I           # (B, 3, H, W)
+        cov_IP = mean_IP - mean_I * mean_P          # (B, 3, H, W)
+
+        # Linear coefficients A and b
+        A = cov_IP / (var_I + eps)                  # (B, 3, H, W)
+        b = mean_P - (A * mean_I).sum(dim=1, keepdim=True)  # (B, 1, H, W)
+
+        # Mean A and b
+        mean_A = self.box_filter(A, r)                   # (B, 3, H, W)
+        mean_b = self.box_filter(b, r)                   # (B, 1, H, W)
+
+        # Output: A·I + b
+        output = (mean_A * I).sum(dim=1, keepdim=True) + mean_b  # (B, 1, H, W)
+        return output.clamp(0, 1)
+
+    def forward(self, x, segments, img):
         x = self.forward_features(x)
         x = self.intermediate_head(x)
         intermediate = x
@@ -176,7 +222,10 @@ class SwinUTransformer(nn.Module):
         batch_indices = torch.arange(x.size(0), device=x.device).unsqueeze(-1)  # (B, 1)
         x = x[batch_indices, segments]  # (B, H*W, D)
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2)
+        x = torch.sigmoid(x)
+        pre_filter = x
+        x = self.guided_filter_rgb(img, x)
 
-        return intermediate, x
+        return intermediate, pre_filter, x
  
 

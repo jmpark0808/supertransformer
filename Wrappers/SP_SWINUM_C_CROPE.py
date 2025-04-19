@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 # from Blocks.swintransformer_original_rpe import SwinUTransformer
-from Blocks.swinunet_mix_rope_only import SwinUTransformer
+from Blocks.swinunet_mix_rope_only_images import SwinUTransformer
 # from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
 import numpy as np
@@ -59,7 +59,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
         
         kwargs['parameters'] = parameter_count(self.supert)['']
-        inp = (torch.randn([1, input_dim+2, res, res]), torch.ones([1, 3, self.size, self.size]).float())
+        inp = (torch.randn([1, input_dim+2, res, res]), torch.ones([1, self.size, self.size]).long(), torch.ones([1, 3, self.size, self.size]).float())
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
         self.flops = kwargs['flops']
@@ -159,7 +159,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
             for pg in optimizer.param_groups:
                 pg["lr"] = lr_scale * self.lr
 
-    def forward(self, input, segments):
+    def forward(self, input, segments, images):
         """
         Forward pass through model
         :param x: Input features
@@ -182,9 +182,9 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         # third = input[:,  -10:]
         # input = torch.cat((first, second_amp_front, second_amp_back, second_phase_front, second_phase_back, third), dim=1)
         
-        inter, pre_refined, pred = self.supert(input, segments)
+        inter, pre_filter, pred = self.supert(input, segments, images)
 
-        return inter, pre_refined, pred
+        return inter, pre_filter, pred
 
     def on_train_epoch_start(self):
         self.train_fscores = 0
@@ -211,6 +211,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         features = batch['features']
         seq_mask = batch['seq_mask']
         images = batch['images']
+        segments = batch['segments']
         mask = batch['mask']
 
         import matplotlib.pyplot as plt
@@ -226,16 +227,15 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
        
 
         # plt.show()
-        # seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
-        # features, seq_mask = self.mixup(features, seq_mask)
+        seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
+        features, seq_mask = self.mixup(features, seq_mask)
         
-        # seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
+        seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
 
         # forward pass
         
-        inter, pre_refined, pred = self.forward(features, segments)
-        loss_inter = self.loss(inter, seq_mask)
-        loss = self.loss(pred, mask)
+        inter, _, pred = self.forward(features, segments, images)
+        loss = self.loss(inter, seq_mask)
         
         # pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         # seq_mask_numpy = seq_mask.detach().cpu().numpy()
@@ -254,7 +254,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         # else:
         #     samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
         #     samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
-        samples = torch.sigmoid(pred)    
+        samples = pred 
         
         prec, recall = torch.zeros(samples.shape[0], 1), torch.zeros(samples.shape[0], 1)
         pred = samples.reshape(samples.shape[0], -1)
@@ -284,11 +284,12 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         features = batch['features']
         seq_mask = batch['seq_mask']
         images = batch['images']
+        segments = batch['segments']
         mask = batch['mask']
         tensorboard = self.logger.experiment
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        _, pre_refined,  pred = self.forward(features, segments)
+        _, pre_filter, pred = self.forward(features, segments, images)
         # res = int(self.num_seg**0.5)
         # pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
         # seq_mask_numpy = seq_mask.detach().cpu().numpy()
@@ -309,8 +310,8 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         # else:
         #     samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
         #     samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
-        samples = torch.sigmoid(pred) 
-        samples_pre = torch.sigmoid(pre_refined)
+        samples = pred
+        samples_pre = pre_filter
         # samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear') 
         mae = torch.sum(torch.mean(torch.abs(samples - mask), dim=tuple(range(1, len(samples.size())))))
         
@@ -414,7 +415,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         # forward pass
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        _, pre_refined, pred = self.forward(features, segments)
+        _, pre_refined, pred = self.forward(features, segments, images)
 
         # pred_numpy = torch.sigmoid(pred).detach().cpu() # batch, seq_len, 1
     
@@ -444,7 +445,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
             
  
         #     cv2.imwrite('/home/eddie/Qualitative/SF/DUTS-TE/'+name, sample)
-        samples = torch.sigmoid(pred)  
+        samples = pred 
         mae = torch.sum(torch.mean(torch.abs((samples >= 0.5).float() - mask), dim=tuple(range(1, len(samples.size())))))
         self.maes += mae
         self.mean_num += features.size(0)
