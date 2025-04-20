@@ -13,7 +13,7 @@ import math
 from Blocks.umix_decoder import BasicLayerUpsampleMA
 from Blocks.swin_encoder_rope import SwinTransformer
 import torch.nn.functional as F
-from crfseg import CRF
+# from crfseg import CRF
 WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
