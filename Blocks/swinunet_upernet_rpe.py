@@ -12,7 +12,8 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from torch.nn import init
 import math
 from einops import rearrange, repeat
-from Blocks.swin_common import PatchEmbed, SwinASPP, SwinDecoder
+from Blocks.swin_common import PatchEmbed
+from Blocks.upernet import  SwinASPP, SwinDecoder
 from Blocks.swin_rpe import BasicLayerRPE, PatchMergingRPE
 WindowProcess = None
 WindowProcessReverse = None

@@ -13,6 +13,7 @@ import math
 from Blocks.umix_decoder import BasicLayerUpsampleMA
 from Blocks.swin_encoder_rope import SwinTransformer
 import torch.nn.functional as F
+from crfseg import CRF
 WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
@@ -113,6 +114,7 @@ class SwinUTransformer(nn.Module):
         # self.sod_head = nn.Linear(sum(embed_dim), inter_dim)
         self.intermediate_head = nn.Linear(sum(embed_dim), 1)
         self.locations = nn.Linear(2, embed_dim[0])
+        self.crf = CRF(n_spatial_dims=2)
         
         
         self.apply(self._init_weights)
@@ -224,7 +226,8 @@ class SwinUTransformer(nn.Module):
         x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2)
         x = torch.sigmoid(x)
         pre_filter = x
-        x = self.guided_filter_rgb(img, x)
+        # x = self.guided_filter_rgb(img, x)
+        x = self.crf(x)
 
         return intermediate, pre_filter, x
  

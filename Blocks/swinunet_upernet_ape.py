@@ -12,7 +12,9 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from torch.nn import init
 import math
 from einops import rearrange, repeat
-from Blocks.swin_common import PatchEmbed, BasicLayer, PatchMerging,  SwinASPP, SwinDecoder
+from Blocks.swin_common import PatchEmbed, PatchMerging
+from Blocks.upernet import SwinDecoderNoASPP
+from Blocks.swin_rope import BasicLayerRoPE
 
 WindowProcess = None
 WindowProcessReverse = None
@@ -83,7 +85,7 @@ class SwinUTransformer(nn.Module):
         dim_list = []
         resolution_list = []
         for i_layer in range(self.num_layers):
-            layer = BasicLayer(dim=embed_dim[i_layer],
+            layer = BasicLayerRoPE(dim=embed_dim[i_layer],
                                out_dim=embed_dim[i_layer+1] if i_layer < self.num_layers-1 else None,
                                input_resolution=(patches_resolution[0] // (2 ** i_layer),
                                                  patches_resolution[1] // (2 ** i_layer)),
@@ -107,7 +109,7 @@ class SwinUTransformer(nn.Module):
         resolution_list.reverse()
         
         
-        self.upsample_layers = SwinDecoder(input_dim=embed_dim[0],# 输入的通道数为96
+        self.upsample_layers = SwinDecoderNoASPP(input_dim=embed_dim[0],# 输入的通道数为96
             input_high_dim = dim_list[0], # 384
             input_middle_dim = dim_list[1],
             input_size=resolution_list[0][0], # 14 × 14
@@ -129,27 +131,27 @@ class SwinUTransformer(nn.Module):
             use_checkpoint=False)
 
 
-        self.aspp = SwinASPP(
-            input_size=resolution_list[0][0], # 14×14
-            input_dim=dim_list[0], # 384 
-            out_dim=dim_list[-1],  # 96
-            depth=2, # 2
-            cross_attn='CBAM', # CBAM
-            num_heads=num_heads[-1], # 3头
-            mlp_ratio=self.mlp_ratio, # 4
-            qk_scale=qk_scale,
-            qkv_bias=qkv_bias,
-            drop_rate=drop_rate,
-            attn_drop_rate=attn_drop_rate,
-            drop_path_rate=0, # 0.1
-            norm_layer=norm_layer,
-            aspp_norm=False,
-            aspp_activation='relu', # relu
-            start_window_size=2,
-            aspp_dropout=0.1, # 0.1
-            downsample=None, #None
-            use_checkpoint=False
-        )
+        # self.aspp = SwinASPP(
+        #     input_size=resolution_list[0][0], # 14×14
+        #     input_dim=dim_list[0], # 384 
+        #     out_dim=dim_list[-1],  # 96
+        #     depth=2, # 2
+        #     cross_attn='CBAM', # CBAM
+        #     num_heads=num_heads[-1], # 3头
+        #     mlp_ratio=self.mlp_ratio, # 4
+        #     qk_scale=qk_scale,
+        #     qkv_bias=qkv_bias,
+        #     drop_rate=drop_rate,
+        #     attn_drop_rate=attn_drop_rate,
+        #     drop_path_rate=0, # 0.1
+        #     norm_layer=norm_layer,
+        #     aspp_norm=False,
+        #     aspp_activation='relu', # relu
+        #     start_window_size=2,
+        #     aspp_dropout=0.1, # 0.1
+        #     downsample=None, #None
+        #     use_checkpoint=False
+        # )
         
 
         self.apply(self._init_weights)
@@ -185,8 +187,8 @@ class SwinUTransformer(nn.Module):
             all_layers.append(pre_ds.view(-1, size, size, pre_ds.shape[-1]))
 
         
-        x = self.aspp(all_layers[-1])
-        x = self.upsample_layers(all_layers[0], all_layers[1], all_layers[2], x)
+        # x = self.aspp(all_layers[-1])
+        x = self.upsample_layers(all_layers[0], all_layers[1], all_layers[2])
 
        
         return x
@@ -194,18 +196,14 @@ class SwinUTransformer(nn.Module):
     def forward(self, x):
         
         centroids = x[:, :2, :, :]
-        fft = x[:, 8:-10, :, :]
-        lbp = x[:, -10:, :, :]
-        color = x[:, 2:8, :, :]
-        x = torch.cat((color, lbp, fft), dim=1)
+        features = x[:, 2:, :, :]
         locations = centroids.permute(0, 2, 3, 1)
 
         locations = self.locations(locations)
         locations = locations.reshape(locations.size(0), -1, locations.size(3))
         
-        x = self.forward_features(x, locations)
-        
-        
+        x = self.forward_features(features, locations)
+        x = x.reshape(x.size(0), -1)
         return x
 
   
