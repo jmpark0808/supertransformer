@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 # from Blocks.swintransformer_original_rpe import SwinUTransformer
-from Blocks.swinunet_mix_rope_only_images import SwinUTransformer
+from Blocks.swinunet_mix_crope import SwinUTransformer
 # from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
 import numpy as np
@@ -214,7 +214,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         segments = batch['segments']
         mask = batch['mask']
 
-        import matplotlib.pyplot as plt
+        # import matplotlib.pyplot as plt
         
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)

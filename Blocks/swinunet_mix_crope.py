@@ -10,8 +10,9 @@ import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
-from Blocks.swin_common import PatchEmbed, BasicLayerUpsampleMA, BasicLayer, PatchMerging
+from Blocks.umix_decoder import BasicLayerUpsampleMA
 from Blocks.swin_encoder_crope import SwinTransformer
+import torch.nn.functional as F
 WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
@@ -106,7 +107,8 @@ class SwinUTransformer(nn.Module):
             self.upsample_layers.append(layer)
 
         self.upsample = nn.Upsample(size=img_size[0])
-        self.sod_head = nn.Linear(sum(embed_dim), 1)
+        self.intermediate_head = nn.Linear(sum(embed_dim), 1)
+        
 
         
         self.apply(self._init_weights)
@@ -162,12 +164,64 @@ class SwinUTransformer(nn.Module):
         up_ft = torch.cat(up_ft, dim=2)
         return up_ft
 
+    def box_filter(self, x, r):
+        """Efficient box filter using depthwise convolution."""
+        kernel_size = 2 * r + 1
+        weight = torch.ones((x.size(1), 1, kernel_size, kernel_size), device=x.device) / (kernel_size ** 2)
+        return F.conv2d(x, weight, padding=r, groups=x.size(1))
 
+    def guided_filter_rgb(self, I, P, r=8, eps=1e-4):
+        """
+        Guided filter for RGB guidance and grayscale input.
+        I: guidance image, (B, 3, H, W), float in [0, 1]
+        P: filtering input (saliency), (B, 1, H, W), float in [0, 1]
+        r: window radius
+        eps: regularization term
+        Returns: (B, 1, H, W) refined output
+        """
+        B, C, H, W = I.shape
 
-    def forward(self, x):
+        # Compute means
+        mean_I = self.box_filter(I, r)           # (B, 3, H, W)
+        mean_P = self.box_filter(P, r)           # (B, 1, H, W)
+        mean_II = self.box_filter(I * I, r)      # (B, 3, H, W)
+        mean_IP = self.box_filter(I * P, r)      # (B, 3, H, W)
+
+        # Variance of I and covariance of I and P
+        var_I = mean_II - mean_I * mean_I           # (B, 3, H, W)
+        cov_IP = mean_IP - mean_I * mean_P          # (B, 3, H, W)
+
+        # Linear coefficients A and b
+        A = cov_IP / (var_I + eps)                  # (B, 3, H, W)
+        b = mean_P - (A * mean_I).sum(dim=1, keepdim=True)  # (B, 1, H, W)
+
+        # Mean A and b
+        mean_A = self.box_filter(A, r)                   # (B, 3, H, W)
+        mean_b = self.box_filter(b, r)                   # (B, 1, H, W)
+
+        # Output: A·I + b
+        output = (mean_A * I).sum(dim=1, keepdim=True) + mean_b  # (B, 1, H, W)
+        return output.clamp(0, 1)
+
+    def forward(self, x, segments, img):
         x = self.forward_features(x)
-        x = self.sod_head(x)
+        x = self.intermediate_head(x)
 
-        return x
+
+        intermediate = x
  
+        D = x.size(-1)
+        B, H, W = segments.size()
+        segments = segments.reshape([x.size(0), -1])-1 # batch, img_size^2
+
+
+        batch_indices = torch.arange(x.size(0), device=x.device).unsqueeze(-1)  # (B, 1)
+        x = x[batch_indices, segments]  # (B, H*W, D)
+        x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2)
+        x = torch.sigmoid(x)
+        pre_filter = x
+        x = self.guided_filter_rgb(img, x, r=4)
+        # x = self.crf(x)
+
+        return intermediate, pre_filter, x
 

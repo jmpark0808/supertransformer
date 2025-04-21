@@ -17,7 +17,7 @@ class UMixDecoder(nn.Module):
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
     """
 
-    def __init__(self, dim, num_heads, mlp_ratio=4, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0., q_res=None, kv_res=None):
+    def __init__(self, dim, num_heads, mlp_ratio=4, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
 
         super().__init__()
         self.dim = dim
@@ -39,20 +39,20 @@ class UMixDecoder(nn.Module):
         # trunc_normal_(self.relative_position_bias_table, std=.02)
         self.softmax = nn.Softmax(dim=-1)
 
-        q_t_x, q_t_y = init_t_xy(end_x=q_res, end_y=q_res)
-        self.register_buffer('rope_q_t_x', q_t_x)
-        self.register_buffer('rope_q_t_y', q_t_y)
+        # q_t_x, q_t_y = init_t_xy(end_x=q_res, end_y=q_res)
+        # self.register_buffer('rope_q_t_x', q_t_x)
+        # self.register_buffer('rope_q_t_y', q_t_y)
 
-        kv_t_x, kv_t_y = init_t_xy(end_x=kv_res, end_y=kv_res)
-        self.register_buffer('rope_kv_t_x', kv_t_x)
-        self.register_buffer('rope_kv_t_y', kv_t_y)
+        # kv_t_x, kv_t_y = init_t_xy(end_x=kv_res, end_y=kv_res)
+        # self.register_buffer('rope_kv_t_x', kv_t_x)
+        # self.register_buffer('rope_kv_t_y', kv_t_y)
 
-        freqs = init_random_2d_freqs(
-            head_dim=self.dim // self.num_heads, num_heads=self.num_heads, theta=10, 
-            rotate=True
-        )
+        # freqs = init_random_2d_freqs(
+        #     head_dim=self.dim // self.num_heads, num_heads=self.num_heads, theta=10, 
+        #     rotate=True
+        # )
         
-        self.rope_freqs = nn.Parameter(freqs, requires_grad=True)
+        # self.rope_freqs = nn.Parameter(freqs, requires_grad=True)
 
 
     def forward(self, q, kv):
@@ -68,8 +68,8 @@ class UMixDecoder(nn.Module):
 
         kv = self.kv_ln(kv)
         
-        freqs_cis_q = compute_cis(self.rope_freqs, self.rope_q_t_x, self.rope_q_t_y)
-        freqs_cis_kv = compute_cis(self.rope_freqs, self.rope_kv_t_x, self.rope_kv_t_y)
+        # freqs_cis_q = compute_cis(self.rope_freqs, self.rope_q_t_x, self.rope_q_t_y)
+        # freqs_cis_kv = compute_cis(self.rope_freqs, self.rope_kv_t_x, self.rope_kv_t_y)
 
 
         q = self.q(q).reshape(B_, N_q, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
@@ -80,7 +80,7 @@ class UMixDecoder(nn.Module):
         k, v = kv[0], kv[1]
 
         q = q * self.scale
-        q, k = apply_rotary_emb_sep(q, k, freqs_cis_q, freqs_cis_kv)
+        # q, k = apply_rotary_emb_sep(q, k, freqs_cis_q, freqs_cis_kv)
         
         attn = (q @ k.transpose(-2, -1))
 
@@ -288,7 +288,7 @@ class BasicLayerUpsampleMA(nn.Module):
         use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False.
     """
 
-    def __init__(self, dim, total_dim, q_resolution, input_resolution, num_heads, 
+    def __init__(self, dim, total_dim, input_resolution, num_heads, 
                  mlp_ratio=4., qkv_bias=True, qk_scale=1.0, attn_drop=0., drop=0.,  use_checkpoint=False):
 
         super().__init__()
@@ -301,7 +301,7 @@ class BasicLayerUpsampleMA(nn.Module):
         #                                          dropout=drop, batch_first=True, norm_first=True) 
         min_res_0 = min([res[0] for res in input_resolution])
         min_res_1 = min([res[1] for res in input_resolution])
-        self.blocks = UMixDecoder(dim, num_heads, mlp_ratio, qkv_bias, qk_scale, attn_drop, drop , q_resolution, min_res_0)
+        self.blocks = UMixDecoder(dim, num_heads, mlp_ratio, qkv_bias, qk_scale, attn_drop, drop )
         
         self.avg_pools = nn.ModuleList([nn.AvgPool2d((res[0]//min_res_0, res[1]//min_res_1), (res[0]//min_res_0, res[1]//min_res_1)) for res in input_resolution])
         
