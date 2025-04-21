@@ -52,7 +52,7 @@ class SwinTransformer(nn.Module):
 
         self.patch_embed = PatchEmbed(
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim[0],
-            norm_layer=nn.LayerNorm)
+            norm_layer=None)
 
         num_patches = self.patch_embed.num_patches
         patches_resolution = self.patch_embed.patches_resolution
