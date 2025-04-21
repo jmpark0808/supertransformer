@@ -774,7 +774,7 @@ class SPFDataModule(pl.LightningDataModule):
                                   self.coeff, self.aug_strat)
         return DataLoader(
                 data_train, batch_size=self.batch_size, 
-                num_workers=self.num_workers, shuffle=True, pin_memory=True, drop_last=True, collate_fn=cutmix_superpixel_collate_fn)
+                num_workers=self.num_workers, shuffle=True, pin_memory=True, drop_last=True)
 
     def val_dataloader(self):
         data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg,
