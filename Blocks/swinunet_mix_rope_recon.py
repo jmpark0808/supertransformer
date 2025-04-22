@@ -11,9 +11,11 @@ import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
 from Blocks.umix_decoder import BasicLayerUpsampleMA
-from Blocks.swin_encoder_crope import SwinTransformer
+from Blocks.swin_encoder_rope import SwinTransformer
+from Blocks.swin_rope import BasicLayerRoPE
+from Blocks.swin_common import PatchEmbed
+from Blocks.performer2 import Transformer
 import torch.nn.functional as F
-from util.util import TokenDropoutForce
 WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
@@ -46,12 +48,12 @@ class SwinUTransformer(nn.Module):
         use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False
     """
 
-    def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000,
+    def __init__(self, img_size=224, resolution_size=56, patch_size=4, in_chans=3, num_classes=1000,
                  embed_dim=[96, 96*2, 96*4, 96*8], depths=[2, 2, 6, 2], num_heads=[3, 6, 12, 24],
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
-                 use_checkpoint=False, fused_window_process=False, rope_div_factor=1, **kwargs):
+                 use_checkpoint=False, fused_window_process=False, **kwargs):
         super().__init__()
 
 
@@ -60,7 +62,7 @@ class SwinUTransformer(nn.Module):
                                       window_size=window_size, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                                       drop_rate=drop_rate, attn_drop_rate=attn_drop_rate, drop_path_rate=drop_path_rate,
                                       norm_layer=norm_layer, ape=ape, patch_norm=patch_norm, 
-                                      use_checkpoint=use_checkpoint, fused_window_process=fused_window_process, rope_div_factor=rope_div_factor, **kwargs)
+                                      use_checkpoint=use_checkpoint, fused_window_process=fused_window_process, **kwargs)
         self.img_size = img_size
         self.num_classes = num_classes
         self.num_layers = len(depths)
@@ -68,6 +70,7 @@ class SwinUTransformer(nn.Module):
         self.ape = ape
         self.patch_norm = patch_norm
         self.mlp_ratio = mlp_ratio
+        self.resolution_size = resolution_size
 
         # split image into non-overlapping patches
         self.patch_embed = swinencoder.patch_embed
@@ -81,7 +84,7 @@ class SwinUTransformer(nn.Module):
         # absolute position embedding
 
 
-        self.pos_drop = TokenDropoutForce(drop_rate)
+        self.pos_drop = nn.Dropout(p=drop_rate)
 
         
         # build layers
@@ -107,14 +110,33 @@ class SwinUTransformer(nn.Module):
                                use_checkpoint=use_checkpoint)
             self.upsample_layers.append(layer)
 
+
         self.upsample = nn.Upsample(size=img_size[0])
+
         self.intermediate_head = nn.Linear(sum(embed_dim), in_chans+2)
         
-
+        # self.shallow = nn.Sequential(*[PatchEmbed(
+        #     img_size=self.resolution_size, patch_size=2, in_chans=3, embed_dim=embed_dim[0]//2,
+        #     norm_layer=nn.LayerNorm), BasicLayerRoPE(dim=embed_dim[0]//2,
+        #                           out_dim=embed_dim[0]//2,
+        #                        input_resolution=(self.resolution_size//2, self.resolution_size//2),
+        #                        depth=depths[0],
+        #                        num_heads=num_heads[0],
+        #                        window_size=window_size,
+        #                        mlp_ratio=mlp_ratio,
+        #                        qkv_bias=qkv_bias, qk_scale=qk_scale,
+        #                        drop=drop_rate, attn_drop=attn_drop_rate,
+        #                        drop_path=0,
+        #                        norm_layer=norm_layer,
+        #                        downsample=None,
+        #                        use_checkpoint=use_checkpoint,
+        #                        fused_window_process=fused_window_process)])
+        
+        
         
         self.apply(self._init_weights)
        
-        self.resolutions = resolutions.copy()
+        self.resolutions = [(self.resolution_size//2, self.resolution_size//2)]+resolutions.copy()
         self.resolutions.reverse()
         del swinencoder
 
@@ -136,18 +158,19 @@ class SwinUTransformer(nn.Module):
         return {'relative_position_bias_table'}
 
     def forward_features(self, x):
-
-        centroids = x[:, :2, :, : ]
         x = x[:, 2:, :, :]
-
-        centroids = torch.where(torch.logical_and(centroids[:, 0:1, :, :] == 0, centroids[:, 1:2, :, :] == 0), 1000, centroids)
-
+        # centroids = x[:, :2, :, :].permute(0, 2, 3, 1)
+        # centroids = self.locations(centroids)
+        # centroids = centroids.reshape(centroids.size(0), -1, centroids.size(3))
+        
         x = self.patch_embed(x)
- 
+        # x = x + centroids
         x = self.pos_drop(x)
+
+     
         ft = []
         for layer in self.layers:
-            ds, x, centroids = layer(x, centroids)
+            ds, x = layer(x)
             ft.append(ds)
 
 
@@ -169,5 +192,7 @@ class SwinUTransformer(nn.Module):
     def forward(self, x):
         x = self.forward_features(x)
         x = self.intermediate_head(x)
+
         return x
+
 

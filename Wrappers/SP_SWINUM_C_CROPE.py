@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 # from Blocks.swintransformer_original_rpe import SwinUTransformer
-from Blocks.swinunet_mix_crope import SwinUTransformer
+from Blocks.swinunet_mix_rope_only import SwinUTransformer
 # from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
 import numpy as np
@@ -446,6 +446,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
  
         #     cv2.imwrite('/home/eddie/Qualitative/SF/DUTS-TE/'+name, sample)
         samples = pred 
+        samples = F.interpolate(samples, (mask.size(-2), mask.size(-1)), mode='bilinear')
         mae = torch.sum(torch.mean(torch.abs((samples >= 0.5).float() - mask), dim=tuple(range(1, len(samples.size())))))
         self.maes += mae
         self.mean_num += features.size(0)

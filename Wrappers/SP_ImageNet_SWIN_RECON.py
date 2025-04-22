@@ -1,7 +1,7 @@
 import pytorch_lightning as pl
 import torch
 # from Blocks.swinunet_upernet import SwinTransformer
-from Blocks.swinunet_mix_crope_recon import SwinUTransformer
+from Blocks.swinunet_mix_rope_recon import SwinUTransformer
 import torch.nn.functional as F
 import numpy as np
 from dataset.constants import *

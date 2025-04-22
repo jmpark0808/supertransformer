@@ -99,8 +99,8 @@ class SwinUTransformer(nn.Module):
         self.upsample_layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
             layer = BasicLayerUpsampleMA(dim=embed_dims[i_layer],
-                                       total_dim=sum(embed_dim)+embed_dims[-1]//2,
-                               input_resolution=[(self.resolution_size//2, self.resolution_size//2)]+resolutions,
+                                       total_dim=sum(embed_dim),
+                               input_resolution=resolutions,
                                num_heads=num_heads[self.num_layers-i_layer-1],
                                mlp_ratio=self.mlp_ratio,
                                qkv_bias=qkv_bias, 
@@ -110,23 +110,11 @@ class SwinUTransformer(nn.Module):
                                use_checkpoint=use_checkpoint)
             self.upsample_layers.append(layer)
 
-        
-        self.upsample_layers.append(BasicLayerUpsampleMA(dim=embed_dims[-1]//2,
-                                       total_dim=sum(embed_dim)+embed_dims[-1]//2,
-                               input_resolution=[(self.resolution_size//2, self.resolution_size//2)]+resolutions,
-                               num_heads=num_heads[0],
-                               mlp_ratio=self.mlp_ratio,
-                               qkv_bias=qkv_bias, 
-                               qk_scale=qk_scale, 
-                               drop=drop_rate, 
-                               attn_drop=attn_drop_rate,
-                               use_checkpoint=use_checkpoint))
 
-        self.upsample = nn.Upsample(size=self.resolution_size//2)
+        self.upsample = nn.Upsample(size=img_size[0])
 
-        self.sod_head = nn.Linear(sum(embed_dim)+embed_dims[-1]//2, 1)
+        self.intermediate_head = nn.Linear(sum(embed_dim), 1)
         
-        self.shallow = nn.Sequential(*[nn.Conv2d(3, embed_dims[-1]//2, 5, 2, 2), nn.BatchNorm2d(embed_dims[-1]//2), nn.ReLU()])
         # self.shallow = nn.Sequential(*[PatchEmbed(
         #     img_size=self.resolution_size, patch_size=2, in_chans=3, embed_dim=embed_dim[0]//2,
         #     norm_layer=nn.LayerNorm), BasicLayerRoPE(dim=embed_dim[0]//2,
@@ -169,7 +157,7 @@ class SwinUTransformer(nn.Module):
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
 
-    def forward_features(self, x, img):
+    def forward_features(self, x):
         x = x[:, 2:, :, :]
         # centroids = x[:, :2, :, :].permute(0, 2, 3, 1)
         # centroids = self.locations(centroids)
@@ -180,7 +168,7 @@ class SwinUTransformer(nn.Module):
         x = self.pos_drop(x)
 
      
-        ft = [img]
+        ft = []
         for layer in self.layers:
             ds, x = layer(x)
             ft.append(ds)
@@ -194,7 +182,7 @@ class SwinUTransformer(nn.Module):
             res = self.resolutions[idx]
             x = x.reshape(x.size(0), res[0], res[1], -1).permute(0, 3, 1, 2)
             x = self.upsample(x).permute(0, 2, 3, 1)
-            x = x.reshape(x.size(0), (self.resolution_size//2)*(self.resolution_size//2), -1)
+            x = x.reshape(x.size(0), self.img_size**2, -1)
             up_ft.append(x)
 
         up_ft = torch.cat(up_ft, dim=2)
@@ -202,13 +190,67 @@ class SwinUTransformer(nn.Module):
 
 
 
-    def forward(self, x, img):
-        img = self.shallow(img)
-        img = img.reshape(img.size(0), -1, (self.resolution_size//2)*(self.resolution_size//2)).permute(0, 2, 1)
-        x = self.forward_features(x, img)
-        x = self.sod_head(x) # B, N, 1
-        x = x.reshape(x.size(0), self.resolution_size//2, self.resolution_size//2, 1).permute(0, 3, 1, 2)
-        x = F.interpolate(x, (self.resolution_size, self.resolution_size))
-        return x
+    
+
+    def box_filter(self, x, r):
+        """Efficient box filter using depthwise convolution."""
+        kernel_size = 2 * r + 1
+        weight = torch.ones((x.size(1), 1, kernel_size, kernel_size), device=x.device) / (kernel_size ** 2)
+        return F.conv2d(x, weight, padding=r, groups=x.size(1))
+
+    def guided_filter_rgb(self, I, P, r=8, eps=1e-4):
+        """
+        Guided filter for RGB guidance and grayscale input.
+        I: guidance image, (B, 3, H, W), float in [0, 1]
+        P: filtering input (saliency), (B, 1, H, W), float in [0, 1]
+        r: window radius
+        eps: regularization term
+        Returns: (B, 1, H, W) refined output
+        """
+        B, C, H, W = I.shape
+
+        # Compute means
+        mean_I = self.box_filter(I, r)           # (B, 3, H, W)
+        mean_P = self.box_filter(P, r)           # (B, 1, H, W)
+        mean_II = self.box_filter(I * I, r)      # (B, 3, H, W)
+        mean_IP = self.box_filter(I * P, r)      # (B, 3, H, W)
+
+        # Variance of I and covariance of I and P
+        var_I = mean_II - mean_I * mean_I           # (B, 3, H, W)
+        cov_IP = mean_IP - mean_I * mean_P          # (B, 3, H, W)
+
+        # Linear coefficients A and b
+        A = cov_IP / (var_I + eps)                  # (B, 3, H, W)
+        b = mean_P - (A * mean_I).sum(dim=1, keepdim=True)  # (B, 1, H, W)
+
+        # Mean A and b
+        mean_A = self.box_filter(A, r)                   # (B, 3, H, W)
+        mean_b = self.box_filter(b, r)                   # (B, 1, H, W)
+
+        # Output: A·I + b
+        output = (mean_A * I).sum(dim=1, keepdim=True) + mean_b  # (B, 1, H, W)
+        return output.clamp(0, 1)
+
+    def forward(self, x, segments, img):
+        x = self.forward_features(x)
+        x = self.intermediate_head(x)
+
+
+        intermediate = x
+ 
+        D = x.size(-1)
+        B, H, W = segments.size()
+        segments = segments.reshape([x.size(0), -1])-1 # batch, img_size^2
+
+
+        batch_indices = torch.arange(x.size(0), device=x.device).unsqueeze(-1)  # (B, 1)
+        x = x[batch_indices, segments]  # (B, H*W, D)
+        x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2)
+        x = torch.sigmoid(x)
+        pre_filter = x
+        x = self.guided_filter_rgb(img, x, r=8)
+        # x = self.crf(x)
+
+        return intermediate, pre_filter, x
 
 
