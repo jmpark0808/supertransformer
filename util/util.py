@@ -432,3 +432,28 @@ class TokenDropout(nn.Module):
         # Generate random mask of shape (B, N, 1)
         mask = (torch.rand(B, N, 1, device=x.device) > self.p).float()
         return x * mask  # Zero out selected tokens
+
+class TokenDropoutForce(nn.Module):
+    def __init__(self, p: float = 0.1):
+        """
+        Token-level dropout: randomly zero out entire token features with probability p.
+        
+        Args:
+        - p (float): Probability of dropping out each token.
+        """
+        super().__init__()
+        self.p = p
+
+    def forward(self, x):
+        """
+        Args:
+        - x: Input tensor of shape (B, N, D)
+        
+        Returns:
+        - Tensor with some tokens zeroed out.
+        """
+
+        B, N, D = x.shape
+        # Generate random mask of shape (B, N, 1)
+        mask = (torch.rand(B, N, 1, device=x.device) > self.p).float()
+        return x * mask  # Zero out selected tokens
