@@ -321,7 +321,7 @@ class SP_SemSeg_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
        
        
         self.log('Validation Acc', acc)
-
+        self.log('Validation MAE', torch.mean(torch.tensor(self.validation_step_outputs)) )
 
         self.validation_step_outputs.clear()
 
@@ -355,7 +355,7 @@ class SP_SemSeg_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         pred = self.forward(features)
         end = time.time()
         loss = self.loss(pred, seq_mask)
-        self.times.append(end-start)
+        
         pred_numpy = pred.argmax(-1).detach().cpu() # batch, seq_len, 1
 
         batch_size = mask.shape[0]
