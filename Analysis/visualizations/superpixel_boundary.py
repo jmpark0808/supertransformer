@@ -49,8 +49,8 @@ for compact in tqdm(compactness):
 
             img = Image.open(image)
             msk = Image.open(mask)
-            img = img.convert('RGB').resize((448, 448))
-            msk = msk.convert('L').resize((448, 448))
+            img = img.convert('RGB').resize((224, 224))
+            msk = msk.convert('L').resize((224, 224))
             img = np.array(img)
             msk = np.array(msk)
             
@@ -74,7 +74,7 @@ for compact in tqdm(compactness):
             max_num_iter=10,
             convert2lab=True,
             enforce_connectivity=False,
-            slic_zero=True)
+            slic_zero=False)
             
             
             # segments = quickshift(img, kernel_size=3, max_dist=6, ratio=0.5)
@@ -110,7 +110,7 @@ for compact in tqdm(compactness):
             # assert len(regions['label']) == max(regions['label']), 'Wrong number of labels'
 
             for ind, coord in zip(regions['label'], regions['coords']):
-                seq_mask[ind-1] = 1 if np.sum(msk[coord[:, 0], coord[:, 1]])/len(coord[:, 0]) >= 0.5 else 0
+                seq_mask[ind-1] = np.sum(msk[coord[:, 0], coord[:, 1]])/len(coord[:, 0])
 
             plt_image = seq_mask[segments-1].reshape([img.shape[0], img.shape[1]])
             

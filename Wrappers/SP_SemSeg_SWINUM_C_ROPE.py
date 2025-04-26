@@ -231,24 +231,9 @@ class SP_SemSeg_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         loss = self.loss(pred, seq_mask)
         
         pred_numpy = pred.argmax(-1).detach().cpu().numpy() # batch, seq_len, 1
-        batch_size = mask.shape[0]
-        img_size = mask.shape[2]
-        if torch.sum(segments) != 0 :
-
-            segments = segments.reshape([batch_size, -1]) # batch, img_size^2
-
-            samples = []
-            for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-                plt_image = masked[labels-1].reshape([img_size, img_size])
-                samples.append(plt_image)
-
-            samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
-        else:
-            samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
-            samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
-            
+       
         
-        correct = (samples == mask)
+        correct = (pred_numpy == seq_mask)
 
         acc = correct.sum().float()/correct.numel()
 

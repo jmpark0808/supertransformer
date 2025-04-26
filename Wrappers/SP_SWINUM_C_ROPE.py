@@ -90,7 +90,21 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         """
         Defining the loss funcition:
         """
-        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
+        
+        targets = label.float()
+        probs = torch.sigmoid(pred).squeeze()
+
+        pt = probs * targets + (1 - probs) * (1 - targets)  # pt = p if label=1 else 1-p
+        focal_loss = -0.25 * (1 - pt) ** 2.0 * pt.log()
+        focal_loss = focal_loss.mean()
+
+        intersection = (probs * targets).sum(dim=1)
+        union = probs.sum(dim=1) + targets.sum(dim=1)
+        dice_score = (2 * intersection + 1e-8) / (union + 1e-8)
+        dice_loss = 1 - dice_score
+        dice_loss = dice_loss.mean()
+        loss = focal_loss + dice_loss
+        # loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
 
         return loss
 
@@ -227,31 +241,20 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         if torch.sum(torch.isnan(features)) > 0:
             assert 0 
         pred = self.forward(features)
-
+        
         loss = self.loss(pred, seq_mask)
         
-        pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
+        pred_numpy = torch.sigmoid(pred) # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
         batch_size = mask.shape[0]
         img_size = mask.shape[2]
-        if torch.sum(segments) != 0 :
-
-            segments = segments.reshape([batch_size, -1]) # batch, img_size^2
-
-            samples = []
-            for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-                plt_image = masked[labels-1].reshape([img_size, img_size])
-                samples.append(plt_image)
-
-            samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
-        else:
-            samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
-            samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
+        
+        samples = pred_numpy
             
         
         prec, recall = torch.zeros(samples.shape[0], 1), torch.zeros(samples.shape[0], 1)
         pred = samples.reshape(samples.shape[0], -1)
-        mask = mask.reshape(mask.shape[0], -1)
+        mask = seq_mask.reshape(mask.shape[0], -1)
         
         y_temp = (pred >= 0.5).float()
         tp = (y_temp * mask).sum(dim=-1)
