@@ -90,13 +90,21 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         """
         Defining the loss funcition:
         """
-        
+    
         targets = label.float()
         probs = torch.sigmoid(pred).squeeze()
 
-        pt = probs * targets + (1 - probs) * (1 - targets)  # pt = p if label=1 else 1-p
-        focal_loss = -0.25 * (1 - pt) ** 2.0 * pt.log()
-        focal_loss = focal_loss.mean()
+        bce_loss = F.binary_cross_entropy_with_logits(pred.squeeze(), targets, reduction='none')
+
+        p_t = probs * targets + (1 - probs) * (1 - targets)
+        focal_weight = (1 - p_t) ** 2.
+
+        focal_loss = (focal_weight * bce_loss).mean()
+
+
+        # pt = probs * targets + (1 - probs) * (1 - targets)  # pt = p if label=1 else 1-p
+        # focal_loss = -0.25 * (1 - pt) ** 2.0 * pt.log()
+        # focal_loss = focal_loss.mean()
 
         intersection = (probs * targets).sum(dim=1)
         union = probs.sum(dim=1) + targets.sum(dim=1)
