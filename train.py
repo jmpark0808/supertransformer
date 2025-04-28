@@ -247,6 +247,7 @@ if __name__ == "__main__":
     parser.add_argument('--ec', help='Whether to enforce connectivity or not'
                         , default=False, action="store_true")
     parser.add_argument('--aug_strat', help='Data augmentation strategy (between 0 and 4)', type=int, default=4)
+    parser.add_argument('--cutmix_prob', help='Probability for applying cutmix', default=0.5, type=float)
     
 
 

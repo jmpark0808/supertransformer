@@ -230,12 +230,13 @@ class SP_SemSeg_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
 
         loss = self.loss(pred, seq_mask)
         
-        pred_numpy = pred.argmax(-1).detach().cpu().numpy() # batch, seq_len, 1
+        pred_numpy = pred.argmax(-1) # batch, seq_len, 1
        
         
         correct = (pred_numpy == seq_mask)
 
         acc = correct.sum().float()/correct.numel()
+        print(acc)
 
 
         self.train_acc += acc*features.size(0)

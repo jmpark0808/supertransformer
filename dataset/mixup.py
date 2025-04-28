@@ -12,7 +12,7 @@ Hacked together by / Copyright 2020 Ross Wightman
 """
 import numpy as np
 import torch
-
+import random
 
 def one_hot(x, num_classes, on_value=1., off_value=0., device='cuda'):
     x = x.long().view(-1, 1)
@@ -374,3 +374,35 @@ class MixupSaliency:
         
         return x, mask
 
+def semantic_cutmix(features, labels, cutmix_prob=0.5):
+    """
+    features: (B, K, D) superpixel feature vectors
+    labels: (B, K) superpixel labels (e.g., saliency 0/1)
+
+    returns: cutmix-ed features, labels
+    """
+    if random.random() > cutmix_prob:
+        return features, labels
+
+    B, K, D = features.shape
+    idx = torch.randperm(B)  # shuffle batch
+
+    mixed_features = features.clone()
+    mixed_labels = labels.clone()
+
+    for i in range(B):
+        j = idx[i]  # random other sample
+
+        salient_i = (labels[i] > 0.5)
+        salient_j = (labels[j] > 0.5)
+
+        # Randomly decide: swap salient parts or background parts
+        if random.random() < 0.5:
+            mask = salient_i
+        else:
+            mask = ~salient_i
+
+        mixed_features[i][mask] = features[j][mask]
+        mixed_labels[i][mask] = labels[j][mask]
+
+    return mixed_features, mixed_labels

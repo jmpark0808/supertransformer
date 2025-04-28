@@ -10,7 +10,7 @@ import numpy as np
 from dataset.constants import *
 from util.util import get_input_dim
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
-from dataset.mixup import MixupSaliency
+from dataset.mixup import MixupSaliency, semantic_cutmix
 from util.util import eval_e, S_object, S_region, TokenDropout
 import cv2
 import os
@@ -42,6 +42,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         self.mlp_ratio = kwargs.get('mlp_ratio')
         self.dp = kwargs.get('drop_path')
         self.encoder_lr_weight = kwargs.get('encoder_lr_weight')
+        self.cutmix_prob = kwargs.get('cutmix_prob')
 
         self.aug_strat = kwargs.get('aug_strat')
         
@@ -238,12 +239,16 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
 
 
         res = int(self.num_seg**0.5)
-        features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        if self.aug_strat == 4 and 'RS' not in self.dataloader:
-            seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
-            features, seq_mask = self.mixup(features, seq_mask)
+        # features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
+        # if self.aug_strat == 4 and 'RS' not in self.dataloader:
+        #     seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
+        #     features, seq_mask = self.mixup(features, seq_mask)
             
-            seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
+        #     seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
+
+        if self.aug_strat == 4 and 'RS' not in self.dataloader:
+            features, seq_mask = semantic_cutmix(features, seq_mask, self.cutmix_prob)
+            features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
 
         # forward pass
         if torch.sum(torch.isnan(features)) > 0:

@@ -12,9 +12,6 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
 from Blocks.umix_decoder import BasicLayerUpsampleMA
 from Blocks.swin_encoder_rope import SwinTransformer
-from Blocks.swin_rope import BasicLayerRoPE
-from Blocks.swin_common import PatchEmbed
-from Blocks.performer2 import Transformer
 import torch.nn.functional as F
 WindowProcess = None
 WindowProcessReverse = None
@@ -112,26 +109,8 @@ class SwinUTransformer(nn.Module):
 
 
         self.upsample = nn.Upsample(size=img_size[0])
-
+        self.locations = nn.Linear(2, embed_dim[0])
         self.semantic_head = nn.Linear(sum(embed_dim), 183)
-        
-        # self.shallow = nn.Sequential(*[PatchEmbed(
-        #     img_size=self.resolution_size, patch_size=2, in_chans=3, embed_dim=embed_dim[0]//2,
-        #     norm_layer=nn.LayerNorm), BasicLayerRoPE(dim=embed_dim[0]//2,
-        #                           out_dim=embed_dim[0]//2,
-        #                        input_resolution=(self.resolution_size//2, self.resolution_size//2),
-        #                        depth=depths[0],
-        #                        num_heads=num_heads[0],
-        #                        window_size=window_size,
-        #                        mlp_ratio=mlp_ratio,
-        #                        qkv_bias=qkv_bias, qk_scale=qk_scale,
-        #                        drop=drop_rate, attn_drop=attn_drop_rate,
-        #                        drop_path=0,
-        #                        norm_layer=norm_layer,
-        #                        downsample=None,
-        #                        use_checkpoint=use_checkpoint,
-        #                        fused_window_process=fused_window_process)])
-        
         
         
         self.apply(self._init_weights)
@@ -159,12 +138,12 @@ class SwinUTransformer(nn.Module):
 
     def forward_features(self, x):
         x = x[:, 2:, :, :]
-        # centroids = x[:, :2, :, :].permute(0, 2, 3, 1)
-        # centroids = self.locations(centroids)
-        # centroids = centroids.reshape(centroids.size(0), -1, centroids.size(3))
+        centroids = x[:, :2, :, :].permute(0, 2, 3, 1)
+        centroids = self.locations(centroids)
+        centroids = centroids.reshape(centroids.size(0), -1, centroids.size(3))
         
         x = self.patch_embed(x)
-        # x = x + centroids
+        x = x + centroids
         x = self.pos_drop(x)
 
      
