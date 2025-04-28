@@ -69,7 +69,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         # assert(0)
         self.mixup = MixupSaliency(
             cutmix_alpha=1.0, cutmix_minmax=None,
-            prob=1.0,  mode='batch',
+            prob=self.cutmix_prob,  mode='batch',
             )
         self.iteration = 0
         self.test_iteration = 0
@@ -239,23 +239,18 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
 
 
         res = int(self.num_seg**0.5)
-        # features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        # if self.aug_strat == 4 and 'RS' not in self.dataloader:
-        #     seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
-        #     features, seq_mask = self.mixup(features, seq_mask)
-            
-        #     seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
-
+        features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
         if self.aug_strat == 4 and 'RS' not in self.dataloader:
-            features, seq_mask = semantic_cutmix(features, seq_mask, self.cutmix_prob)
-            features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
+            seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
+            features, seq_mask = self.mixup(features, seq_mask)
+            
+            seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
 
-            seq_mask_plt = seq_mask.reshape(seq_mask.size(0), res, res)
-            import matplotlib.pyplot as plt
-            fig, ax = plt.subplots(1, 2)
-            ax[0].imshow(features[0, 2:5, :, :].permute(1, 2, 0).detach().cpu().numpy())
-            ax[1].imshow(seq_mask_plt[0].detach().cpu().numpy(), cmap='gray')
-            plt.show()
+        # if self.aug_strat == 4 and 'RS' not in self.dataloader:
+        #     features, seq_mask = semantic_cutmix(features, seq_mask, self.cutmix_prob)
+        #     features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
+
+            
 
         # forward pass
         if torch.sum(torch.isnan(features)) > 0:
