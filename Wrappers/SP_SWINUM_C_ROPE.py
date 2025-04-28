@@ -250,6 +250,13 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
             features, seq_mask = semantic_cutmix(features, seq_mask, self.cutmix_prob)
             features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
 
+            seq_mask_plt = seq_mask.reshape(seq_mask.size(0), res, res)
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots(1, 2)
+            ax[0].imshow(features[0, 2:5, :, :].permute(1, 2, 0).detach().cpu().numpy())
+            ax[1].imshow(seq_mask_plt[0].detach().cpu().numpy(), cmap='gray')
+            plt.show()
+
         # forward pass
         if torch.sum(torch.isnan(features)) > 0:
             assert 0 

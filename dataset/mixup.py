@@ -394,15 +394,24 @@ def semantic_cutmix(features, labels, cutmix_prob=0.5):
         j = idx[i]  # random other sample
 
         salient_i = (labels[i] > 0.5)
-        salient_j = (labels[j] > 0.5)
 
-        # Randomly decide: swap salient parts or background parts
-        if random.random() < 0.5:
-            mask = salient_i
-        else:
-            mask = ~salient_i
+        # # Randomly decide: swap salient parts or background parts
+        # if random.random() < 0.5:
+        #     mask = salient_i
+        # else:
+        mask = ~salient_i
 
+        # import matplotlib.pyplot as plt
+
+        # fig, ax = plt.subplots(2, 3)
+        # ax[0, 0].imshow(mixed_features[i, :, 2:5].reshape(56, 56, 3).detach().cpu().numpy())
+        # ax[0, 1].imshow(features[j, :, 2:5].reshape(56, 56, 3).detach().cpu().numpy())
+        # ax[1, 0].imshow(mixed_labels[i, :].reshape(56, 56).detach().cpu().numpy(), cmap='gray')
+        # ax[1, 1].imshow(labels[j, :].reshape(56, 56).detach().cpu().numpy(), cmap='gray')
         mixed_features[i][mask] = features[j][mask]
         mixed_labels[i][mask] = labels[j][mask]
+        # ax[0, 2].imshow(mixed_features[i, :, 2:5].reshape(56, 56, 3).detach().cpu().numpy())
+        # ax[1, 2].imshow(mixed_labels[i, :].reshape(56, 56).detach().cpu().numpy(), cmap='gray')
+        # plt.show()
 
     return mixed_features, mixed_labels

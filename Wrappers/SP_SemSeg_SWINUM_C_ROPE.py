@@ -236,7 +236,7 @@ class SP_SemSeg_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         correct = (pred_numpy == seq_mask)
 
         acc = correct.sum().float()/correct.numel()
-        print(acc)
+        
 
 
         self.train_acc += acc*features.size(0)
