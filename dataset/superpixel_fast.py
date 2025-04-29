@@ -681,29 +681,62 @@ class SPFDataModule(pl.LightningDataModule):
 
             del dummy_val, dummy_val_loader
 
-        self.test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'Image'))])
-        self.test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'Mask'))])
+        self.duts_test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'DUTS-TE', 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'DUTS-TE', 'Image'))])
+        self.duts_test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'DUTS-TE', 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'DUTS-TE', 'Mask'))])
 
-        
+        self.ecssd_test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'ECSSD', 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'ECSSD', 'Image'))])
+        self.ecssd_test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'ECSSD', 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'ECSSD', 'Mask'))])
+
+        self.hku_test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'HKU-IS', 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'HKU-IS', 'Image'))])
+        self.hku_test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'HKU-IS', 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'HKU-IS', 'Mask'))])
+
+        self.dutso_test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'DUTS-OMRON', 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'DUTS-OMRON', 'Image'))])
+        self.dutso_test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'DUTS-OMRON', 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'DUTS-OMRON', 'Mask'))])
+
+        self.pascal_test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'PASCAL', 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'PASCAL', 'Image'))])
+        self.pascal_test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'PASCAL', 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'PASCAL', 'Mask'))])
+
         if self.debug:
-            self.test_image_list = self.test_image_list[:100]
-            self.test_mask_list = self.test_mask_list[:100]
+            self.duts_test_image_list = self.duts_test_image_list[:100]
+            self.duts_test_mask_list = self.duts_test_mask_list[:100]
+
+            self.dutso_test_image_list = self.dutso_test_image_list[:100]
+            self.dutso_test_mask_list = self.dutso_test_mask_list[:100]
+
+            self.ecssd_test_image_list = self.ecssd_test_image_list[:100]
+            self.ecssd_test_mask_list = self.ecssd_test_mask_list[:100]
+
+            self.hku_test_image_list = self.hku_test_image_list[:100]
+            self.hku_test_mask_list = self.hku_test_mask_list[:100]
+
+            self.pascal_test_image_list = self.pascal_test_image_list[:100]
+            self.pascal_test_mask_list = self.pascal_test_mask_list[:100]
+
+
+
+        all_test_images = [self.duts_test_image_list, self.dutso_test_image_list, self.ecssd_test_image_list,
+                           self.hku_test_image_list, self.pascal_test_image_list]
+        
+        all_test_masks = [self.duts_test_mask_list, self.dutso_test_mask_list, self.ecssd_test_mask_list,
+                          self.hku_test_mask_list ,self.pascal_test_mask_list ]
 
        
-        dummy_test = SPDatasetExport(self.test_image_list, self.test_mask_list, self.num_seg,
-                               self.res,  self.compactness, self.dataloader, 
-                               self.coeff, self.ignore_phase, self.ec)
-        
-        dummy_test_loader = DataLoader(
-                dummy_test, batch_size=1, 
-                num_workers=self.num_workers, pin_memory=False)
-        
-        
+        for test_images, test_masks in zip(all_test_images, all_test_masks):
 
-        for batch in tqdm(dummy_test_loader):
-            pass
+            dummy_test = SPDatasetExport(test_images, test_masks, self.num_seg,
+                                self.res,  self.compactness, self.dataloader, 
+                                self.coeff, self.ignore_phase, self.ec)
+            
+            dummy_test_loader = DataLoader(
+                    dummy_test, batch_size=1, 
+                    num_workers=self.num_workers, pin_memory=False)
+            
+            
 
-        del dummy_test, dummy_test_loader, batch
+            for batch in tqdm(dummy_test_loader):
+                pass
+
+            del dummy_test, dummy_test_loader, batch
            
 
         
@@ -719,19 +752,46 @@ class SPFDataModule(pl.LightningDataModule):
         data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg,
                               self.res, self.dataloader, False,
                                 self.coeff)
-        data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
+        DUTS_test = SPDataset(self.duts_test_image_list, self.duts_test_mask_list, self.num_seg,
+                               self.res,  self.dataloader, False, 
+                               self.coeff)
+        DUTSO_test = SPDataset(self.dutso_test_image_list, self.dutso_test_mask_list, self.num_seg,
+                               self.res,  self.dataloader, False, 
+                               self.coeff)
+        ECSSD_test = SPDataset(self.ecssd_test_image_list, self.ecssd_test_mask_list, self.num_seg,
+                               self.res,  self.dataloader, False, 
+                               self.coeff)
+        HKU_test = SPDataset(self.hku_test_image_list, self.hku_test_mask_list, self.num_seg,
+                               self.res,  self.dataloader, False, 
+                               self.coeff)
+        PASCAL_test = SPDataset(self.pascal_test_image_list, self.pascal_test_mask_list, self.num_seg,
                                self.res,  self.dataloader, False, 
                                self.coeff)
         val_dataloader = DataLoader(
                 data_val, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=True)
-        test_dataloader = DataLoader(
-                data_test, batch_size=self.batch_size, 
+        duts_test_dataloader = DataLoader(
+                DUTS_test, batch_size=self.batch_size, 
                 num_workers=self.num_workers, pin_memory=True)
-        return [val_dataloader, test_dataloader]
+        dutso_test_dataloader = DataLoader(
+                DUTSO_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=True)
+        ecssd_test_dataloader = DataLoader(
+                ECSSD_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=True)
+        HKU_test_dataloader = DataLoader(
+                HKU_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=True)
+        pascal_test_dataloader = DataLoader(
+                PASCAL_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=True)
+        
+
+        return [val_dataloader, duts_test_dataloader, dutso_test_dataloader,
+                ecssd_test_dataloader, HKU_test_dataloader, pascal_test_dataloader]
 
     def test_dataloader(self):
-        data_test = SPDataset(self.test_image_list, self.test_mask_list, self.num_seg,
+        data_test = SPDataset(self.duts_test_image_list, self.duts_test_mask_list, self.num_seg,
                                self.res, self.dataloader, False,
                                  self.coeff, 0, True)
         return DataLoader(
@@ -781,16 +841,7 @@ class SPFRSDataModule(pl.LightningDataModule):
                     num_workers=self.num_workers, shuffle=False, pin_memory=False)
             
             for batch in tqdm(dummy_tr_loader):
-                pass
-
-            del dummy_tr, dummy_tr_loader
-
-        
-
-        self.test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'Image'))])
-        self.test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'Mask'))])
-
-        
+                pass 
         if self.debug:
             self.test_image_list = self.test_image_list[:100]
             self.test_mask_list = self.test_mask_list[:100]

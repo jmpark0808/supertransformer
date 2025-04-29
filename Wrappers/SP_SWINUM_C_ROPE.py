@@ -328,7 +328,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         if dataloader_idx == 0:
             self.maes += mae
             self.mean_num += features.size(0)
-        elif dataloader_idx == 1:
+        elif dataloader_idx >= 1:
             self.maes_test += mae
             self.mean_num_test += features.size(0)
 
@@ -350,7 +350,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
             self.recalls += recall.sum(0)
             self.validation_step_outputs.append(mae)
             self.test_iteration += 1
-        elif dataloader_idx == 1:
+        elif dataloader_idx >= 1:
             self.precs_test += prec.sum(0)
             self.recalls_test += recall.sum(0)
         return mae
