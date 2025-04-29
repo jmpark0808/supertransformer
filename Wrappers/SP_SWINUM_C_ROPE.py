@@ -328,9 +328,21 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         if dataloader_idx == 0:
             self.maes += mae
             self.mean_num += features.size(0)
-        elif dataloader_idx >= 1:
-            self.maes_test += mae
-            self.mean_num_test += features.size(0)
+        elif dataloader_idx == 1:
+            self.duts_maes_test += mae
+            self.duts_mean_num_test += features.size(0)
+        elif dataloader_idx == 2:
+            self.dutso_maes_test += mae
+            self.dutso_mean_num_test += features.size(0)
+        elif dataloader_idx == 3:
+            self.ecssd_maes_test += mae
+            self.ecssd_mean_num_test += features.size(0)
+        elif dataloader_idx == 4:
+            self.hku_maes_test += mae
+            self.hku_mean_num_test += features.size(0)
+        elif dataloader_idx == 5:
+            self.pascal_maes_test += mae
+            self.pascal_mean_num_test += features.size(0)
 
         
         prec, recall = torch.zeros(samples.size(0), self.num_thresholds).cuda(), torch.zeros(samples.size(0), self.num_thresholds).cuda()
@@ -350,9 +362,21 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
             self.recalls += recall.sum(0)
             self.validation_step_outputs.append(mae)
             self.test_iteration += 1
-        elif dataloader_idx >= 1:
-            self.precs_test += prec.sum(0)
-            self.recalls_test += recall.sum(0)
+        elif dataloader_idx == 1:
+            self.duts_precs_test += prec.sum(0)
+            self.duts_recalls_test += recall.sum(0)
+        elif dataloader_idx == 2:
+            self.dutso_precs_test += prec.sum(0)
+            self.dutso_recalls_test += recall.sum(0)
+        elif dataloader_idx == 3:
+            self.ecssd_precs_test += prec.sum(0)
+            self.ecssd_recalls_test += recall.sum(0)
+        elif dataloader_idx == 4:
+            self.hku_precs_test += prec.sum(0)
+            self.hku_recalls_test += recall.sum(0)
+        elif dataloader_idx == 5:
+            self.pascal_precs_test += prec.sum(0)
+            self.pascal_recalls_test += recall.sum(0)
         return mae
 
 
@@ -369,15 +393,55 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
 
         self.log('Validation MAE', self.maes/self.mean_num)
 
-        prec = self.precs_test/self.mean_num_test
-        recall = self.recalls_test/self.mean_num_test
+        prec = self.duts_precs_test/self.duts_mean_num_test
+        recall = self.duts_recalls_test/self.duts_mean_num_test
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
         thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
-        self.log('Test Max F Score', torch.max(f_score))
-        self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
+        self.log('DUTS Max F Score', torch.max(f_score))
+        # self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
 
-        self.log('Test MAE', self.maes_test/self.mean_num_test)
+        self.log('DUTS MAE', self.duts_maes_test/self.duts_mean_num_test)
+
+        prec = self.dutso_precs_test/self.dutso_mean_num_test
+        recall = self.dutso_recalls_test/self.dutso_mean_num_test
+        beta_square = 0.3
+        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
+        self.log('DUTSO Max F Score', torch.max(f_score))
+        # self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
+
+        self.log('DUTSO MAE', self.dutso_maes_test/self.dutso_mean_num_test)
+
+        prec = self.ecssd_precs_test/self.ecssd_mean_num_test
+        recall = self.ecssd_recalls_test/self.ecssd_mean_num_test
+        beta_square = 0.3
+        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
+        self.log('ECSSD Max F Score', torch.max(f_score))
+        # self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
+
+        self.log('ECSSD MAE', self.ecssd_maes_test/self.ecssd_mean_num_test)
+
+        prec = self.hku_precs_test/self.hku_mean_num_test
+        recall = self.hku_recalls_test/self.hku_mean_num_test
+        beta_square = 0.3
+        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
+        self.log('HKU Max F Score', torch.max(f_score))
+        # self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
+
+        self.log('HKU MAE', self.hku_maes_test/self.hku_mean_num_test)
+
+        prec = self.pascal_precs_test/self.pascal_mean_num_test
+        recall = self.pascal_recalls_test/self.pascal_mean_num_test
+        beta_square = 0.3
+        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
+        self.log('PASCAL Max F Score', torch.max(f_score))
+        # self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
+
+        self.log('PASCAL MAE', self.pascal_maes_test/self.pascal_mean_num_test)
         # if self.current_epoch >= self.warmup_epochs:
         #     self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
         self.validation_step_outputs.clear()
@@ -389,11 +453,35 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         self.precs = torch.zeros(self.num_thresholds).cuda()
         self.recalls = torch.zeros(self.num_thresholds).cuda()
 
-        self.maes_test = 0
-        self.mean_num_test = 0
+        self.duts_maes_test = 0
+        self.duts_mean_num_test = 0
 
-        self.precs_test = torch.zeros(self.num_thresholds).cuda()
-        self.recalls_test = torch.zeros(self.num_thresholds).cuda()
+        self.duts_precs_test = torch.zeros(self.num_thresholds).cuda()
+        self.duts_recalls_test = torch.zeros(self.num_thresholds).cuda()
+
+        self.dutso_maes_test = 0
+        self.dutso_mean_num_test = 0
+
+        self.dutso_precs_test = torch.zeros(self.num_thresholds).cuda()
+        self.dutso_recalls_test = torch.zeros(self.num_thresholds).cuda()
+
+        self.ecssd_maes_test = 0
+        self.ecssd_mean_num_test = 0
+
+        self.ecssd_precs_test = torch.zeros(self.num_thresholds).cuda()
+        self.ecssd_recalls_test = torch.zeros(self.num_thresholds).cuda()
+
+        self.hku_maes_test = 0
+        self.hku_mean_num_test = 0
+
+        self.hku_precs_test = torch.zeros(self.num_thresholds).cuda()
+        self.hku_recalls_test = torch.zeros(self.num_thresholds).cuda()
+
+        self.pascal_maes_test = 0
+        self.pascal_mean_num_test = 0
+
+        self.pascal_precs_test = torch.zeros(self.num_thresholds).cuda()
+        self.pascal_recalls_test = torch.zeros(self.num_thresholds).cuda()
 
         self.validation_step_outputs = []
 
