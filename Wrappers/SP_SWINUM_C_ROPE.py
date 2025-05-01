@@ -80,9 +80,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
                 checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
             
             self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
-            for name, param in self.supert.named_parameters():
-                if name in checkpoint['state_dict'].keys():
-                    param.requires_grad = False
+            
         
         self.save_hyperparameters()
         
