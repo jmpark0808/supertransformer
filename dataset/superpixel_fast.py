@@ -276,7 +276,7 @@ class ToTensorSPFFT(object):
         regions_lbp = regionprops_table(segments, intensity_image=lbp_np, extra_properties=[self.lbp])
 
         regions = regionprops_table(segments, intensity_image=img_np, properties=('label', 'centroid', 'intensity_mean',
-                                                                                    'coords'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
+                                                                                    'coords', 'area'), extra_properties=[image_stdev, self.fourier_descriptors])#, polarize])
         
         seq_len = len(regions['label'])
         seq_mask = np.zeros([self.num_seg])
@@ -289,6 +289,10 @@ class ToTensorSPFFT(object):
         # for i in range((self.resample_points-1)*2):
         for i in range((self.resample_points-1)*2+8):
             features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
+
+        
+
+
 
 
         features[label-1, 0] = regions['centroid-0']
@@ -309,6 +313,15 @@ class ToTensorSPFFT(object):
         for ind, coord in zip(regions['label'], regions['coords']):
             seq_mask[ind-1] = np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0])
 
+
+        # print(np.sum(features[:, -18]))
+        # if np.sum(features[:, -18]) != 50176:
+        #     areas = np.zeros([self.num_seg])
+        #     areas[label-1] = regions['area']
+        #     for ind, (a, b) in enumerate(zip(areas, features[:, -18])):
+        #         if a != b:
+        #             print(features[ind, -18:-10])
+        #             assert(0)
         # seg_map = segments.astype(np.int32)
         # saliency = mask_np.astype(np.float32)
 
@@ -482,12 +495,11 @@ class SPDatasetExport(data.Dataset):
         mask = self.resize_mask(mask)
         mask = (mask > 0.5).float()
         sample = self.transform(sample)
-        np.save(sp_file_path_features, sample[0].astype(np.float16))
+        np.save(sp_file_path_features, sample[0])
         np.save(sp_file_path_seq_mask, sample[1])
         np.save(sp_file_path_segments, sample[2])
         np.save(sp_file_path_mask, mask.detach().cpu().numpy())
-
-
+        
         return torch.empty(0)
 
 class SPDataset(data.Dataset):
@@ -529,6 +541,14 @@ class SPDataset(data.Dataset):
         sp_file_path_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_mask)           
         
         features = np.load(sp_file_path_features)
+
+        # if np.sum(features[:, -18]) != 50176:
+        #     areas = np.zeros([self.num_seg])
+        #     areas[label-1] = regions['area']
+        #     for ind, (a, b) in enumerate(zip(areas, features[:, -18])):
+        #         if a != b:
+        #             print(features[ind, -18:-10])
+        #             assert(0)
         seq_mask = np.load(sp_file_path_seq_mask)
         segments = np.load(sp_file_path_segments)
         mask = torch.tensor(np.load(sp_file_path_mask))
@@ -555,6 +575,7 @@ class SPDataset(data.Dataset):
         features_amp = features[:, 8:8+(self.resample_points-1)]
         features_phase = features[:, 8+(self.resample_points-1):8+2*(self.resample_points-1)]
         moments = features[:, (8+2*(self.resample_points-1)):(16+2*(self.resample_points-1))]
+
         front = math.ceil(self.coeff/2.)
         back = self.coeff-front
         assert (front+back) <= (self.resample_points-1)
@@ -584,7 +605,7 @@ class SPDataset(data.Dataset):
             #     features_np = np.concatenate((colour_and_centroid, lbp), 1)
             
         
-            
+        
        
         if self.coeff != 0:
             features_np = np.concatenate((colour_and_centroid, features_amp, features_phase, moments, lbp), 1)

@@ -85,7 +85,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         self.save_hyperparameters()
         
 
-    def loss(self, pred, label):
+    def loss(self, pred, label, sizes):
         """
         Defining the loss funcition:
         """
@@ -111,9 +111,11 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         # dice_loss = 1 - dice_score
         # dice_loss = dice_loss.mean()
         # loss = focal_loss #+ dice_loss
-        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
+        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label), reduction='none')
+        weights = sizes / (sizes.sum(dim=1, keepdim=True))  # (B, K)
+        weighted_loss = (loss * weights).sum(dim=1).mean()
 
-        return loss
+        return weighted_loss
 
     def configure_optimizers(self):
         """
@@ -235,7 +237,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         segments = batch['segments']
         mask = batch['mask']
 
-
+        sizes = features[:, :, -18]
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
         if self.aug_strat == 4 and 'RS' not in self.dataloader:
@@ -248,14 +250,16 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         #     features, seq_mask = semantic_cutmix(features, seq_mask, self.cutmix_prob)
         #     features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
 
-            
+        
+        if torch.sum(sizes[0, :]) != self.size**2:
+            assert 'Sizes not aligning'
 
         # forward pass
         if torch.sum(torch.isnan(features)) > 0:
             assert 0 
         pred = self.forward(features)
         
-        loss = self.loss(pred, seq_mask)
+        loss = self.loss(pred, seq_mask, sizes)
         
         pred_numpy = torch.sigmoid(pred) # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()

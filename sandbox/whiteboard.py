@@ -3,9 +3,10 @@ import numpy as np
 import os
 
 labels= []
-for mask in os.listdir('/home/eddie/Datasets/COCOStuff/Val/Mask/'):
-    mask_img = Image.open(os.path.join('/home/eddie/Datasets/COCOStuff/Val/Mask/', mask))
-    mask_np = np.array(mask_img)
-    labels.extend(np.unique(mask_np))
+for features in os.listdir('/home/eddie/Datasets/DUTS/DUTS-TE/SPFFFT'):
+    if 'features' in features:
+        feature = np.load(os.path.join('/home/eddie/Datasets/DUTS/DUTS-TE/SPFFFT', features))
+
+        
   
-print(np.unique(labels))
+        print(np.sum(feature[:, -18]))
