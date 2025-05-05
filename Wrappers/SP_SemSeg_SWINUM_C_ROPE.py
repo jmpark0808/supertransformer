@@ -79,10 +79,6 @@ class SP_SemSeg_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
             for key in list(checkpoint['state_dict'].keys()):
                 checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
             
-            self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
-            for name, param in self.supert.named_parameters():
-                if name in checkpoint['state_dict'].keys():
-                    param.requires_grad = False
         
         self.save_hyperparameters()
         
@@ -241,7 +237,7 @@ class SP_SemSeg_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
 
         self.train_acc += acc*features.size(0)
         self.num_samples += features.size(0)
-        self.log('loss', loss.item(), prog_bar=True)
+        self.log('loss', loss.item(), prog_bar=True, sync_dist=True)
         self.iteration += 1
         if self.current_epoch >= self.warmup_epochs:
             self.scheduler.step()
@@ -306,8 +302,8 @@ class SP_SemSeg_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         acc = self.val_acc/self.mean_num
        
        
-        self.log('Validation Acc', acc)
-        self.log('Validation MAE', torch.mean(torch.tensor(self.validation_step_outputs)) )
+        self.log('Validation Acc', acc, sync_dist=True)
+        self.log('Validation MAE', torch.mean(torch.tensor(self.validation_step_outputs)), sync_dist=True )
 
         self.validation_step_outputs.clear()
 
@@ -385,7 +381,7 @@ class SP_SemSeg_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         acc = self.test_acc/self.mean_num
        
        
-        self.log('Test Acc', acc)
+        self.log('Test Acc', acc, sync_dist=True)
 
 
 
