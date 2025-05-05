@@ -38,6 +38,7 @@ class ImageNetDataset(data.Dataset):
         self.target_list = []
         self.coeff = coeff
         self.size = size
+        self.num_seg = num_seg
         self.augmentation = augmentation
         self.resample_points = int(((size**2)//num_seg)**0.5)*4
 
