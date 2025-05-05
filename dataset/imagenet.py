@@ -82,16 +82,26 @@ class ImageNetDataset(data.Dataset):
         features_phase = np.concatenate((features_phase[:, :front], features_phase[:, -back:]), 1)
         if self.augmentation:
             # moments = rotate_moments(moments, 0.5, 15)
-        
-            centroids, colour, features_amp,features_phase, moments, lbp = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
-                                                  features_amp, features_phase, moments, lbp, 0.5, self.size, (res, res))
-            colour_and_centroid = np.concatenate((centroids, colour), 1)
-        
-        if self.coeff == 0:
-            moments_zeros = np.zeros_like(moments)
-            features_np = np.concatenate((colour_and_centroid, moments_zeros, lbp), 1)
+            
+            if self.coeff != 0:
+                features_np = np.concatenate((colour_and_centroid, features_amp, features_phase, lbp), 1)
+                features_np, seq_mask = horizontal_flip(features_np, self.coeff, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
+            else:
+                features_np = np.concatenate((colour_and_centroid, lbp), 1)
         else:
-            features_np = np.concatenate((colour_and_centroid, features_amp, features_phase, moments, lbp), 1)
+            if self.coeff != 0:
+                features_np = np.concatenate((colour_and_centroid, features_amp, features_phase, lbp), 1)
+            else:
+                features_np = np.concatenate((colour_and_centroid, lbp), 1)
+        #     centroids, colour, features_amp,features_phase, moments, lbp = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
+        #                                           features_amp, features_phase, moments, lbp, 0.5, self.size, (res, res))
+        #     colour_and_centroid = np.concatenate((centroids, colour), 1)
+        
+        # if self.coeff == 0:
+        #     moments_zeros = np.zeros_like(moments)
+        #     features_np = np.concatenate((colour_and_centroid, moments_zeros, lbp), 1)
+        # else:
+        #     features_np = np.concatenate((colour_and_centroid, features_amp, features_phase, moments, lbp), 1)
             
         features = torch.tensor(features_np).float()
         # Colour augmentations
