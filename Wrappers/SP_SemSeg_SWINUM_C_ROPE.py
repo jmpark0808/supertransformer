@@ -285,12 +285,12 @@ class SP_SemSeg_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         
         
  
-        correct = (samples == mask)
-
-        acc = correct.sum().float()/correct.numel()
+        correct = (samples == mask).float()
+        acc = correct.reshape(correct.size(0), -1).mean(1).sum(0)
         # (batch, threshold)
         
-        self.val_acc += acc*features.size(0)
+        self.val_acc += acc
+        self.val_loss += loss.item()*features.size(0)
         self.mean_num += features.size(0)
         self.validation_step_outputs.append(loss)
         self.test_iteration += 1
@@ -300,15 +300,16 @@ class SP_SemSeg_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
 
     def on_validation_epoch_end(self):
         acc = self.val_acc/self.mean_num
-       
+        mae =  self.val_loss/self.mean_num
        
         self.log('Validation Acc', acc, sync_dist=True)
-        self.log('Validation MAE', torch.mean(torch.tensor(self.validation_step_outputs)), sync_dist=True )
+        self.log('Validation MAE',mae, sync_dist=True )
 
         self.validation_step_outputs.clear()
 
     def on_validation_start(self):
         self.val_acc = 0
+        self.val_loss = 0
         self.mean_num = 0
         
         self.validation_step_outputs = []
