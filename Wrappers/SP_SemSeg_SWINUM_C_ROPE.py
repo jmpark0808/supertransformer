@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 # from Blocks.swintransformer_original_rpe import SwinUTransformer
-from Blocks.swinunet_mix_rope_only_semseg import SwinUTransformer
+from Blocks.swinunet_mix_semseg import SwinUTransformer
 # from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
 import numpy as np
@@ -78,7 +78,7 @@ class SP_SemSeg_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
             checkpoint = torch.load(self.pretrain)
             for key in list(checkpoint['state_dict'].keys()):
                 checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
-            
+            self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
         
         self.save_hyperparameters()
         

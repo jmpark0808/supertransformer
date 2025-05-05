@@ -11,8 +11,7 @@ import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import math
 from Blocks.umix_decoder import BasicLayerUpsampleMA
-from Blocks.swin_encoder_rope import SwinTransformer
-import torch.nn.functional as F
+from Blocks.swin_encoder_ape import SwinTransformer
 WindowProcess = None
 WindowProcessReverse = None
 print("[Warning] Fused window process have not been installed. Please refer to get_started.md for installation.")
@@ -45,7 +44,7 @@ class SwinUTransformer(nn.Module):
         use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False
     """
 
-    def __init__(self, img_size=224, resolution_size=56, patch_size=4, in_chans=3, num_classes=1000,
+    def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000,
                  embed_dim=[96, 96*2, 96*4, 96*8], depths=[2, 2, 6, 2], num_heads=[3, 6, 12, 24],
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
@@ -67,7 +66,6 @@ class SwinUTransformer(nn.Module):
         self.ape = ape
         self.patch_norm = patch_norm
         self.mlp_ratio = mlp_ratio
-        self.resolution_size = resolution_size
 
         # split image into non-overlapping patches
         self.patch_embed = swinencoder.patch_embed
@@ -83,7 +81,9 @@ class SwinUTransformer(nn.Module):
 
         self.pos_drop = nn.Dropout(p=drop_rate)
 
-        
+        # stochastic depth
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
+
         # build layers
         self.layers = swinencoder.layers
         # resolutions.append(patches_resolution[0] // (2 ** i_layer))
@@ -107,15 +107,13 @@ class SwinUTransformer(nn.Module):
                                use_checkpoint=use_checkpoint)
             self.upsample_layers.append(layer)
 
-
         self.upsample = nn.Upsample(size=img_size[0])
-        self.locations = nn.Linear(2, embed_dim[0])
         self.semantic_head = nn.Linear(sum(embed_dim), 183)
-        
+        self.locations = swinencoder.locations
         
         self.apply(self._init_weights)
        
-        self.resolutions = [(self.resolution_size//2, self.resolution_size//2)]+resolutions.copy()
+        self.resolutions = resolutions.copy()
         self.resolutions.reverse()
         del swinencoder
 
@@ -136,23 +134,24 @@ class SwinUTransformer(nn.Module):
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
 
-    def forward_features(self, x):
-        x = x[:, 2:, :, :]
-        centroids = x[:, :2, :, :].permute(0, 2, 3, 1)
-        centroids = self.locations(centroids)
-        centroids = centroids.reshape(centroids.size(0), -1, centroids.size(3))
-        
+    def forward_features(self, x, pos):
         x = self.patch_embed(x)
-        x = x + centroids
+        
         x = self.pos_drop(x)
+        x = x + pos
 
-     
         ft = []
+        
         for layer in self.layers:
             ds, x = layer(x)
+            
             ft.append(ds)
 
-
+        # res = int(math.sqrt(x.size(1)))
+        # x_ = x.reshape(x.size(0), res, res, -1).permute(0, 3, 1, 2)
+        # x_ = self.upsample(x_).permute(0, 2, 3, 1)
+        # x_ = x_.reshape(x_.size(0), self.img_size**2, -1)
+        # up_ft = [x_]
         up_ft = []
         for idx, layer in enumerate(self.upsample_layers):
             x = layer(ft[len(ft)-idx-1], ft)
@@ -169,54 +168,18 @@ class SwinUTransformer(nn.Module):
 
 
 
-    
-
-    def box_filter(self, x, r):
-        """Efficient box filter using depthwise convolution."""
-        kernel_size = 2 * r + 1
-        weight = torch.ones((x.size(1), 1, kernel_size, kernel_size), device=x.device) / (kernel_size ** 2)
-        return F.conv2d(x, weight, padding=r, groups=x.size(1))
-
-    def guided_filter_rgb(self, I, P, r=8, eps=1e-4):
-        """
-        Guided filter for RGB guidance and grayscale input.
-        I: guidance image, (B, 3, H, W), float in [0, 1]
-        P: filtering input (saliency), (B, 1, H, W), float in [0, 1]
-        r: window radius
-        eps: regularization term
-        Returns: (B, 1, H, W) refined output
-        """
-        B, C, H, W = I.shape
-
-        # Compute means
-        mean_I = self.box_filter(I, r)           # (B, 3, H, W)
-        mean_P = self.box_filter(P, r)           # (B, 1, H, W)
-        mean_II = self.box_filter(I * I, r)      # (B, 3, H, W)
-        mean_IP = self.box_filter(I * P, r)      # (B, 3, H, W)
-
-        # Variance of I and covariance of I and P
-        var_I = mean_II - mean_I * mean_I           # (B, 3, H, W)
-        cov_IP = mean_IP - mean_I * mean_P          # (B, 3, H, W)
-
-        # Linear coefficients A and b
-        A = cov_IP / (var_I + eps)                  # (B, 3, H, W)
-        b = mean_P - (A * mean_I).sum(dim=1, keepdim=True)  # (B, 1, H, W)
-
-        # Mean A and b
-        mean_A = self.box_filter(A, r)                   # (B, 3, H, W)
-        mean_b = self.box_filter(b, r)                   # (B, 1, H, W)
-
-        # Output: A·I + b
-        output = (mean_A * I).sum(dim=1, keepdim=True) + mean_b  # (B, 1, H, W)
-        return output.clamp(0, 1)
-
     def forward(self, x):
-        x = self.forward_features(x)
+        centroids = x[:, :2, :, :]
+        fft = x[:, 8:-10, :, :]
+        lbp = x[:, -10:, :, :]
+        color = x[:, 2:8, :, :]
+        x = torch.cat((color, lbp, fft), dim=1)
+        locations = centroids.permute(0, 2, 3, 1)
+        locations = self.locations(locations)
+        locations = locations.reshape(locations.size(0), -1, locations.size(3))
+        x = self.forward_features(x, locations)
         x = self.semantic_head(x)
 
-
-      
-
         return x
-
+ 
 
