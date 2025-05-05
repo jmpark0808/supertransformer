@@ -111,11 +111,11 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         # dice_loss = 1 - dice_score
         # dice_loss = dice_loss.mean()
         # loss = focal_loss #+ dice_loss
-        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label), reduction='none')
-        weights = sizes / (sizes.sum(dim=1, keepdim=True))  # (B, K)
-        weighted_loss = (loss * weights).sum(dim=1).mean()
+        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
+        # weights = sizes / (sizes.sum(dim=1, keepdim=True))  # (B, K)
+        # weighted_loss = (loss * weights).sum(dim=1).mean()
 
-        return weighted_loss
+        return loss
 
     def configure_optimizers(self):
         """
