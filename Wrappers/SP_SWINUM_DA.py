@@ -70,9 +70,9 @@ class SP_SWINUM_DA_Wrapper(pl.LightningModule):
                                          drop_path_rate=self.dp)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
-        kwargs['parameters'] = parameter_count(self.supert)['']
+        kwargs['parameters'] = parameter_count(self.supert_student)['']
         inp = torch.randn([1, input_dim+2, res, res])
-        flops = FlopCountAnalysis(self.supert, inp)
+        flops = FlopCountAnalysis(self.supert_student, inp)
         kwargs['flops'] = flops.total()
         self.flops = kwargs['flops']
         self.num_parameters = kwargs['parameters']
@@ -95,7 +95,8 @@ class SP_SWINUM_DA_Wrapper(pl.LightningModule):
                 else:
                     checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
             
-            self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
+            self.supert_student.load_state_dict(checkpoint['state_dict'], strict=False)
+            self.supert_teacher.load_state_dict(checkpoint['state_dict'], strict=False)
         
         self.save_hyperparameters()
         
@@ -221,7 +222,7 @@ class SP_SWINUM_DA_Wrapper(pl.LightningModule):
         # third = input[:,  -10:]
         # input = torch.cat((first, second_amp_front, second_amp_back, second_phase_front, second_phase_back, third), dim=1)
         
-        pred = self.supert(input)
+        pred = self.supert_student(input)
 
         return pred
 
