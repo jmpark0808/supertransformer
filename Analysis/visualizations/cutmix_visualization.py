@@ -108,13 +108,13 @@ seq_cutmix = seq_cutmix/255.
 # seq_image_2 = seq_image_2[segments_2-1].reshape([img_2.shape[0], img_2.shape[1], 3])/255.
 
 fig, ax = plt.subplots(2, 3, figsize=(9, 6))
-ax[0,0].set_title('Superpixels A', fontsize=10)
+ax[0,0].set_title('Superpixel Set A', fontsize=10)
 ax[0,0].axis('off')
 ax[0, 0].imshow(image_1)
-ax[0,1].set_title('Superpixels B', fontsize=10)
+ax[0,1].set_title('Superpixel Set B', fontsize=10)
 ax[0,1].axis('off')
 ax[0, 1].imshow(image_2)
-ax[0,2].set_title('Superpixels CutMix', fontsize=10)
+ax[0,2].set_title('Superpixel Set CutMix', fontsize=10)
 ax[0,2].axis('off')
 ax[0, 2].imshow(seq_cutmix)
 ax[1,0].set_title('Superpixel Mask A', fontsize=10)

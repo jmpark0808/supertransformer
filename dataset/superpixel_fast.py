@@ -26,6 +26,7 @@ from dataset.moments_transform import *
 import torch.nn.functional as F
 from util.util import merge_contours, compute_central_moments
 from torchvision.transforms import ToTensor
+from dataset.imagenet import ImageNetDataset
 
 class Resize(object):
     def __init__(self, size):
@@ -921,3 +922,198 @@ class SPFRSDataModule(pl.LightningDataModule):
         return DataLoader(
                 data_test, batch_size=1, 
                 num_workers=self.num_workers, pin_memory=True)
+    
+
+
+
+
+class SPFDADataModule(pl.LightningDataModule):
+
+    def __init__(self, **kwargs):
+        super().__init__()
+
+        self.train_dir = kwargs.get('dataset_tr')
+        self.test_dir = kwargs.get('dataset_test')
+        self.batch_size = kwargs.get('batch_size')
+        self.num_workers = kwargs.get('num_workers', 0)
+        self.num_seg = kwargs.get('num_seg', 600)
+        self.res = kwargs.get('size')
+        self.dataloader = kwargs.get('dataloader')
+        self.coeff = kwargs.get('coeff')
+        self.compactness = kwargs.get('compactness')
+        self.ignore_phase = kwargs.get('ignore_phase')
+        self.debug = kwargs.get('debug', False)
+        self.skip_train = kwargs.get('skip_train')
+        self.ec = kwargs.get('ec')
+        self.aug_strat = kwargs.get('aug_strat')
+
+        imgnet_dataset = ImageNetDataset(os.path.join(self.train_dir, 'sp_train'), True, self.coeff, self.num_seg, self.size)
+        
+
+        self.imgnet_source_loader = torch.utils.data.DataLoader(imgnet_dataset, batch_size=self.batch_size, shuffle=True,
+                                                               num_workers =self.num_workers, drop_last=True)
+        
+        
+        
+        if not self.skip_train:
+            self.image_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Image'), f) for f in os.listdir(os.path.join(self.train_dir, 'Image'))]))
+            self.mask_list = np.array(sorted([os.path.join(os.path.join(self.train_dir, 'Mask'), f) for f in os.listdir(os.path.join(self.train_dir, 'Mask'))]))
+
+            indices = np.array(list(range(len(self.image_list))))
+            np.random.shuffle(indices)
+            
+            self.val_image_list = self.image_list[indices[int(len(self.image_list)*0.95):]]
+            self.val_mask_list = self.mask_list[indices[int(len(self.mask_list)*0.95):]]
+        
+            self.tr_image_list = self.image_list[indices[:int(len(self.image_list)*0.95)]]
+            self.tr_mask_list = self.mask_list[indices[:int(len(self.mask_list)*0.95)]]
+            if self.debug:
+                self.val_image_list = self.val_image_list[:100]
+                self.val_mask_list = self.val_mask_list[:100]
+
+                self.tr_image_list = self.tr_image_list[:100]
+                self.tr_mask_list = self.tr_mask_list[:100]
+
+            dummy_tr = SPDatasetExport(self.tr_image_list, self.tr_mask_list, self.num_seg,
+                                self.res, self.compactness, self.dataloader,
+                                  self.coeff, self.ignore_phase, self.ec)
+            dummy_tr_loader = DataLoader(
+                    dummy_tr, batch_size=1, 
+                    num_workers=self.num_workers, shuffle=False, pin_memory=False)
+            
+            for batch in tqdm(dummy_tr_loader):
+                pass
+
+            del dummy_tr, dummy_tr_loader
+
+            dummy_val = SPDatasetExport(self.val_image_list, self.val_mask_list, self.num_seg,
+                                self.res, self.compactness, self.dataloader, 
+                                    self.coeff, self.ignore_phase, self.ec)
+            
+            dummy_val_loader = DataLoader(
+                dummy_val, batch_size=1, 
+                num_workers=self.num_workers, pin_memory=False)
+            
+            for batch in tqdm(dummy_val_loader):
+                pass
+
+            del dummy_val, dummy_val_loader
+
+        self.duts_test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'DUTS-TE', 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'DUTS-TE', 'Image'))])
+        self.duts_test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'DUTS-TE', 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'DUTS-TE', 'Mask'))])
+
+        self.ecssd_test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'ECSSD', 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'ECSSD', 'Image'))])
+        self.ecssd_test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'ECSSD', 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'ECSSD', 'Mask'))])
+
+        self.hku_test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'HKU-IS', 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'HKU-IS', 'Image'))])
+        self.hku_test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'HKU-IS', 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'HKU-IS', 'Mask'))])
+
+        self.dutso_test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'DUTS-OMRON', 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'DUTS-OMRON', 'Image'))])
+        self.dutso_test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'DUTS-OMRON', 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'DUTS-OMRON', 'Mask'))])
+
+        self.pascal_test_image_list = sorted([os.path.join(os.path.join(self.test_dir, 'PASCAL', 'Image'), f) for f in os.listdir(os.path.join(self.test_dir, 'PASCAL', 'Image'))])
+        self.pascal_test_mask_list = sorted([os.path.join(os.path.join(self.test_dir, 'PASCAL', 'Mask'), f) for f in os.listdir(os.path.join(self.test_dir, 'PASCAL', 'Mask'))])
+
+        if self.debug:
+            self.duts_test_image_list = self.duts_test_image_list[:100]
+            self.duts_test_mask_list = self.duts_test_mask_list[:100]
+
+            self.dutso_test_image_list = self.dutso_test_image_list[:100]
+            self.dutso_test_mask_list = self.dutso_test_mask_list[:100]
+
+            self.ecssd_test_image_list = self.ecssd_test_image_list[:100]
+            self.ecssd_test_mask_list = self.ecssd_test_mask_list[:100]
+
+            self.hku_test_image_list = self.hku_test_image_list[:100]
+            self.hku_test_mask_list = self.hku_test_mask_list[:100]
+
+            self.pascal_test_image_list = self.pascal_test_image_list[:100]
+            self.pascal_test_mask_list = self.pascal_test_mask_list[:100]
+
+
+
+        all_test_images = [self.duts_test_image_list, self.dutso_test_image_list, self.ecssd_test_image_list,
+                           self.hku_test_image_list, self.pascal_test_image_list]
+        
+        all_test_masks = [self.duts_test_mask_list, self.dutso_test_mask_list, self.ecssd_test_mask_list,
+                          self.hku_test_mask_list ,self.pascal_test_mask_list ]
+
+       
+        for test_images, test_masks in zip(all_test_images, all_test_masks):
+
+            dummy_test = SPDatasetExport(test_images, test_masks, self.num_seg,
+                                self.res,  self.compactness, self.dataloader, 
+                                self.coeff, self.ignore_phase, self.ec)
+            
+            dummy_test_loader = DataLoader(
+                    dummy_test, batch_size=1, 
+                    num_workers=self.num_workers, pin_memory=False)
+            
+            
+
+            for batch in tqdm(dummy_test_loader):
+                pass
+
+            del dummy_test, dummy_test_loader, batch
+           
+
+        
+    def train_dataloader(self):
+        data_train = SPDataset(self.tr_image_list, self.tr_mask_list, self.num_seg,
+                                self.res, self.dataloader, True,
+                                  self.coeff, self.aug_strat)
+        return {'source': DataLoader(
+                data_train, batch_size=self.batch_size, 
+                num_workers=self.num_workers, shuffle=True, pin_memory=True, drop_last=True),
+                'target': self.imgnet_source_loader}
+
+    def val_dataloader(self):
+        data_val = SPDataset(self.val_image_list, self.val_mask_list, self.num_seg,
+                              self.res, self.dataloader, False,
+                                self.coeff)
+        DUTS_test = SPDataset(self.duts_test_image_list, self.duts_test_mask_list, self.num_seg,
+                               self.res,  self.dataloader, False, 
+                               self.coeff)
+        DUTSO_test = SPDataset(self.dutso_test_image_list, self.dutso_test_mask_list, self.num_seg,
+                               self.res,  self.dataloader, False, 
+                               self.coeff)
+        ECSSD_test = SPDataset(self.ecssd_test_image_list, self.ecssd_test_mask_list, self.num_seg,
+                               self.res,  self.dataloader, False, 
+                               self.coeff)
+        HKU_test = SPDataset(self.hku_test_image_list, self.hku_test_mask_list, self.num_seg,
+                               self.res,  self.dataloader, False, 
+                               self.coeff)
+        PASCAL_test = SPDataset(self.pascal_test_image_list, self.pascal_test_mask_list, self.num_seg,
+                               self.res,  self.dataloader, False, 
+                               self.coeff)
+        val_dataloader = DataLoader(
+                data_val, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=True)
+        duts_test_dataloader = DataLoader(
+                DUTS_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=True)
+        dutso_test_dataloader = DataLoader(
+                DUTSO_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=True)
+        ecssd_test_dataloader = DataLoader(
+                ECSSD_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=True)
+        HKU_test_dataloader = DataLoader(
+                HKU_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=True)
+        pascal_test_dataloader = DataLoader(
+                PASCAL_test, batch_size=self.batch_size, 
+                num_workers=self.num_workers, pin_memory=True)
+        
+
+        return [val_dataloader, duts_test_dataloader, dutso_test_dataloader,
+                ecssd_test_dataloader, HKU_test_dataloader, pascal_test_dataloader]
+
+    def test_dataloader(self):
+        data_test = SPDataset(self.duts_test_image_list, self.duts_test_mask_list, self.num_seg,
+                               self.res, self.dataloader, False,
+                                 self.coeff, 0, True)
+        return DataLoader(
+                data_test, batch_size=1, 
+                num_workers=self.num_workers, pin_memory=True)
+    

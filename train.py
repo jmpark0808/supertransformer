@@ -61,6 +61,7 @@ from Wrappers.SP_SWINUM_C_CPE import SP_SWINUM_C_CPE_Wrapper
 from Wrappers.SP_SWINUM_C_CROPE import SP_SWINUM_C_CROPE_Wrapper
 from Wrappers.SLIC_SWINUM_C_ROPE import SLIC_SWINUM_C_ROPE_Wrapper
 from Wrappers.SP_SemSeg_SWINUM_C_ROPE import SP_SemSeg_SWINUM_C_ROPE_Wrapper
+from Wrappers.SP_SWINUM_DA import SP_SWINUM_DA_Wrapper
 # from Wrappers.SP_MAMBA import SP_MAMBA_Wrapper
 
 
@@ -68,7 +69,7 @@ from Wrappers.SP_SemSeg_SWINUM_C_ROPE import SP_SemSeg_SWINUM_C_ROPE_Wrapper
 from dataset.superpixel import DUTSDataModule,  SPDataModule, SPRSDataModule
 from dataset.superpixel_pyg import SPGDataModule
 from dataset.superpixel_pyg_image import SPGIDataModule
-from dataset.superpixel_fast import SPFDataModule, SPFRSDataModule
+from dataset.superpixel_fast import SPFDataModule, SPFRSDataModule, SPFDADataModule
 from dataset.superpixel_fast_cnn import SPFCDataModule
 from dataset.youtube_davis import YDDataModule
 from dataset.youtube_davis_swin_pyg import YDGDataModule
@@ -145,7 +146,8 @@ MODEL_DIRECTORY = {
     'SP_PERF': SP_PERF_Wrapper,
     'SP_PERFEncDec': SP_PERFEncDec_Wrapper,
     'SP_MBVITU': SP_MBVITU_Wrapper,
-    'SEG_PERFUSLIC': Seg_PERFUSLIC_Wrapper
+    'SEG_PERFUSLIC': Seg_PERFUSLIC_Wrapper,
+    'SP_SWINUM_DA': SP_SWINUM_DA_Wrapper
 }
 DATALOADER_DIRECTORY = {
     'SP': SPDataModule,
@@ -167,7 +169,8 @@ DATALOADER_DIRECTORY = {
     'SPGSWIN': SPGSWINDataModule,
     'SPFRS': SPFRSDataModule,
     'SPRS': SPRSDataModule,
-    'SPSS': SPSemSegDataModule
+    'SPSS': SPSemSegDataModule,
+    'SPFDA': SPFDADataModule
 
 } 
 
@@ -248,7 +251,7 @@ if __name__ == "__main__":
                         , default=False, action="store_true")
     parser.add_argument('--aug_strat', help='Data augmentation strategy (between 0 and 4)', type=int, default=4)
     parser.add_argument('--cutmix_prob', help='Probability for applying cutmix', default=0.5, type=float)
-    
+    parser.add_argument('--ema_alpha', help='Alpha value for EMA', default=0.99, type=float)
 
 
     import torch 
