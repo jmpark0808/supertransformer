@@ -947,7 +947,7 @@ class SPFDADataModule(pl.LightningDataModule):
         self.ec = kwargs.get('ec')
         self.aug_strat = kwargs.get('aug_strat')
 
-        imgnet_dataset = ImageNetDataset(os.path.join(self.train_dir, 'sp_train'), True, self.coeff, self.num_seg, self.size)
+        imgnet_dataset = ImageNetDataset(os.path.join(self.train_dir, 'sp_train'), True, self.coeff, self.num_seg, self.res)
         
 
         self.imgnet_source_loader = torch.utils.data.DataLoader(imgnet_dataset, batch_size=self.batch_size, shuffle=True,
