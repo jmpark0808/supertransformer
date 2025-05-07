@@ -69,7 +69,7 @@ class SP_SWINUM_DA_Wrapper(pl.LightningModule):
                                          num_heads=self.heads, mlp_ratio=self.mlp_ratio, attn_drop_rate=self.dropout_edge, drop_rate=self.dropout,
                                          drop_path_rate=self.dp)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
-
+        self.supert_teacher.requires_grad_(False)
         kwargs['parameters'] = parameter_count(self.supert_student)['']
         inp = torch.randn([1, input_dim+2, res, res])
         flops = FlopCountAnalysis(self.supert_student, inp)
@@ -396,7 +396,7 @@ class SP_SWINUM_DA_Wrapper(pl.LightningModule):
 
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        print(features.size())
+
         pred = self.forward(features)
         res = int(self.num_seg**0.5)
         pred_numpy = torch.sigmoid(pred).detach().cpu() # batch, seq_len, 1
