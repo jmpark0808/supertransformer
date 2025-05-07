@@ -259,8 +259,13 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     dict_args = vars(args)
-    repo = git.Repo(search_parent_directories=True)
-    sha = repo.head.object.hexsha
+    # repo = git.Repo(search_parent_directories=True)
+    # sha = repo.head.object.hexsha
+    try:
+        with open('./commit_hash.txt', "r") as f:
+            sha = f.read().strip()
+    except FileNotFoundError:
+        print(f"Error: commit hash not found.")
     dict_args['git'] = sha
 
     pl.seed_everything(dict_args['seed'], True)
