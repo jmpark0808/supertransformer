@@ -59,7 +59,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
         
         kwargs['parameters'] = parameter_count(self.supert)['']
-        inp = (torch.randn([1, input_dim+2, res, res]), torch.ones([1, self.size, self.size]).long(), torch.ones([1, 3, self.size, self.size]).float())
+        inp = torch.randn([1, input_dim+2, res, res])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
         self.flops = kwargs['flops']
