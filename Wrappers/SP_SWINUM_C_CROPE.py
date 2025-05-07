@@ -39,6 +39,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         self.mlp_ratio = kwargs.get('mlp_ratio')
         self.dp = kwargs.get('drop_path')
         self.encoder_lr_weight = kwargs.get('encoder_lr_weight')
+        self.aug_strat = kwargs.get('aug_strat')
         resample_points = int(((self.size**2)//self.num_seg)**0.5)*4
         self.resample_points = resample_points
         
