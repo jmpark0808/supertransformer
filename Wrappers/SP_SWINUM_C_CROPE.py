@@ -85,11 +85,35 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         self.save_hyperparameters()
         
 
-    def loss(self, pred, label):
+    def loss(self, pred, label, sizes):
         """
         Defining the loss funcition:
         """
+    
+        # targets = label.float()
+        # probs = torch.sigmoid(pred).squeeze()
+
+        # bce_loss = F.binary_cross_entropy_with_logits(pred.squeeze(), targets, reduction='none')
+
+        # p_t = probs * targets + (1 - probs) * (1 - targets)
+        # focal_weight = (1 - p_t) ** 2.
+
+        # focal_loss = (focal_weight * bce_loss).mean()
+
+
+        # pt = probs * targets + (1 - probs) * (1 - targets)  # pt = p if label=1 else 1-p
+        # focal_loss = -0.25 * (1 - pt) ** 2.0 * pt.log()
+        # focal_loss = focal_loss.mean()
+
+        # intersection = (probs * targets).sum(dim=1)
+        # union = probs.sum(dim=1) + targets.sum(dim=1)
+        # dice_score = (2 * intersection + 1e-8) / (union + 1e-8)
+        # dice_loss = 1 - dice_score
+        # dice_loss = dice_loss.mean()
+        # loss = focal_loss #+ dice_loss
         loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
+        # weights = sizes / (sizes.sum(dim=1, keepdim=True))  # (B, K)
+        # weighted_loss = (loss * weights).sum(dim=1).mean()
 
         return loss
 
@@ -159,7 +183,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
             for pg in optimizer.param_groups:
                 pg["lr"] = lr_scale * self.lr
 
-    def forward(self, input, segments, images):
+    def forward(self, input):
         """
         Forward pass through model
         :param x: Input features
@@ -182,9 +206,9 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         # third = input[:,  -10:]
         # input = torch.cat((first, second_amp_front, second_amp_back, second_phase_front, second_phase_back, third), dim=1)
         
-        inter, pre_filter, pred = self.supert(input, segments, images)
+        pred = self.supert(input)
 
-        return inter, pre_filter, pred
+        return pred
 
     def on_train_epoch_start(self):
         self.train_fscores = 0
@@ -210,55 +234,44 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         """
         features = batch['features']
         seq_mask = batch['seq_mask']
-        images = batch['images']
         segments = batch['segments']
         mask = batch['mask']
 
-        # import matplotlib.pyplot as plt
-        
+        sizes = features[:, :, -18]
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        # fig, ax = plt.subplots(1, 3)
-        # ax[0].imshow(features[0, 2:5, :, :].permute(1, 2, 0).detach().cpu().numpy())
-       
+        if self.aug_strat == 4 and 'RS' not in self.dataloader:
+            seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
+            features, seq_mask = self.mixup(features, seq_mask)
+            
+            seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
 
-        # ax[1].imshow(mask[0, 0].detach().cpu().numpy(), cmap='gray')
-        # ax[2].imshow(images[0].permute(1, 2, 0).detach().cpu().numpy())
-       
+        # if self.aug_strat == 4 and 'RS' not in self.dataloader:
+        #     features, seq_mask = semantic_cutmix(features, seq_mask, self.cutmix_prob)
+        #     features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
 
-        # plt.show()
-        seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
-        features, seq_mask = self.mixup(features, seq_mask)
         
-        seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
+        if torch.sum(sizes[0, :]) != self.size**2:
+            assert 'Sizes not aligning'
 
         # forward pass
+        if torch.sum(torch.isnan(features)) > 0:
+            assert 0 
+        pred = self.forward(features)
         
-        inter, _, pred = self.forward(features, segments, images)
-        loss = self.loss(inter, seq_mask)
+        loss = self.loss(pred, seq_mask, sizes)
         
-        # pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
-        # seq_mask_numpy = seq_mask.detach().cpu().numpy()
-        # batch_size = mask.shape[0]
-        # img_size = mask.shape[2]
-        # if torch.sum(segments) != 0 :
-
-        #     segments = segments.reshape([batch_size, -1]) # batch, img_size^2
-
-        #     samples = []
-        #     for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-        #         plt_image = masked[labels-1].reshape([img_size, img_size])
-        #         samples.append(plt_image)
-
-        #     samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
-        # else:
-        #     samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
-        #     samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
-        samples = pred 
+        pred_numpy = torch.sigmoid(pred) # batch, seq_len, 1
+        seq_mask_numpy = seq_mask.detach().cpu().numpy()
+        batch_size = mask.shape[0]
+        img_size = mask.shape[2]
+        
+        samples = pred_numpy
+            
         
         prec, recall = torch.zeros(samples.shape[0], 1), torch.zeros(samples.shape[0], 1)
         pred = samples.reshape(samples.shape[0], -1)
-        mask = mask.reshape(mask.shape[0], -1)
+        mask = seq_mask.reshape(mask.shape[0], -1)
         
         y_temp = (pred >= 0.5).float()
         tp = (y_temp * mask).sum(dim=-1)
@@ -283,48 +296,55 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         """
         features = batch['features']
         seq_mask = batch['seq_mask']
-        images = batch['images']
         segments = batch['segments']
         mask = batch['mask']
-        tensorboard = self.logger.experiment
+
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        _, pre_filter, pred = self.forward(features, segments, images)
-        # res = int(self.num_seg**0.5)
-        # pred_numpy = torch.sigmoid(pred).detach().cpu().numpy() # batch, seq_len, 1
-        # seq_mask_numpy = seq_mask.detach().cpu().numpy()
-        # batch_size = mask.shape[0]
-        # img_size = mask.shape[2]
-        # segments = segments.reshape([batch_size, -1]) # batch, img_size^2
+        pred = self.forward(features)
+        res = int(self.num_seg**0.5)
+        pred_numpy = torch.sigmoid(pred).detach().cpu() # batch, seq_len, 1
+        seq_mask_numpy = seq_mask.detach().cpu().numpy()
+        batch_size = mask.shape[0]
+        img_size = self.size
+        segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
-        # if torch.sum(segments) != 0 :
+        if torch.sum(segments) != 0 :
 
-        #     segments = segments.reshape([batch_size, -1]) # batch, img_size^2
+            segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
-        #     samples = []
-        #     for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-        #         plt_image = masked[labels-1].reshape([img_size, img_size])
-        #         samples.append(plt_image)
+            samples = []
+            for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+                plt_image = masked[labels-1].reshape([img_size, img_size])
+                plt_image = F.interpolate(plt_image.unsqueeze(0).unsqueeze(0), (mask.size(2), mask.size(3)), mode='bilinear')
+                
+                samples.append(plt_image)
 
-        #     samples = torch.tensor(np.expand_dims(np.array(samples), 1)).cuda()
-        # else:
-        #     samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
-        #     samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
-        samples = pred
-        samples_pre = pre_filter
-        # samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear') 
+            samples = torch.cat(samples, dim=0).cuda()
+        else:
+            samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
+            samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
+        
         mae = torch.sum(torch.mean(torch.abs(samples - mask), dim=tuple(range(1, len(samples.size())))))
         
         if dataloader_idx == 0:
             self.maes += mae
             self.mean_num += features.size(0)
-            if batch_idx == 0:
-                tensorboard.add_images('Test Refined', samples, self.global_step)
-                tensorboard.add_images('Test Pre-Refined', samples_pre, self.global_step)
-                tensorboard.add_images('Test GT', mask, self.global_step)
         elif dataloader_idx == 1:
-            self.maes_test += mae
-            self.mean_num_test += features.size(0)
+            self.duts_maes_test += mae
+            self.duts_mean_num_test += features.size(0)
+        elif dataloader_idx == 2:
+            self.dutso_maes_test += mae
+            self.dutso_mean_num_test += features.size(0)
+        elif dataloader_idx == 3:
+            self.ecssd_maes_test += mae
+            self.ecssd_mean_num_test += features.size(0)
+        elif dataloader_idx == 4:
+            self.hku_maes_test += mae
+            self.hku_mean_num_test += features.size(0)
+        elif dataloader_idx == 5:
+            self.pascal_maes_test += mae
+            self.pascal_mean_num_test += features.size(0)
 
         
         prec, recall = torch.zeros(samples.size(0), self.num_thresholds).cuda(), torch.zeros(samples.size(0), self.num_thresholds).cuda()
@@ -345,8 +365,20 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
             self.validation_step_outputs.append(mae)
             self.test_iteration += 1
         elif dataloader_idx == 1:
-            self.precs_test += prec.sum(0)
-            self.recalls_test += recall.sum(0)
+            self.duts_precs_test += prec.sum(0)
+            self.duts_recalls_test += recall.sum(0)
+        elif dataloader_idx == 2:
+            self.dutso_precs_test += prec.sum(0)
+            self.dutso_recalls_test += recall.sum(0)
+        elif dataloader_idx == 3:
+            self.ecssd_precs_test += prec.sum(0)
+            self.ecssd_recalls_test += recall.sum(0)
+        elif dataloader_idx == 4:
+            self.hku_precs_test += prec.sum(0)
+            self.hku_recalls_test += recall.sum(0)
+        elif dataloader_idx == 5:
+            self.pascal_precs_test += prec.sum(0)
+            self.pascal_recalls_test += recall.sum(0)
         return mae
 
 
@@ -363,15 +395,55 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
 
         self.log('Validation MAE', self.maes/self.mean_num)
 
-        prec = self.precs_test/self.mean_num_test
-        recall = self.recalls_test/self.mean_num_test
+        prec = self.duts_precs_test/self.duts_mean_num_test
+        recall = self.duts_recalls_test/self.duts_mean_num_test
         beta_square = 0.3
         f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
         thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
-        self.log('Test Max F Score', torch.max(f_score))
-        self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
+        self.log('DUTS Max F Score', torch.max(f_score))
+        # self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
 
-        self.log('Test MAE', self.maes_test/self.mean_num_test)
+        self.log('DUTS MAE', self.duts_maes_test/self.duts_mean_num_test)
+
+        prec = self.dutso_precs_test/self.dutso_mean_num_test
+        recall = self.dutso_recalls_test/self.dutso_mean_num_test
+        beta_square = 0.3
+        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
+        self.log('DUTSO Max F Score', torch.max(f_score))
+        # self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
+
+        self.log('DUTSO MAE', self.dutso_maes_test/self.dutso_mean_num_test)
+
+        prec = self.ecssd_precs_test/self.ecssd_mean_num_test
+        recall = self.ecssd_recalls_test/self.ecssd_mean_num_test
+        beta_square = 0.3
+        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
+        self.log('ECSSD Max F Score', torch.max(f_score))
+        # self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
+
+        self.log('ECSSD MAE', self.ecssd_maes_test/self.ecssd_mean_num_test)
+
+        prec = self.hku_precs_test/self.hku_mean_num_test
+        recall = self.hku_recalls_test/self.hku_mean_num_test
+        beta_square = 0.3
+        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
+        self.log('HKU Max F Score', torch.max(f_score))
+        # self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
+
+        self.log('HKU MAE', self.hku_maes_test/self.hku_mean_num_test)
+
+        prec = self.pascal_precs_test/self.pascal_mean_num_test
+        recall = self.pascal_recalls_test/self.pascal_mean_num_test
+        beta_square = 0.3
+        f_score = (1 + beta_square) * prec * recall / (beta_square * prec + recall)
+        thlist = torch.linspace(0, 1 - 1e-10, self.num_thresholds)
+        self.log('PASCAL Max F Score', torch.max(f_score))
+        # self.log('Test Max F Threshold', thlist[torch.argmax(f_score)])
+
+        self.log('PASCAL MAE', self.pascal_maes_test/self.pascal_mean_num_test)
         # if self.current_epoch >= self.warmup_epochs:
         #     self.scheduler.step(torch.mean(torch.stack(self.validation_step_outputs)))
         self.validation_step_outputs.clear()
@@ -383,11 +455,35 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         self.precs = torch.zeros(self.num_thresholds).cuda()
         self.recalls = torch.zeros(self.num_thresholds).cuda()
 
-        self.maes_test = 0
-        self.mean_num_test = 0
+        self.duts_maes_test = 0
+        self.duts_mean_num_test = 0
 
-        self.precs_test = torch.zeros(self.num_thresholds).cuda()
-        self.recalls_test = torch.zeros(self.num_thresholds).cuda()
+        self.duts_precs_test = torch.zeros(self.num_thresholds).cuda()
+        self.duts_recalls_test = torch.zeros(self.num_thresholds).cuda()
+
+        self.dutso_maes_test = 0
+        self.dutso_mean_num_test = 0
+
+        self.dutso_precs_test = torch.zeros(self.num_thresholds).cuda()
+        self.dutso_recalls_test = torch.zeros(self.num_thresholds).cuda()
+
+        self.ecssd_maes_test = 0
+        self.ecssd_mean_num_test = 0
+
+        self.ecssd_precs_test = torch.zeros(self.num_thresholds).cuda()
+        self.ecssd_recalls_test = torch.zeros(self.num_thresholds).cuda()
+
+        self.hku_maes_test = 0
+        self.hku_mean_num_test = 0
+
+        self.hku_precs_test = torch.zeros(self.num_thresholds).cuda()
+        self.hku_recalls_test = torch.zeros(self.num_thresholds).cuda()
+
+        self.pascal_maes_test = 0
+        self.pascal_mean_num_test = 0
+
+        self.pascal_precs_test = torch.zeros(self.num_thresholds).cuda()
+        self.pascal_recalls_test = torch.zeros(self.num_thresholds).cuda()
 
         self.validation_step_outputs = []
 
@@ -399,6 +495,11 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         self.recalls = torch.zeros(256).cuda()
         self.test_step_outputs = []
 
+        self.e_measure_scores = torch.zeros(255).cuda()
+        self.s_measure_q = 0.0
+        self.times = []
+
+
 
     def test_step(self, batch, batch_idx):
         """
@@ -406,50 +507,68 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         validation loop: https://pytorch-lightning.readthedocs.io/en/stable/common/lightning_module.html#hooks
         """
         features = batch['features']
-        images = batch['images']
+        seq_mask = batch['seq_mask']
         segments = batch['segments']
         mask = batch['mask']
-        # names = batch['file_name']
+        names = batch['file_name']
 
 
         # forward pass
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        _, pre_refined, pred = self.forward(features, segments, images)
+        start = time.time()
+        pred = self.forward(features)
+        end = time.time()
+        self.times.append(end-start)
+        pred_numpy = torch.sigmoid(pred).detach().cpu() # batch, seq_len, 1
 
-        # pred_numpy = torch.sigmoid(pred).detach().cpu() # batch, seq_len, 1
-    
-        # batch_size = mask.shape[0]
-        # img_size = self.size
-        # if torch.sum(segments) != 0 :
+        batch_size = mask.shape[0]
+        img_size = self.size
+        if torch.sum(segments) != 0 :
 
-        #     segments = segments.reshape([batch_size, -1]) # batch, img_size^2
+            segments = segments.reshape([batch_size, -1]) # batch, img_size^2
 
-        #     samples = []
-        #     for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
-        #         plt_image = masked[labels-1].reshape([img_size, img_size])
-        #         plt_image = F.interpolate(plt_image.unsqueeze(0).unsqueeze(0), (mask.size(2), mask.size(3)), mode='bilinear')
-        #         samples.append(plt_image)
+            samples = []
+            for masked, labels in zip(pred_numpy, segments.cpu().numpy()):
+                plt_image = masked[labels-1].reshape([img_size, img_size])
+                plt_image = F.interpolate(plt_image.unsqueeze(0).unsqueeze(0), (mask.size(2), mask.size(3)), mode='bilinear')
+                samples.append(plt_image)
 
-        #     samples = torch.cat(samples, dim=0).cuda()
-        # else:
-        #     samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
-        #     samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear').detach().cpu()
+            samples = torch.cat(samples, dim=0).cuda()
+        else:
+            samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
+            samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear').detach().cpu()
         # tensorboard.add_images('Test Pred', samples, self.test_iteration)
 
         # tensorboard.add_images('Test GT', samples_mask, self.test_iteration)
         # tensorboard.add_images('Test Image', img, self.test_iteration)
+
         # for sample, name in zip(samples, names):
         #     name = name.split('/')[-1]
-        #     sample = ((sample > 0.5).float().permute(1, 2, 0).detach().cpu().numpy()*255).astype(np.uint8)
-            
- 
-        #     cv2.imwrite('/home/eddie/Qualitative/SF/DUTS-TE/'+name, sample)
-        samples = pred 
-        samples = F.interpolate(samples, (mask.size(-2), mask.size(-1)), mode='bilinear')
-        mae = torch.sum(torch.mean(torch.abs((samples >= 0.5).float() - mask), dim=tuple(range(1, len(samples.size())))))
+        #     sample = (sample.permute(1, 2, 0).detach().cpu().numpy()*255).astype(np.uint8)
+        #     cv2.imwrite(os.path.join('/home/eddie/Qualitative/SF-S',name), sample)
+
+        mae = torch.sum(torch.mean(torch.abs(samples  - mask), dim=tuple(range(1, len(samples.size())))))
         self.maes += mae
         self.mean_num += features.size(0)
+
+        for pred, gt in zip(samples, mask):
+            self.e_measure_scores += eval_e(pred, gt, 255)
+            y = gt.mean()
+            if y == 0:
+                x = pred.mean()
+                Q = 1.0 -x
+            elif y == 1:
+                x = pred.mean()
+                Q = x
+            else:
+                gt[gt>=0.5] = 1
+                gt[gt<0.5] = 0
+                Q = 0.5 * S_object(pred, gt) + (1-0.5) * S_region(pred, gt)
+                if Q.item() < 0:
+                    Q = torch.FloatTensor([0.0])
+            self.s_measure_q += Q.item()
+
 
         prec, recall = torch.zeros(samples.size(0), 256).cuda(), torch.zeros(samples.size(0), 256).cuda()
         pred = samples.reshape(samples.size(0), -1)
@@ -477,7 +596,11 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         self.log('Final Test Max F Threshold', thlist[torch.argmax(f_score)])
 
         self.log('Final Test MAE', self.maes/self.mean_num)
-        
+        self.log('Final Test E measure', torch.max(self.e_measure_scores)/self.mean_num)
+        self.log('Final Test S measure', self.s_measure_q/self.mean_num)
+        self.log('Inference Time (ms)', np.mean(self.times)*1000)
+
+
 
 
 
