@@ -231,26 +231,26 @@ class SwinUTransformer(nn.Module):
         output = (mean_A * I).sum(dim=1, keepdim=True) + mean_b  # (B, 1, H, W)
         return output.clamp(0, 1)
 
-    def forward(self, x, segments, img):
+    def forward(self, x):
         x = self.forward_features(x)
         x = self.intermediate_head(x)
 
-
-        intermediate = x
+        return x
+        # intermediate = x
  
-        D = x.size(-1)
-        B, H, W = segments.size()
-        segments = segments.reshape([x.size(0), -1])-1 # batch, img_size^2
+        # D = x.size(-1)
+        # B, H, W = segments.size()
+        # segments = segments.reshape([x.size(0), -1])-1 # batch, img_size^2
 
 
-        batch_indices = torch.arange(x.size(0), device=x.device).unsqueeze(-1)  # (B, 1)
-        x = x[batch_indices, segments]  # (B, H*W, D)
-        x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2)
-        x = torch.sigmoid(x)
-        pre_filter = x
-        x = self.guided_filter_rgb(img, x, r=8)
+        # batch_indices = torch.arange(x.size(0), device=x.device).unsqueeze(-1)  # (B, 1)
+        # x = x[batch_indices, segments]  # (B, H*W, D)
+        # x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2)
+        # x = torch.sigmoid(x)
+        # pre_filter = x
+        # x = self.guided_filter_rgb(img, x, r=8)
         # x = self.crf(x)
 
-        return intermediate, pre_filter, x
+        # return intermediate, pre_filter, x
 
 
