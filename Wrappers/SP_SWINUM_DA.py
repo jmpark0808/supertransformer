@@ -319,8 +319,11 @@ class SP_SWINUM_DA_Wrapper(pl.LightningModule):
 
             features_target, _ = target_batch
 
-        
+            
             res = int(self.num_seg**0.5)
+
+            features_target = features_target.reshape(features_target.size(0), res, res, -1).permute(0, 3, 1, 2)
+        
             features_source = features_source.reshape(features_source.size(0), res, res, -1).permute(0, 3, 1, 2)
             if self.aug_strat == 4 and 'RS' not in self.dataloader:
                 seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
