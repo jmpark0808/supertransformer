@@ -104,7 +104,7 @@ class SwinUTransformer(nn.Module):
 
         self.upsample = nn.Upsample(size=img_size[0])
         self.sod_head = nn.Linear(sum(embed_dim), 1)
-        self.locations = nn.Linear(2, embed_dim[0])
+        self.locations = swinencoder.locations
 
         
         self.apply(self._init_weights)
