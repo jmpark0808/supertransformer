@@ -454,10 +454,11 @@ class SPDatasetExport(data.Dataset):
         self.size = size
         self.coeff = coeff
         
-        if dataloader == 'SPFFFT' or dataloader == 'SPFRS':
-            totensor = ToTensorSPFFT(num_seg, compactness, coeff, size, ignore_phase, enforce_connectivity)
-        else:
-            totensor = ToTensorSP(num_seg, compactness)
+        # if dataloader == 'SPFFFT' or dataloader == 'SPFRS':
+        #     totensor = ToTensorSPFFT(num_seg, compactness, coeff, size, ignore_phase, enforce_connectivity)
+        # else:
+        #     totensor = ToTensorSP(num_seg, compactness)
+        totensor = ToTensorSPFFT(num_seg, compactness, coeff, size, ignore_phase, enforce_connectivity)
         # totensor = ToTensorSPFFT(num_seg, compactness, coeff, ignore_phase, fully_conneted)
         self.transform = transforms.Compose([Resize(size),
              totensor])
@@ -478,12 +479,12 @@ class SPDatasetExport(data.Dataset):
         sp_file_name_segments = image.split('/')[-1].split('.')[0]+'_segments.npy'
         sp_file_name_mask = image.split('/')[-1].split('.')[0]+'_mask.npy'
 
-        sp_file_path_features = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_features )
-        sp_file_path_edge_index = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_edge_index )
-        sp_file_path_edge_attr = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_edge_attr )
-        sp_file_path_seq_mask = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_seq_mask )
-        sp_file_path_segments = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_segments )
-        sp_file_path_mask = os.path.join(str(Path(image).parents[1]),self.dataloader,sp_file_name_mask )
+        sp_file_path_features = os.path.join(str(Path(image).parents[1]),'SPFFFT',sp_file_name_features )
+        sp_file_path_edge_index = os.path.join(str(Path(image).parents[1]),'SPFFFT',sp_file_name_edge_index )
+        sp_file_path_edge_attr = os.path.join(str(Path(image).parents[1]),'SPFFFT',sp_file_name_edge_attr )
+        sp_file_path_seq_mask = os.path.join(str(Path(image).parents[1]),'SPFFFT',sp_file_name_seq_mask )
+        sp_file_path_segments = os.path.join(str(Path(image).parents[1]),'SPFFFT',sp_file_name_segments )
+        sp_file_path_mask = os.path.join(str(Path(image).parents[1]),'SPFFFT',sp_file_name_mask )
         if os.path.exists(sp_file_path_features):
             return torch.empty(0)
     
@@ -535,14 +536,13 @@ class SPDataset(data.Dataset):
 
 
 
-        sp_file_path_features = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_features )
-        sp_file_path_edge_attr = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_edge_attr )
-        sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_seq_mask )
-        sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_segments )
-        sp_file_path_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),self.dataloader,sp_file_name_mask)           
+        sp_file_path_features = os.path.join(str(Path(self.image_list[item]).parents[1]),'SPFFFT',sp_file_name_features )
+        sp_file_path_edge_attr = os.path.join(str(Path(self.image_list[item]).parents[1]),'SPFFFT',sp_file_name_edge_attr )
+        sp_file_path_seq_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),'SPFFFT',sp_file_name_seq_mask )
+        sp_file_path_segments = os.path.join(str(Path(self.image_list[item]).parents[1]),'SPFFFT',sp_file_name_segments )
+        sp_file_path_mask = os.path.join(str(Path(self.image_list[item]).parents[1]),'SPFFFT',sp_file_name_mask)           
         
         features = np.load(sp_file_path_features)
-
         # if np.sum(features[:, -18]) != 50176:
         #     areas = np.zeros([self.num_seg])
         #     areas[label-1] = regions['area']
