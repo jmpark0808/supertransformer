@@ -86,33 +86,33 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         self.save_hyperparameters()
         
 
-    def loss(self, pred, label, sizes):
+    def loss(self, pred, label):
         """
         Defining the loss funcition:
         """
     
-        # targets = label.float()
-        # probs = torch.sigmoid(pred).squeeze()
+        targets = label.float()
+        probs = torch.sigmoid(pred).squeeze()
 
-        # bce_loss = F.binary_cross_entropy_with_logits(pred.squeeze(), targets, reduction='none')
+        bce_loss = F.binary_cross_entropy_with_logits(pred.squeeze(), targets, reduction='none')
 
-        # p_t = probs * targets + (1 - probs) * (1 - targets)
-        # focal_weight = (1 - p_t) ** 2.
+        p_t = probs * targets + (1 - probs) * (1 - targets)
+        focal_weight = (1 - p_t) ** 2.
 
-        # focal_loss = (focal_weight * bce_loss).mean()
+        focal_loss = (focal_weight * bce_loss).mean()
 
 
-        # pt = probs * targets + (1 - probs) * (1 - targets)  # pt = p if label=1 else 1-p
-        # focal_loss = -0.25 * (1 - pt) ** 2.0 * pt.log()
-        # focal_loss = focal_loss.mean()
+        pt = probs * targets + (1 - probs) * (1 - targets)  # pt = p if label=1 else 1-p
+        focal_loss = -0.25 * (1 - pt) ** 2.0 * pt.log()
+        focal_loss = focal_loss.mean()
 
-        # intersection = (probs * targets).sum(dim=1)
-        # union = probs.sum(dim=1) + targets.sum(dim=1)
-        # dice_score = (2 * intersection + 1e-8) / (union + 1e-8)
-        # dice_loss = 1 - dice_score
-        # dice_loss = dice_loss.mean()
-        # loss = focal_loss #+ dice_loss
-        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
+        intersection = (probs * targets).sum(dim=1)
+        union = probs.sum(dim=1) + targets.sum(dim=1)
+        dice_score = (2 * intersection + 1e-8) / (union + 1e-8)
+        dice_loss = 1 - dice_score
+        dice_loss = dice_loss.mean()
+        loss = focal_loss + dice_loss
+        # loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
         # weights = sizes / (sizes.sum(dim=1, keepdim=True))  # (B, K)
         # weighted_loss = (loss * weights).sum(dim=1).mean()
 
@@ -238,7 +238,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         segments = batch['segments']
         mask = batch['mask']
 
-        sizes = features[:, :, -18]
+        
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
         if self.aug_strat == 4 and 'RS' not in self.dataloader:
@@ -252,15 +252,14 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         #     features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
 
         
-        if torch.sum(sizes[0, :]) != self.size**2:
-            assert 'Sizes not aligning'
+   
 
         # forward pass
         if torch.sum(torch.isnan(features)) > 0:
             assert 0 
         pred = self.forward(features)
         
-        loss = self.loss(pred, seq_mask, sizes)
+        loss = self.loss(pred, seq_mask)
         
         pred_numpy = torch.sigmoid(pred) # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
