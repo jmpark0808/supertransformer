@@ -16,6 +16,7 @@ from dataset.constants import *
 import matplotlib.pyplot as plt
 from scipy import sparse as sp
 from scipy.spatial.distance import pdist, squareform
+import scipy.sparse.linalg as spla
 from dataset.attributes import *
 from torch.utils.data import DataLoader
 from dataset.randaugment import RandAugment

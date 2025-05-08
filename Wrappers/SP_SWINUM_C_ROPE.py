@@ -54,7 +54,7 @@ class SP_SWINUM_C_ROPE_Wrapper(pl.LightningModule):
         self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
                                        embed_dim=self.dims, depths=self.depths,
                                          num_heads=self.heads, mlp_ratio=self.mlp_ratio, attn_drop_rate=self.dropout_edge, drop_rate=self.dropout,
-                                         qkv_bias=False, drop_path_rate=self.dp)
+                                         drop_path_rate=self.dp)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
 
         kwargs['parameters'] = parameter_count(self.supert)['']
