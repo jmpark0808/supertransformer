@@ -305,7 +305,7 @@ class SP_SWINUM_DA_Wrapper(pl.LightningModule):
             self.iteration += 1
             if self.current_epoch >= self.warmup_epochs:
                 self.scheduler.step()
-
+            
 
         else:
 
@@ -347,12 +347,12 @@ class SP_SWINUM_DA_Wrapper(pl.LightningModule):
 
             # Target pseudo-label loss
             with torch.no_grad():
-                pseudo_labels = self.supert_teacher(features_target)
+                pseudo_labels = torch.sigmoid(self.supert_teacher(features_target))
 
 
             tgt_student_preds = self.forward(features_target)
             confidence_mask = (pseudo_labels > 0.7) | (pseudo_labels < 0.3)
-            loss_tgt = F.binary_cross_entropy_with_logits(tgt_student_preds, pseudo_labels, reducetion='none')
+            loss_tgt = F.binary_cross_entropy_with_logits(tgt_student_preds, pseudo_labels, reduction='none')
             loss_tgt = (loss_tgt * confidence_mask.float()).mean()
 
             loss = loss_src + 0.5 * loss_tgt
