@@ -3,7 +3,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 # from Blocks.swintransformer_original_rpe import SwinUTransformer
-from Blocks.swinunet_mix_rope_only_lucid import SwinUTransformer
+from Blocks.swinunet_mix_naive_rpe import SwinUTransformer
 # from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
 import numpy as np
@@ -12,7 +12,7 @@ from util.util import get_input_dim
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 from dataset.mixup import MixupSaliency
 
-class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
+class SP_SWINUM_C_RPE_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 

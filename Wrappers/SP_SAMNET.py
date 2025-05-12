@@ -2,8 +2,7 @@ from typing import Optional
 import pytorch_lightning as pl
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
-# from Blocks.swintransformer_original_rpe import SwinUTransformer
-from Blocks.swinunet_mix_rope_only_lucid import SwinUTransformer
+from Blocks.SAMNet import FastSal
 # from Models.SP_SWIN import SP_SWINU
 import torch.nn.functional as F
 import numpy as np
@@ -11,8 +10,10 @@ from dataset.constants import *
 from util.util import get_input_dim
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 from dataset.mixup import MixupSaliency
+import cv2
+from util.util import eval_e, S_object, S_region
 
-class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
+class SP_SAMNET_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
         super().__init__()
 
@@ -52,17 +53,14 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
 
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
-        rope_div_factor = self.size//res
-        self.supert = SwinUTransformer(img_size=res, resolution_size=self.size, in_chans=input_dim, patch_size=1, window_size=self.window_size,
-                                       embed_dim=self.dims, depths=self.depths,
-                                         num_heads=self.heads, mlp_ratio=self.mlp_ratio, attn_drop_rate=self.dropout_edge, drop_rate=self.dropout,
-                                         drop_path_rate=self.dp, rope_div_factor=rope_div_factor)
+        self.supert = FastSal(input_dim, None)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
-        
+        self.eval()
         kwargs['parameters'] = parameter_count(self.supert)['']
-        inp = torch.randn([1, input_dim+2, res, res])
+        inp = torch.randn([1, input_dim, res, res])
         flops = FlopCountAnalysis(self.supert, inp)
         kwargs['flops'] = flops.total()
+        self.train()
         self.flops = kwargs['flops']
         self.num_parameters = kwargs['parameters']
         # print(flop_count_table(flops))
@@ -79,7 +77,10 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         if self.pretrain:
             checkpoint = torch.load(self.pretrain)
             for key in list(checkpoint['state_dict'].keys()):
-                checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
+                if 'attn_mask' in key:
+                    checkpoint['state_dict'].pop(key)
+                else:
+                    checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
             
             self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
         
@@ -102,16 +103,23 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         # focal_loss = (focal_weight * bce_loss).mean()
 
 
+        # pt = probs * targets + (1 - probs) * (1 - targets)  # pt = p if label=1 else 1-p
+        # focal_loss = -0.25 * (1 - pt) ** 2.0 * pt.log()
+        # focal_loss = focal_loss.mean()
+
         # intersection = (probs * targets).sum(dim=1)
         # union = probs.sum(dim=1) + targets.sum(dim=1)
         # dice_score = (2 * intersection + 1e-8) / (union + 1e-8)
         # dice_loss = 1 - dice_score
         # dice_loss = dice_loss.mean()
-        # loss = focal_loss + dice_loss
+        # loss = focal_loss #+ dice_loss
 
-
-        loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
-       
+        loss = F.binary_cross_entropy_with_logits(pred[:, 0, :, :], label)
+        for i in range(1, pred.shape[1]):
+            loss += 0.4 * F.binary_cross_entropy_with_logits(pred[:, i, :, :], label)
+        # loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
+        # weights = sizes / (sizes.sum(dim=1, keepdim=True))  # (B, K)
+        # weighted_loss = (loss * weights).sum(dim=1).mean()
 
         return loss
 
@@ -120,40 +128,8 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         Choose what optimizers and learning-rate schedulers to use in your optimization.
         """
         
-        skip_list = {'absolute_pos_embed'}
-        skip_keywords = {'relative_position_bias_table'}
-        has_decay_enc = []
-        has_decay_dec = []
-        no_decay_enc = []
-        no_decay_dec = []
-
-        def check_keywords_in_name(name, keywords=()):
-            isin = False
-            for keyword in keywords:
-                if keyword in name:
-                    isin = True
-            return isin
-
-        for name, param in self.supert.named_parameters():
-            if not param.requires_grad:
-                continue  # frozen weights
-            if len(param.shape) == 1 or name.endswith(".bias") or (name in skip_list) or \
-                    check_keywords_in_name(name, skip_keywords):
-                if 'sod_head' in name or 'upsample_layers' in name:
-                    no_decay_dec.append(param)
-                else:
-                    no_decay_enc.append(param)
-                # print(f"{name} has no weight decay")
-            else:
-                if 'sod_head' in name or 'upsample_layers' in name:
-                    has_decay_dec.append(param)
-                else:
-                    has_decay_enc.append(param)
-        parameters = [{'params': has_decay_dec},
-                      {'params': has_decay_enc, 'lr': self.lr*self.encoder_lr_weight},
-                {'params': no_decay_dec, 'weight_decay': 0.},
-                {'params': no_decay_enc, 'weight_decay': 0., 'lr': self.lr*self.encoder_lr_weight}]
-        optimizer = torch.optim.AdamW(parameters, lr=self.lr, weight_decay=0.05)
+      
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=0.05)
         # self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         #     optimizer,
         #     mode='min',
@@ -203,7 +179,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         #     second_phase_back = second_phase[:,  -self.coeff//2:]
         # third = input[:,  -10:]
         # input = torch.cat((first, second_amp_front, second_amp_back, second_phase_front, second_phase_back, third), dim=1)
-        
+        input = input[:, 2:, :, :]
         pred = self.supert(input)
 
         return pred
@@ -235,30 +211,25 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         segments = batch['segments']
         mask = batch['mask']
 
-        
+        sizes = features[:, :, -18]
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
         if self.aug_strat == 4 and 'RS' not in self.dataloader:
             seq_mask = seq_mask.reshape(seq_mask.size(0), res, res)
             features, seq_mask = self.mixup(features, seq_mask)
             
-            seq_mask = seq_mask.reshape(seq_mask.size(0), -1)
+            
 
         # if self.aug_strat == 4 and 'RS' not in self.dataloader:
         #     features, seq_mask = semantic_cutmix(features, seq_mask, self.cutmix_prob)
         #     features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
 
         
-   
-
-        # forward pass
-        if torch.sum(torch.isnan(features)) > 0:
-            assert 0 
         pred = self.forward(features)
         
         loss = self.loss(pred, seq_mask)
         
-        pred_numpy = torch.sigmoid(pred) # batch, seq_len, 1
+        pred_numpy = torch.sigmoid(pred[:, :1, :, :]).reshape(pred.size(0), -1) # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
         batch_size = mask.shape[0]
         img_size = mask.shape[2]
@@ -298,9 +269,9 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
 
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        pred = self.forward(features)
+        pred = self.forward(features)[:, :1, :, :]
         res = int(self.num_seg**0.5)
-        pred_numpy = torch.sigmoid(pred).detach().cpu() # batch, seq_len, 1
+        pred_numpy = torch.sigmoid(pred).reshape(pred.size(0), -1).detach().cpu() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
         batch_size = mask.shape[0]
         img_size = self.size
@@ -513,11 +484,8 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         # forward pass
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        start = time.time()
-        pred = self.forward(features)
-        end = time.time()
-        self.times.append(end-start)
-        pred_numpy = torch.sigmoid(pred).detach().cpu() # batch, seq_len, 1
+        pred = self.forward(features)[:, :1, :, :]
+        pred_numpy = torch.sigmoid(pred.reshape(pred.size(0), -1)).detach().cpu() # batch, seq_len, 1
 
         batch_size = mask.shape[0]
         img_size = self.size
@@ -595,9 +563,8 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         self.log('Final Test MAE', self.maes/self.mean_num)
         self.log('Final Test E measure', torch.max(self.e_measure_scores)/self.mean_num)
         self.log('Final Test S measure', self.s_measure_q/self.mean_num)
-        self.log('Inference Time (ms)', np.mean(self.times)*1000)
 
-
+        
 
 
 
