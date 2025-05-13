@@ -43,6 +43,7 @@ from dataset.imagenet_images_mb import ImageNetMBDataModule
 from dataset.imagenet_pyg_swin import SPGSImageNetDataModule
 from dataset.stopsigns import SPSpeedLimitsDataModule
 from dataset.stopsigns import SpeedLimitsDataModule
+from dataset.imagenet_backup import SPImageNetDataModule as SPBImageNetDataModule
 
 import git
 
@@ -82,6 +83,7 @@ DATALOADER_DIRECTORY = {
     'ImageNet_SWIN': SPGSImageNetDataModule,
     'SPSpeedLimits': SPSpeedLimitsDataModule,
     'SpeedLimits': SpeedLimitsDataModule,
+    'ImageNetBackup': SPBImageNetDataModule,
 } 
 
 if __name__ == "__main__":
