@@ -113,10 +113,10 @@ class SP_HVPNET_Wrapper(pl.LightningModule):
         # dice_loss = 1 - dice_score
         # dice_loss = dice_loss.mean()
         # loss = focal_loss #+ dice_loss
-
-        loss = F.binary_cross_entropy_with_logits(pred[:, 0, :, :], label)
+        label = label.float()
+        loss = F.binary_cross_entropy(pred[:, 0, :, :], label)
         for i in range(1, pred.shape[1]):
-            loss += 0.4 * F.binary_cross_entropy_with_logits(pred[:, i, :, :], label)
+            loss += 0.4 * F.binary_cross_entropy(pred[:, i, :, :], label)
         # loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
         # weights = sizes / (sizes.sum(dim=1, keepdim=True))  # (B, K)
         # weighted_loss = (loss * weights).sum(dim=1).mean()
@@ -229,7 +229,7 @@ class SP_HVPNET_Wrapper(pl.LightningModule):
         
         loss = self.loss(pred, seq_mask)
         
-        pred_numpy = torch.sigmoid(pred[:, :1, :, :]).reshape(pred.size(0), -1) # batch, seq_len, 1
+        pred_numpy = pred[:, :1, :, :].reshape(pred.size(0), -1) # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
         batch_size = mask.shape[0]
         img_size = mask.shape[2]
@@ -271,7 +271,7 @@ class SP_HVPNET_Wrapper(pl.LightningModule):
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
         pred = self.forward(features)[:, :1, :, :]
         res = int(self.num_seg**0.5)
-        pred_numpy = torch.sigmoid(pred).reshape(pred.size(0), -1).detach().cpu() # batch, seq_len, 1
+        pred_numpy = pred.reshape(pred.size(0), -1).detach().cpu() # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
         batch_size = mask.shape[0]
         img_size = self.size
@@ -290,7 +290,7 @@ class SP_HVPNET_Wrapper(pl.LightningModule):
 
             samples = torch.cat(samples, dim=0).cuda()
         else:
-            samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
+            samples = pred.reshape(pred.size(0), 1, res, res)
             samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear')
         
         mae = torch.sum(torch.mean(torch.abs(samples - mask), dim=tuple(range(1, len(samples.size())))))
@@ -485,7 +485,7 @@ class SP_HVPNET_Wrapper(pl.LightningModule):
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
         pred = self.forward(features)[:, :1, :, :]
-        pred_numpy = torch.sigmoid(pred.reshape(pred.size(0), -1)).detach().cpu() # batch, seq_len, 1
+        pred_numpy = pred.reshape(pred.size(0), -1).detach().cpu() # batch, seq_len, 1
 
         batch_size = mask.shape[0]
         img_size = self.size
@@ -501,7 +501,7 @@ class SP_HVPNET_Wrapper(pl.LightningModule):
 
             samples = torch.cat(samples, dim=0).cuda()
         else:
-            samples = torch.sigmoid(pred).reshape(pred.size(0), 1, res, res)
+            samples = pred.reshape(pred.size(0), 1, res, res)
             samples = F.interpolate(samples, (self.image_size, self.image_size), mode='bilinear').detach().cpu()
         # tensorboard.add_images('Test Pred', samples, self.test_iteration)
 

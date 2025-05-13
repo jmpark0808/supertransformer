@@ -86,6 +86,15 @@ class SP_SWINUM_Wrapper(pl.LightningModule):
                     checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
             
             self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
+            print(checkpoint)
+            # Track matching keys
+            model_state_dict = self.supert.state_dict()
+            matched_params = {k: v for k, v in checkpoint['state_dict'].items() if k in model_state_dict and v.size() == model_state_dict[k].size()}
+
+            # Count loaded parameters
+            num_loaded_params = sum(v.numel() for v in matched_params.values())
+            print(f"Number of parameters successfully loaded from checkpoint: {num_loaded_params}")
+            assert(0)
         
         self.save_hyperparameters()
         
