@@ -160,7 +160,7 @@ def get_input_dim(args):
                 'YD', 'SPGSWIN', 'YDG',
               'ImageNet_SWIN',  'SpeedLimits', 
                 'SPSpeedLimits',  'SPFRS', 'SPRS', 'SPFFT',
-                'SPSS', 'SPFDA']:
+                'SPSS', 'SPFDA', 'ImageNetBackup']:
         if args.get('ignore_phase'):
             return 6+(args.get('coeff'))+10
         else:
