@@ -53,7 +53,7 @@ class SwinUTransformer(nn.Module):
         super().__init__()
 
 
-        swinencoder = SwinTransformer(img_size=img_size, patch_size=patch_size, in_chans=16, num_classes=num_classes,
+        swinencoder = SwinTransformer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, num_classes=num_classes,
                                       embed_dim=embed_dim, depths=depths, num_heads=num_heads,
                                       window_size=window_size, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                                       drop_rate=drop_rate, attn_drop_rate=attn_drop_rate, drop_path_rate=drop_path_rate,
