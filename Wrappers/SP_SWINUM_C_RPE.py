@@ -11,6 +11,7 @@ from dataset.constants import *
 from util.util import get_input_dim
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 from dataset.mixup import MixupSaliency
+from util.util import eval_e, S_object, S_region
 
 class SP_SWINUM_C_RPE_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
@@ -52,13 +53,12 @@ class SP_SWINUM_C_RPE_Wrapper(pl.LightningModule):
 
         res = int(self.num_seg**0.5)
         # Generator that produces the HeatMap
-        rope_div_factor = self.size//res
-        self.supert = SwinUTransformer(img_size=res, resolution_size=self.size, in_chans=input_dim, patch_size=1, window_size=self.window_size,
+        self.supert = SwinUTransformer(img_size=res, in_chans=input_dim, patch_size=1, window_size=self.window_size,
                                        embed_dim=self.dims, depths=self.depths,
                                          num_heads=self.heads, mlp_ratio=self.mlp_ratio, attn_drop_rate=self.dropout_edge, drop_rate=self.dropout,
-                                         drop_path_rate=self.dp, rope_div_factor=rope_div_factor)
+                                         drop_path_rate=self.dp)
         # self.supert = SP_SWINU(input_dim, self.tfm_hp[2], self.tfm_hp[0],self.tfm_hp[1], self.dropout, self.dropout_edge, res)
-        
+
         kwargs['parameters'] = parameter_count(self.supert)['']
         inp = torch.randn([1, input_dim+2, res, res])
         flops = FlopCountAnalysis(self.supert, inp)
@@ -82,11 +82,12 @@ class SP_SWINUM_C_RPE_Wrapper(pl.LightningModule):
                 checkpoint['state_dict'][key.replace('supert.', '')] = checkpoint['state_dict'].pop(key)
             
             self.supert.load_state_dict(checkpoint['state_dict'], strict=False)
+            
         
         self.save_hyperparameters()
         
 
-    def loss(self, pred, label):
+    def loss(self, pred, label, sizes):
         """
         Defining the loss funcition:
         """
@@ -102,16 +103,19 @@ class SP_SWINUM_C_RPE_Wrapper(pl.LightningModule):
         # focal_loss = (focal_weight * bce_loss).mean()
 
 
+        # pt = probs * targets + (1 - probs) * (1 - targets)  # pt = p if label=1 else 1-p
+        # focal_loss = -0.25 * (1 - pt) ** 2.0 * pt.log()
+        # focal_loss = focal_loss.mean()
+
         # intersection = (probs * targets).sum(dim=1)
         # union = probs.sum(dim=1) + targets.sum(dim=1)
         # dice_score = (2 * intersection + 1e-8) / (union + 1e-8)
         # dice_loss = 1 - dice_score
         # dice_loss = dice_loss.mean()
-        # loss = focal_loss + dice_loss
-
-
+        # loss = focal_loss #+ dice_loss
         loss = F.binary_cross_entropy_with_logits(torch.squeeze(pred), torch.squeeze(label))
-       
+        # weights = sizes / (sizes.sum(dim=1, keepdim=True))  # (B, K)
+        # weighted_loss = (loss * weights).sum(dim=1).mean()
 
         return loss
 
@@ -235,7 +239,7 @@ class SP_SWINUM_C_RPE_Wrapper(pl.LightningModule):
         segments = batch['segments']
         mask = batch['mask']
 
-        
+        sizes = features[:, :, -18]
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
         if self.aug_strat == 4 and 'RS' not in self.dataloader:
@@ -249,14 +253,15 @@ class SP_SWINUM_C_RPE_Wrapper(pl.LightningModule):
         #     features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
 
         
-   
+        if torch.sum(sizes[0, :]) != self.size**2:
+            assert 'Sizes not aligning'
 
         # forward pass
         if torch.sum(torch.isnan(features)) > 0:
             assert 0 
         pred = self.forward(features)
         
-        loss = self.loss(pred, seq_mask)
+        loss = self.loss(pred, seq_mask, sizes)
         
         pred_numpy = torch.sigmoid(pred) # batch, seq_len, 1
         seq_mask_numpy = seq_mask.detach().cpu().numpy()
@@ -513,10 +518,9 @@ class SP_SWINUM_C_RPE_Wrapper(pl.LightningModule):
         # forward pass
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        start = time.time()
+    
         pred = self.forward(features)
-        end = time.time()
-        self.times.append(end-start)
+    
         pred_numpy = torch.sigmoid(pred).detach().cpu() # batch, seq_len, 1
 
         batch_size = mask.shape[0]
@@ -595,8 +599,8 @@ class SP_SWINUM_C_RPE_Wrapper(pl.LightningModule):
         self.log('Final Test MAE', self.maes/self.mean_num)
         self.log('Final Test E measure', torch.max(self.e_measure_scores)/self.mean_num)
         self.log('Final Test S measure', self.s_measure_q/self.mean_num)
-        self.log('Inference Time (ms)', np.mean(self.times)*1000)
-
+  
+        
 
 
 

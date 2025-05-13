@@ -11,6 +11,7 @@ from dataset.constants import *
 from util.util import get_input_dim
 from fvcore.nn import FlopCountAnalysis, flop_count_table, parameter_count
 from dataset.mixup import MixupSaliency
+from util.util import eval_e, S_object, S_region
 
 class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
     def __init__(self, **kwargs):
@@ -513,10 +514,10 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         # forward pass
         res = int(self.num_seg**0.5)
         features = features.reshape(features.size(0), res, res, -1).permute(0, 3, 1, 2)
-        start = time.time()
+
         pred = self.forward(features)
-        end = time.time()
-        self.times.append(end-start)
+
+
         pred_numpy = torch.sigmoid(pred).detach().cpu() # batch, seq_len, 1
 
         batch_size = mask.shape[0]
@@ -595,7 +596,7 @@ class SP_SWINUM_C_CROPE_Wrapper(pl.LightningModule):
         self.log('Final Test MAE', self.maes/self.mean_num)
         self.log('Final Test E measure', torch.max(self.e_measure_scores)/self.mean_num)
         self.log('Final Test S measure', self.s_measure_q/self.mean_num)
-        self.log('Inference Time (ms)', np.mean(self.times)*1000)
+
 
 
 
