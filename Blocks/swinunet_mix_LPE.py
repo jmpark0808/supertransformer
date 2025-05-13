@@ -169,12 +169,13 @@ class SwinUTransformer(nn.Module):
 
 
     def forward(self, x):
-        color = x[:, 2:8, :, :]
-        lbp = x[:, -10:, :, :]
+        # color = x[:, 2:8, :, :]
+        # lbp = x[:, -10:, :, :]
 
-        x = torch.cat((color, lbp), dim=1)
+        # x = torch.cat((color, lbp), dim=1)
+        features = x[:, 2:, :, :]
 
-        x = self.forward_features(x)
+        x = self.forward_features(features)
         x = self.sod_head(x)
 
         return x
