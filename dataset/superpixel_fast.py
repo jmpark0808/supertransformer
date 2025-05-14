@@ -603,7 +603,7 @@ class SPDataset(data.Dataset):
             if self.aug_strat > 1:
                 if self.coeff != 0:
                     features_np = np.concatenate((colour_and_centroid, features_amp, features_phase, lbp), 1)
-                    features_np, seq_mask = horizontal_flip(features_np, self.coeff, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
+                    # features_np, seq_mask = horizontal_flip(features_np, self.coeff, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)), seq_mask)
                 else:
                     features_np = np.concatenate((colour_and_centroid, lbp), 1)
         else:
