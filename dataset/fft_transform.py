@@ -10,14 +10,14 @@ def horizontal_flip(array, coeff, chance, size, resolution, seq_mask=None):
         phase_flipped[~mask] = -np.pi - phase[~mask]
         array[:, 8+coeff:8+coeff+coeff] = phase_flipped
 
-        # moments = array[:, -18:-10]
-        # moments_flipped = moments*np.array([1, -1, 1, 1, -1, 1, 1, -1]) 
-        # array[:, -18:-10] = moments_flipped
+        moments = array[:, -18:-10]
+        moments_flipped = moments*np.array([1, -1, 1, 1, -1, 1, 1, -1]) 
+        array[:, -18:-10] = moments_flipped
 
         xs = array[:, 1]
-        mid_x = size/2.
-        diff_x = xs-mid_x
-        array[:, 1] = mid_x-diff_x
+        # mid_x = size/2.
+        # diff_x = xs-mid_x
+        array[:, 1] = size-xs
         array = array.reshape(resolution[0], resolution[1], -1)
         array = np.fliplr(array)
         array = array.reshape(resolution[0]*resolution[1], -1)
