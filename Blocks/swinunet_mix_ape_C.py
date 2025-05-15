@@ -171,13 +171,16 @@ class SwinUTransformer(nn.Module):
     def forward(self, x):
         centroids = x[:, :2, :, :]
 
+        color = x[:, 2:8, :, :]
+        lbp = x[:, -10:, :, :]
 
+        x = torch.cat((color, lbp), dim=1)
 
-        features = x[:, 2:, :, :]
+        # features = x[:, 2:, :, :]
         locations = centroids.permute(0, 2, 3, 1)
         locations = self.locations(locations)
         locations = locations.reshape(locations.size(0), -1, locations.size(3))
-        x = self.forward_features(features, locations)
+        x = self.forward_features(x, locations)
         x = self.sod_head(x)
 
         return x
