@@ -53,7 +53,7 @@ class SwinUTransformer(nn.Module):
         super().__init__()
 
 
-        swinencoder = SwinTransformer(img_size=img_size, patch_size=patch_size, in_chans=16, num_classes=num_classes,
+        swinencoder = SwinTransformer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, num_classes=num_classes,
                                       embed_dim=embed_dim, depths=depths, num_heads=num_heads,
                                       window_size=window_size, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                                       drop_rate=drop_rate, attn_drop_rate=attn_drop_rate, drop_path_rate=drop_path_rate,
@@ -171,16 +171,16 @@ class SwinUTransformer(nn.Module):
     def forward(self, x):
         centroids = x[:, :2, :, :]
 
-        color = x[:, 2:8, :, :]
-        lbp = x[:, -10:, :, :]
+        # color = x[:, 2:8, :, :]
+        # lbp = x[:, -10:, :, :]
 
-        x = torch.cat((color, lbp), dim=1)
+        # x = torch.cat((color, lbp), dim=1)
 
-        # features = x[:, 2:, :, :]
+        features = x[:, 2:, :, :]
         locations = centroids.permute(0, 2, 3, 1)
         locations = self.locations(locations)
         locations = locations.reshape(locations.size(0), -1, locations.size(3))
-        x = self.forward_features(x, locations)
+        x = self.forward_features(features, locations)
         x = self.sod_head(x)
 
         return x
