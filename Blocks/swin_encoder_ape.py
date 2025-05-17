@@ -49,11 +49,21 @@ class SwinTransformer(nn.Module):
 
         # split image into non-overlapping patches
 
-        self.patch_embed = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim[0],
+        self.patch_embed_colour = PatchEmbed(
+            img_size=img_size, patch_size=patch_size, in_chans=6, embed_dim=embed_dim[0],
             norm_layer= norm_layer if self.patch_norm else None) #norm_layer if self.patch_norm else
-        num_patches = self.patch_embed.num_patches
-        patches_resolution = self.patch_embed.patches_resolution
+        self.patch_embed_lbp = PatchEmbed(
+            img_size=img_size, patch_size=patch_size, in_chans=10, embed_dim=embed_dim[0],
+            norm_layer= norm_layer if self.patch_norm else None) #norm_layer if self.patch_norm else
+        self.patch_embed_fft = PatchEmbed(
+            img_size=img_size, patch_size=patch_size, in_chans=in_chans-24, embed_dim=embed_dim[0],
+            norm_layer= norm_layer if self.patch_norm else None) #norm_layer if self.patch_norm else
+        self.patch_embed_moments = PatchEmbed(
+            img_size=img_size, patch_size=patch_size, in_chans=8, embed_dim=embed_dim[0],
+            norm_layer= norm_layer if self.patch_norm else None) #norm_layer if self.patch_norm else
+        self.linear_embed = nn.Sequential(nn.Linear(embed_dim[0]*4, embed_dim[0]), nn.ReLU(), nn.LayerNorm(embed_dim[0]), nn.Linear(embed_dim[0], embed_dim[0]))
+        num_patches = self.patch_embed_colour.num_patches
+        patches_resolution = self.patch_embed_colour.patches_resolution
         self.patches_resolution = patches_resolution
 
         # absolute position embedding
@@ -129,7 +139,20 @@ class SwinTransformer(nn.Module):
         return {'relative_position_bias_table'}
 
     def forward_features(self, x, locations):
-        x = self.patch_embed(x)
+        colour = x[:, :6, :, :]
+        fft = x[:, 6:-18, :, :]
+        moments = x[:, -18:-10, :, :]
+        lbp = x[:, -10:, :, :]
+
+        colour = self.patch_embed_colour(colour)
+        fft = self.patch_embed_fft(fft)
+        moments = self.patch_embed_moments(moments)
+        lbp = self.patch_embed_lbp(lbp)
+
+        features = torch.cat((colour, fft, moments, lbp), dim=-1)
+        
+        x = self.linear_embed(features)
+
   
         x = self.pos_drop(x)
         x = x + locations
@@ -146,14 +169,11 @@ class SwinTransformer(nn.Module):
 
     def forward(self, x):
         centroids = x[:, :2, :, :]
-        fft = x[:, 8:-10, :, :]
-        lbp = x[:, -10:, :, :]
-        color = x[:, 2:8, :, :]
-        x = torch.cat((color, lbp), dim=1)
+        features = x[:, 2:, :, :]
         locations = centroids.permute(0, 2, 3, 1)
         locations = self.locations(locations)
         locations = locations.reshape(locations.size(0), -1, locations.size(3))
-        x = self.forward_features(x, locations)
+        x = self.forward_features(features, locations)
         x = self.head(x)
         return x
 

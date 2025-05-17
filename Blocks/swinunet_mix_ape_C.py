@@ -68,7 +68,11 @@ class SwinUTransformer(nn.Module):
         self.mlp_ratio = mlp_ratio
 
         # split image into non-overlapping patches
-        self.patch_embed = swinencoder.patch_embed
+        self.patch_embed_colour = swinencoder.patch_embed_colour
+        self.patch_embed_lbp = swinencoder.patch_embed_lbp
+        self.patch_embed_fft = swinencoder.patch_embed_fft
+        self.patch_embed_moments = swinencoder.patch_embed_moments
+        self.linear_embed = swinencoder.linear_embed
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
         patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
@@ -135,7 +139,18 @@ class SwinUTransformer(nn.Module):
         return {'relative_position_bias_table'}
 
     def forward_features(self, x, pos):
-        x = self.patch_embed(x)
+        colour = x[:, :6, :, :]
+        fft = x[:, 6:-18, :, :]
+        moments = x[:, -18:-10, :, :]
+        lbp = x[:, -10:, :, :]
+
+        colour = self.patch_embed_colour(colour)
+        fft = self.patch_embed_fft(fft)
+        moments = self.patch_embed_moments(moments)
+        lbp = self.patch_embed_lbp(lbp)
+        
+        features = torch.cat((colour, fft, moments, lbp), dim=-1)
+        x = self.linear_embed(features)
         
         x = self.pos_drop(x)
         x = x + pos
