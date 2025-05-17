@@ -63,7 +63,7 @@ class SP_ImageNet_OGSWIN_APE_Wrapper(pl.LightningModule):
         #                                             self.tfm_hp[0]*4,
         #                                                 self.tfm_hp[0]*8], mlp_ratio=4, num_classes=self.classes)
         # Mix attention encoder
-        self.supert = SwinTransformer(img_size=self.res, coeff=self.coeff, in_chans=16, patch_size=1, window_size=self.window_size,
+        self.supert = SwinTransformer(img_size=self.res, coeff=self.coeff, in_chans=input_dim, patch_size=1, window_size=self.window_size,
                                        embed_dim=self.dims, depths=self.depths,
                                          num_heads=self.heads, mlp_ratio=self.mlp_ratio, num_classes=self.classes, attn_drop_rate=self.dropout_edge, 
                                          qkv_bias=False, drop_path_rate=self.dp)
