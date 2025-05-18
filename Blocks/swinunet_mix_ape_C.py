@@ -145,11 +145,11 @@ class SwinUTransformer(nn.Module):
         lbp = x[:, -10:, :, :]
 
         colour = self.patch_embed_colour(colour)
-        fft = self.patch_embed_fft(fft)
-        moments = self.patch_embed_moments(moments)
+        # fft = self.patch_embed_fft(fft)
+        # moments = self.patch_embed_moments(moments)
         lbp = self.patch_embed_lbp(lbp)
         
-        features = torch.cat((colour, fft, moments, lbp), dim=-1)
+        features = torch.cat((colour, lbp), dim=-1)
         x = self.linear_embed(features)
         
         x = self.pos_drop(x)
