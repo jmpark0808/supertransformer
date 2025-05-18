@@ -61,7 +61,7 @@ class SwinTransformer(nn.Module):
         self.patch_embed_moments = PatchEmbed(
             img_size=img_size, patch_size=patch_size, in_chans=8, embed_dim=embed_dim[0],
             norm_layer= norm_layer if self.patch_norm else None) #norm_layer if self.patch_norm else
-        self.linear_embed = nn.Sequential(nn.Linear(embed_dim[0]*4, embed_dim[0]), nn.ReLU(), nn.LayerNorm(embed_dim[0]), nn.Linear(embed_dim[0], embed_dim[0]))
+        self.linear_embed = nn.Sequential(nn.Linear(embed_dim[0]*2, embed_dim[0]), nn.ReLU(), nn.LayerNorm(embed_dim[0]), nn.Linear(embed_dim[0], embed_dim[0]))
         num_patches = self.patch_embed_colour.num_patches
         patches_resolution = self.patch_embed_colour.patches_resolution
         self.patches_resolution = patches_resolution
