@@ -66,6 +66,7 @@ class ImageNetDataset(data.Dataset):
     def __getitem__(self, item):
         
         features = np.load(self.image_list[item])
+
         res = int(features.shape[0]**0.5)
         # Spatial augmentation
         features_amp = features[:, 8:8+(self.resample_points-1)]
@@ -85,13 +86,13 @@ class ImageNetDataset(data.Dataset):
             # moments = rotate_moments(moments, 0.5, 15)
             
             if self.coeff != 0:
-                features_np = np.concatenate((colour_and_centroid, features_amp, features_phase, lbp), 1)
+                features_np = np.concatenate((colour_and_centroid, features_amp, features_phase, moments, lbp), 1)
                 features_np = horizontal_flip(features_np, self.coeff, 0.5, self.size, (int(self.num_seg**0.5), int(self.num_seg**0.5)))
             else:
                 features_np = np.concatenate((colour_and_centroid, lbp), 1)
         else:
             if self.coeff != 0:
-                features_np = np.concatenate((colour_and_centroid, features_amp, features_phase, lbp), 1)
+                features_np = np.concatenate((colour_and_centroid, features_amp, features_phase, moments, lbp), 1)
             else:
                 features_np = np.concatenate((colour_and_centroid, lbp), 1)
         #     centroids, colour, features_amp,features_phase, moments, lbp = horizontal_flip_moments(colour_and_centroid[:, :2], colour_and_centroid[:, 2:],
