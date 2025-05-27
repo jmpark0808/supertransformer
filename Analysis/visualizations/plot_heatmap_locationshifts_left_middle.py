@@ -147,11 +147,24 @@ ax3 = fig.add_subplot(spec[2:4,1])
 ax4 = fig.add_subplot(spec[0:2,2])
 ax5 = fig.add_subplot(spec[2:4,2])
 
-ax1.plot([0, 448, 448, 0, 0], [0, 0, 448, 448, 0], c='red', linewidth=5)
-ax1.scatter([15], [430], marker='*', s=100, zorder=1)
-ax1.scatter([224], [224], marker='*', s=100, zorder=1)
-ax1.text(20, 410, 'A', fontsize=15)
-ax1.text(229, 204, 'B', fontsize=15)
+cell_size = 16
+x_start, x_end = 0, 448  # custom horizontal span
+y_start, y_end = 0, 448  # custom vertical span
+
+# Draw vertical lines
+for x in range(x_start, x_end + 1, cell_size):
+    ax1.plot([x, x], [y_start, y_end], color='red', linewidth=0.1, zorder=0)
+
+# Draw horizontal lines
+for y in range(y_start, y_end + 1, cell_size):
+    ax1.plot([x_start, x_end], [y, y], color='red', linewidth=0.1, zorder=0)
+# ax1.plot([0, 448, 448, 0, 0], [0, 0, 448, 448, 0], c='red', linewidth=5)
+ax1.scatter([8], [440], marker='*', s=500, zorder=10, c='blue')
+ax1.scatter([216], [232], marker='*', s=500, zorder=10, c='green')
+ax1.text(20, 410, 'A', fontsize=20, zorder=10, fontweight='bold')
+ax1.text(229, 204, 'B', fontsize=20, zorder=10, fontweight='bold')
+
+
 
 
 ax2.scatter( all_centroids_left[0], all_centroids_left[1], c='b', alpha=0.5)
@@ -174,8 +187,8 @@ ax3.set_title('"B" Superpixel Centroids', fontsize=15)
 ax4.set_title('KDE of "A" Superpixel Centroids', fontsize=15)
 ax5.set_title('KDE of "B" Superpixel Centroids', fontsize=15)
 
-ax1.set_xlim(0, 448)
-ax1.set_ylim(0, 448)
+ax1.set_xlim(-10, 458)
+ax1.set_ylim(-10, 458)
 ax2.set_xlim(-8, 8)
 ax2.set_ylim(-8, 8)
 ax3.set_xlim(-8, 8)

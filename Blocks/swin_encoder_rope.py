@@ -50,12 +50,21 @@ class SwinTransformer(nn.Module):
 
         # split image into non-overlapping patches
 
-        self.patch_embed = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim[0],
-            norm_layer=norm_layer if self.patch_norm else None)
-
-        num_patches = self.patch_embed.num_patches
-        patches_resolution = self.patch_embed.patches_resolution
+        self.patch_embed_colour = PatchEmbed(
+            img_size=img_size, patch_size=patch_size, in_chans=6, embed_dim=embed_dim[0],
+            norm_layer= norm_layer if self.patch_norm else None) #norm_layer if self.patch_norm else
+        self.patch_embed_lbp = PatchEmbed(
+            img_size=img_size, patch_size=patch_size, in_chans=10, embed_dim=embed_dim[0],
+            norm_layer= norm_layer if self.patch_norm else None) #norm_layer if self.patch_norm else
+        self.patch_embed_fft = PatchEmbed(
+            img_size=img_size, patch_size=patch_size, in_chans=in_chans-24, embed_dim=embed_dim[0],
+            norm_layer= norm_layer if self.patch_norm else None) #norm_layer if self.patch_norm else
+        self.patch_embed_moments = PatchEmbed(
+            img_size=img_size, patch_size=patch_size, in_chans=8, embed_dim=embed_dim[0],
+            norm_layer= norm_layer if self.patch_norm else None) #norm_layer if self.patch_norm else
+        self.linear_embed = nn.Sequential(nn.Linear(embed_dim[0]*4, embed_dim[0]), nn.ReLU(), nn.LayerNorm(embed_dim[0]), nn.Linear(embed_dim[0], embed_dim[0]))
+        num_patches = self.patch_embed_colour.num_patches
+        patches_resolution = self.patch_embed_colour.patches_resolution
         self.patches_resolution = patches_resolution
 
         # absolute position embedding
@@ -119,33 +128,24 @@ class SwinTransformer(nn.Module):
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
 
-    def forward_features(self, x):
-        features = x[:, 2:, :, :]
-        centroids = x[:, :2, :, :].permute(0, 2, 3, 1)
-        
-        # centroids_h = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, :, None, :]
-        # centroids_w = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, None, :, :]
+    def forward_features(self, x, locations):
+        colour = x[:, :6, :, :]
+        fft = x[:, 6:-18, :, :]
+        moments = x[:, -18:-10, :, :]
+        lbp = x[:, -10:, :, :]
 
+        colour = self.patch_embed_colour(colour)
+        fft = self.patch_embed_fft(fft)
+        moments = self.patch_embed_moments(moments)
+        lbp = self.patch_embed_lbp(lbp)
 
-        # all_centroids = []
-        # for chunk in torch.chunk(centroids_w, 10, dim=2):
-        #     centroids = torch.sqrt(torch.sum(torch.pow(centroids_h - chunk, 2), -1))
-        #     centroids = centroids.reshape(centroids.size(0),
-        #                                                     int(centroids.size(1)**0.5),
-        #                                                     int(centroids.size(1)**0.5) , -1)
-        #     all_centroids.append(centroids)
-        # all_centroids = torch.cat(all_centroids, dim=-1)
-        # centroids = self.locations(all_centroids)
-        # centroids = centroids.reshape(centroids.size(0), -1, centroids.size(3))
+        features = torch.cat((colour, fft, moments, lbp), dim=-1)
         
-        centroids = self.locations(centroids)
-        centroids = centroids.reshape(centroids.size(0), -1, centroids.size(3))
+        x = self.linear_embed(features)
 
-        x = self.patch_embed(features)
- 
-        
-        x = x + centroids
+  
         x = self.pos_drop(x)
+        x = x + locations
 
         for layer in self.layers:
             ds, x = layer(x)
@@ -156,6 +156,12 @@ class SwinTransformer(nn.Module):
         return x
 
     def forward(self, x):
-        x = self.forward_features(x)
+        centroids = x[:, :2, :, :]
+        features = x[:, 2:, :, :]
+        locations = centroids.permute(0, 2, 3, 1)
+        locations = self.locations(locations)
+        locations = locations.reshape(locations.size(0), -1, locations.size(3))
+        
+        x = self.forward_features(features, locations)
         x = self.head(x)
         return x

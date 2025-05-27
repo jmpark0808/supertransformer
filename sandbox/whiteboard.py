@@ -28,10 +28,11 @@ import torch.nn.functional as F
 from util.util import merge_contours, compute_central_moments
 from torchvision.transforms import ToTensor
 from dataset.imagenet import ImageNetDataset
+import time
 
 
-size = 224
-num_seg = 3136
+size = 288
+num_seg = 5184
 compactness = 1
 coeff = 10
 
@@ -103,8 +104,12 @@ for img, mask in zip(sorted(os.listdir(img_path)), sorted(os.listdir(mask_path))
         enforce_connectivity=False,
         slic_zero=False)
 
-    plt.imshow(mark_boundaries(img_np, segments))
-    plt.show()
+    # plt.imshow(mark_boundaries(img_np, segments))
+    # plt.show()
+
+    vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
+    vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
+    bneighbors, counts = np.unique(np.hstack([vs_right, vs_below]), axis=1, return_counts=True)
 
     vs_right = np.vstack([segments[:,:-1].ravel(), segments[:,1:].ravel()])
     vs_below = np.vstack([segments[:-1,:].ravel(), segments[1:,:].ravel()])
@@ -156,3 +161,37 @@ for img, mask in zip(sorted(os.listdir(img_path)), sorted(os.listdir(mask_path))
     
     for ind, coord in zip(regions['label'], regions['coords']):
         seq_mask[ind-1] = np.sum(mask_np[coord[:, 0], coord[:, 1]])/len(coord[:, 0])
+
+
+    start = time.time()
+    neighbor_array = np.zeros([num_seg, num_seg])
+    neighbor_array[bneighbors[0]-1, bneighbors[1]-1] = 1
+    neighbor_array[bneighbors[1]-1, bneighbors[0]-1] = 1
+    eye = np.eye(num_seg)
+    A = neighbor_array.astype(float)
+    N = sp.diags(np.sum(A, axis=0).clip(1) ** -0.5, dtype=float)
+    L = eye - N * A * N
+    max_freqs = num_seg
+    n = np.max(label)+1
+    print('decomposing)')
+    EigVals, EigVecs = np.linalg.eigh(L)
+    EigVals, EigVecs = EigVals[: max_freqs], EigVecs[:, :max_freqs]
+    print('normalizing')
+    EigVecs = torch.from_numpy(EigVecs).float()
+    EigVecs = F.normalize(EigVecs, p=2, dim=1, eps=1e-12, out=None)
+    
+    if n<max_freqs:
+        EigVecs = F.pad(EigVecs, (0, max_freqs-n), value=float('nan'))
+    
+    #Save eigenvales and pad
+    EigVals = torch.from_numpy(np.sort(np.abs(np.real(EigVals)))) #Abs value is taken because numpy sometimes computes the first eigenvalue approaching 0 from the negative
+    
+    if n<max_freqs:
+        EigVals = F.pad(EigVals, (0, max_freqs-n), value=float('nan')).unsqueeze(0)
+    else:
+        EigVals=EigVals.unsqueeze(0)
+
+    EigVals = EigVals.repeat(num_seg,1).unsqueeze(2)
+    end = time.time()
+    print('LaPE took', end-start)
+    assert(0)
