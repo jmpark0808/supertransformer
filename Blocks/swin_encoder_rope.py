@@ -52,17 +52,17 @@ class SwinTransformer(nn.Module):
 
         self.patch_embed_colour = PatchEmbed(
             img_size=img_size, patch_size=patch_size, in_chans=6, embed_dim=embed_dim[0],
-            norm_layer= norm_layer if self.patch_norm else None) #norm_layer if self.patch_norm else
+            norm_layer= None) #norm_layer if self.patch_norm else
         self.patch_embed_lbp = PatchEmbed(
             img_size=img_size, patch_size=patch_size, in_chans=10, embed_dim=embed_dim[0],
-            norm_layer= norm_layer if self.patch_norm else None) #norm_layer if self.patch_norm else
+            norm_layer= None) #norm_layer if self.patch_norm else
         self.patch_embed_fft = PatchEmbed(
             img_size=img_size, patch_size=patch_size, in_chans=in_chans-24, embed_dim=embed_dim[0],
-            norm_layer= norm_layer if self.patch_norm else None) #norm_layer if self.patch_norm else
+            norm_layer= None) #norm_layer if self.patch_norm else
         self.patch_embed_moments = PatchEmbed(
             img_size=img_size, patch_size=patch_size, in_chans=8, embed_dim=embed_dim[0],
-            norm_layer= norm_layer if self.patch_norm else None) #norm_layer if self.patch_norm else
-        self.linear_embed = nn.Sequential(nn.Linear(embed_dim[0]*4, embed_dim[0]), nn.ReLU(), nn.LayerNorm(embed_dim[0]), nn.Linear(embed_dim[0], embed_dim[0]))
+            norm_layer= None) #norm_layer if self.patch_norm else
+        self.linear_embed = nn.Sequential(nn.Linear(embed_dim[0]*4, embed_dim[0]), nn.LayerNorm(embed_dim[0]), nn.ReLU(), nn.Linear(embed_dim[0], embed_dim[0]))
         num_patches = self.patch_embed_colour.num_patches
         patches_resolution = self.patch_embed_colour.patches_resolution
         self.patches_resolution = patches_resolution
@@ -144,24 +144,24 @@ class SwinTransformer(nn.Module):
         moments = self.patch_embed_moments(moments)
         lbp = self.patch_embed_lbp(lbp)
 
-        if torch.sum(torch.isnan(colour)) > 0:
-            print('Colour features Nan')
-            print(colour_skip[0, :, 0, 0])
-            assert(0)
-        if torch.sum(torch.isnan(fft)) > 0:
-            print('FFT features Nan')
-            print(fft_skip[0, :, 0, 0])
-            assert(0)
+        # if torch.sum(torch.isnan(colour)) > 0:
+        #     print('Colour features Nan')
+        #     print(colour_skip[0, :, 0, 0])
+        #     assert(0)
+        # if torch.sum(torch.isnan(fft)) > 0:
+        #     print('FFT features Nan')
+        #     print(fft_skip[0, :, 0, 0])
+        #     assert(0)
 
-        if torch.sum(torch.isnan(moments)) > 0:
-            print('Moments features Nan')
-            print(moments_skip[0, :, 0, 0])
-            assert(0)
+        # if torch.sum(torch.isnan(moments)) > 0:
+        #     print('Moments features Nan')
+        #     print(moments_skip[0, :, 0, 0])
+        #     assert(0)
 
-        if torch.sum(torch.isnan(lbp)) > 0:
-            print('LBP features Nan')
-            print(lbp_skip[0, :, 0, 0])
-            assert(0)
+        # if torch.sum(torch.isnan(lbp)) > 0:
+        #     print('LBP features Nan')
+        #     print(lbp_skip[0, :, 0, 0])
+        #     assert(0)
 
         features = torch.cat((colour, fft, moments, lbp), dim=-1)
         
