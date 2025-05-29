@@ -134,10 +134,34 @@ class SwinTransformer(nn.Module):
         moments = x[:, -18:-10, :, :]
         lbp = x[:, -10:, :, :]
 
+        colour_skip = colour
+        fft_skip = fft
+        moments_skip = moments
+        lbp_skip = lbp
+
         colour = self.patch_embed_colour(colour)
         fft = self.patch_embed_fft(fft)
         moments = self.patch_embed_moments(moments)
         lbp = self.patch_embed_lbp(lbp)
+
+        if torch.sum(torch.isnan(colour)) > 0:
+            print('Colour features Nan')
+            print(colour_skip[0, :, 0, 0])
+            assert(0)
+        if torch.sum(torch.isnan(fft)) > 0:
+            print('FFT features Nan')
+            print(fft_skip[0, :, 0, 0])
+            assert(0)
+
+        if torch.sum(torch.isnan(moments)) > 0:
+            print('Moments features Nan')
+            print(moments_skip[0, :, 0, 0])
+            assert(0)
+
+        if torch.sum(torch.isnan(lbp)) > 0:
+            print('LBP features Nan')
+            print(lbp_skip[0, :, 0, 0])
+            assert(0)
 
         features = torch.cat((colour, fft, moments, lbp), dim=-1)
         
