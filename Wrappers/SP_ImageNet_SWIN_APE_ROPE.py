@@ -215,6 +215,9 @@ class SP_ImageNet_OGSWIN_APE_ROPE_Wrapper(pl.LightningModule):
 
             
         features, target = batch
+        if torch.sum(torch.isnan(features)) > 0:
+            print('Feautures bug')
+            assert(0)
 
         features = features.reshape(features.size(0), self.res[0], self.res[1], -1).permute(0, 3, 1, 2)
         if self.dataloader == 'SpeedLimits':
@@ -225,6 +228,9 @@ class SP_ImageNet_OGSWIN_APE_ROPE_Wrapper(pl.LightningModule):
         # forward pass
         
         pred = self.forward(features)
+        if torch.sum(torch.isnan(pred)) > 0:
+            print('Feautures bug')
+            assert(0)
         loss = self.loss(pred, target)
         
         max_scores, max_idx_class = pred.max(dim=1)
