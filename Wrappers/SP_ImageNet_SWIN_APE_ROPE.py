@@ -229,7 +229,7 @@ class SP_ImageNet_OGSWIN_APE_ROPE_Wrapper(pl.LightningModule):
         
         pred = self.forward(features)
         if torch.sum(torch.isnan(pred)) > 0:
-            print('Feautures bug')
+            print('Model bug')
             assert(0)
         loss = self.loss(pred, target)
         
