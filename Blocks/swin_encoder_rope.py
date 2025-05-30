@@ -249,14 +249,21 @@ class SwinTransformer(nn.Module):
         
         x = self.linear_embed(features)
 
-  
+        if torch.sum(torch.isnan(x)) > 0:
+            print('Features Nan')
+            assert(0)
         x = self.pos_drop(x)
         x = x + locations
 
         for layer in self.layers:
             ds, x = layer(x)
-
+        if torch.sum(torch.isnan(x)) > 0:
+            print('Backbone Nan')
+            assert(0)
         x = self.norm(x)  # B L C
+        if torch.sum(torch.isnan(x)) > 0:
+            print('Norm Nan')
+            assert(0)
         x = self.avgpool(x.transpose(1, 2))  # B C 1
         x = torch.flatten(x, 1)
         return x
