@@ -145,9 +145,9 @@ class SwinTransformer(nn.Module):
         moments = self.patch_embed_moments(moments)
         lbp = self.patch_embed_lbp(lbp)
 
-        if torch.sum(torch.isnan(colour)) > 0:
+        if torch.sum(torch.isinf(colour_skip)) > 0:
             print('Colour features Nan')
-            nan_mask = torch.isnan(colour_skip)
+            nan_mask = torch.isinf(colour_skip)
             
             has_nan_along_A = nan_mask.any(dim=1)  # shape: (B, C, D)
 
@@ -155,24 +155,15 @@ class SwinTransformer(nn.Module):
             indices = torch.nonzero(has_nan_along_A, as_tuple=False)  # shape: (num_nans, 3)
 
             for b, c, d in indices:
-                vector = x[b, :, c, d]  # shape: (A,)
+                vector = colour_skip[b, :, c, d]  # shape: (A,)
                 print('Raw features', vector)
             
-            nan_mask = torch.isnan(colour)
-            
-            has_nan_along_A = nan_mask.any(dim=1)  # shape: (B, C, D)
-
-            # Iterate through (b, c, d) where NaNs were found
-            indices = torch.nonzero(has_nan_along_A, as_tuple=False)  # shape: (num_nans, 3)
-
-            for b, c, d in indices:
-                vector = x[b, :, c, d]  # shape: (A,)
-                print('Model output', vector)
+           
             
             assert(0)
-        if torch.sum(torch.isnan(fft)) > 0:
+        if torch.sum(torch.isinf(fft_skip)) > 0:
             print('FFT features Nan')
-            nan_mask = torch.isnan(fft_skip)
+            nan_mask = torch.isinf(fft_skip)
             
             has_nan_along_A = nan_mask.any(dim=1)  # shape: (B, C, D)
 
@@ -180,24 +171,13 @@ class SwinTransformer(nn.Module):
             indices = torch.nonzero(has_nan_along_A, as_tuple=False)  # shape: (num_nans, 3)
 
             for b, c, d in indices:
-                vector = x[b, :, c, d]  # shape: (A,)
+                vector = fft_skip[b, :, c, d]  # shape: (A,)
                 print('Raw features', vector)
-            
-            nan_mask = torch.isnan(fft)
-            
-            has_nan_along_A = nan_mask.any(dim=1)  # shape: (B, C, D)
-
-            # Iterate through (b, c, d) where NaNs were found
-            indices = torch.nonzero(has_nan_along_A, as_tuple=False)  # shape: (num_nans, 3)
-
-            for b, c, d in indices:
-                vector = x[b, :, c, d]  # shape: (A,)
-                print('Model output', vector)
             assert(0)
 
-        if torch.sum(torch.isnan(moments)) > 0:
+        if torch.sum(torch.isinf(moments_skip)) > 0:
             print('Moments features Nan')
-            nan_mask = torch.isnan(moments_skip)
+            nan_mask = torch.isinf(moments_skip)
             
             has_nan_along_A = nan_mask.any(dim=1)  # shape: (B, C, D)
 
@@ -205,24 +185,13 @@ class SwinTransformer(nn.Module):
             indices = torch.nonzero(has_nan_along_A, as_tuple=False)  # shape: (num_nans, 3)
 
             for b, c, d in indices:
-                vector = x[b, :, c, d]  # shape: (A,)
+                vector = moments_skip[b, :, c, d]  # shape: (A,)
                 print('Raw features', vector)
-            
-            nan_mask = torch.isnan(moments)
-            
-            has_nan_along_A = nan_mask.any(dim=1)  # shape: (B, C, D)
-
-            # Iterate through (b, c, d) where NaNs were found
-            indices = torch.nonzero(has_nan_along_A, as_tuple=False)  # shape: (num_nans, 3)
-
-            for b, c, d in indices:
-                vector = x[b, :, c, d]  # shape: (A,)
-                print('Model output', vector)
             assert(0)
 
-        if torch.sum(torch.isnan(lbp)) > 0:
+        if torch.sum(torch.isinf(lbp_skip)) > 0:
             print('LBP features Nan')
-            nan_mask = torch.isnan(lbp_skip)
+            nan_mask = torch.isinf(lbp_skip)
             
             has_nan_along_A = nan_mask.any(dim=1)  # shape: (B, C, D)
 
@@ -230,19 +199,8 @@ class SwinTransformer(nn.Module):
             indices = torch.nonzero(has_nan_along_A, as_tuple=False)  # shape: (num_nans, 3)
 
             for b, c, d in indices:
-                vector = x[b, :, c, d]  # shape: (A,)
+                vector = lbp_skip[b, :, c, d]  # shape: (A,)
                 print('Raw features', vector)
-            
-            nan_mask = torch.isnan(lbp)
-            
-            has_nan_along_A = nan_mask.any(dim=1)  # shape: (B, C, D)
-
-            # Iterate through (b, c, d) where NaNs were found
-            indices = torch.nonzero(has_nan_along_A, as_tuple=False)  # shape: (num_nans, 3)
-
-            for b, c, d in indices:
-                vector = x[b, :, c, d]  # shape: (A,)
-                print('Model output', vector)
             assert(0)
 
         features = torch.cat((colour, fft, moments, lbp), dim=-1)
