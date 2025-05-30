@@ -254,14 +254,14 @@ class SwinTransformer(nn.Module):
             print('Features Nan')
             nan_mask = torch.isnan(x)
             
-            has_nan_along_A = nan_mask.any(dim=1)  # shape: (B, C, D)
+            has_nan_along_A = nan_mask.any(dim=2)  # shape: (B, C)
 
             # Iterate through (b, c, d) where NaNs were found
             indices = torch.nonzero(has_nan_along_A, as_tuple=False)  # shape: (num_nans, 3)
 
-            for b, c, d in indices:
-                vector = x[b, :, c, d]  # shape: (A,)
-                vector_skip = features_skip[b, :, c, d]
+            for b, c in indices:
+                vector = x[b, c, :]  # shape: (A,)
+                vector_skip = features_skip[b, c, :]
                 print('Raw features', vector_skip)
                 print('Model features', vector)
 
