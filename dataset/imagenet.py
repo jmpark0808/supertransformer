@@ -151,10 +151,12 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
 
         resample_points = int(((size**2)//num_seg)**0.5)*4
         self.resample_points = resample_points
+        area = (size**2)//num_seg
         
         
         def fourier_descriptors(region):
-            moments = compute_central_moments(region)
+            moments = compute_central_moments(region)/area
+            
             region = (region*255).astype(np.uint8)
             contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
             if len(contour)>1:
@@ -177,8 +179,8 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
             fourier_result = np.fft.fft(contour_complex)[1:]
 
 
-            amp = abs(fourier_result)
-            phase = np.arctan2(fourier_result.imag, fourier_result.real)
+            amp = abs(fourier_result)/area
+            phase = np.arctan2(fourier_result.imag, fourier_result.real)/np.pi
 
             # return np.array(amp)
             return np.concatenate((amp, phase, moments))
@@ -274,6 +276,7 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
         
         for i in range((2*(self.resample_points-1))+8):
             features[label-1, 8+i] = regions[f'fourier_descriptors-{i}']
+            
 
         
         features[label-1, 0] = regions['centroid-0']
@@ -287,10 +290,15 @@ class ImageNetDatasetExport(torchvision.datasets.ImageFolder):
 
         for ind in range(10):
             features[label-1, ind+8+(2*(self.resample_points-1))+8] = regions_lbp[f'lbp-{ind}']
+
     
 
-        
-        np.save(sp_file_path, features.astype(np.float16))
+        features_16 = features.astype(np.float16)
+        if np.sum(np.isinf(features_16)) > 0:
+            inf_mask = np.isinf(features_16)
+            print(features[inf_mask])
+            assert(0)
+        np.save(sp_file_path, features_16)
         np.save(sp_file_path_target, np.array([target]))
 
         return torch.empty(0)
