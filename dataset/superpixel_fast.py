@@ -177,10 +177,11 @@ class ToTensorSPFFT(object):
         self.ec = enforce_connectivity
         resample_points = int(((size**2)//num_seg)**0.5)*4
         self.resample_points = resample_points
+        area = (size**2)//num_seg
 
         
         def fourier_descriptors(region):
-            moments = compute_central_moments(region)
+            moments = compute_central_moments(region)/area
             region = (region*255).astype(np.uint8)
             contour, hierarchy = cv2.findContours(region, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
             if len(contour)>1:
@@ -203,8 +204,8 @@ class ToTensorSPFFT(object):
             fourier_result = np.fft.fft(contour_complex)[1:]
 
 
-            amp = abs(fourier_result)
-            phase = np.arctan2(fourier_result.imag, fourier_result.real)
+            amp = abs(fourier_result)/area
+            phase = np.arctan2(fourier_result.imag, fourier_result.real)/np.pi
 
             # return np.array(amp)
             return np.concatenate((amp, phase, moments))

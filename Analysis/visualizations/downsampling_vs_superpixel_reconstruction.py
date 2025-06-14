@@ -15,6 +15,7 @@ from torch_geometric.utils import scatter
 import torch.nn.functional as F
 from torch_scatter import scatter_std
 import matplotlib as mpl
+plt.rcParams['text.usetex'] = True
 load_data = True
 if not load_data:
 
@@ -147,7 +148,7 @@ else:
 
     print(np.mean(sp_maes), np.mean(ds_maes))
     plt.figure(figsize=(12,5))
-    labels= ['Superpixel C 0.1', 'Superpixel C 1', 'Superpixel C 10', 'Superpixel C 50', 'Downsample']
+    labels= [r'Superpixel $m$ 0.1', r'Superpixel $m$ 1', r'Superpixel $m$ 10', r'Superpixel $m$ 50', 'Downsample']
     colors = ['blue', 'orange', 'green', 'red', 'purple']
     bplot = plt.boxplot([sp_maes[0], sp_maes[1], sp_maes[2], sp_maes[3], ds_maes], patch_artist=True, tick_labels=labels, showfliers=False)
     for patch, color in zip(bplot['boxes'], colors):

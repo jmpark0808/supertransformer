@@ -65,7 +65,7 @@ for file in tqdm(os.listdir(dataset_images)):
     img1 = np.where(seg1_mask, red_overlay, img1)
     ax[0].imshow(img1, aspect='equal')
     ax[0].axis('off')
-    ax[0].set_title('SLIC Initialization', fontsize=20)
+    ax[0].set_title('Initial SLIC Segmentation', fontsize=20)
     segments2 = slic(img, n_segments=768,
     compactness=10,
     max_num_iter=10,
@@ -109,7 +109,7 @@ for file in tqdm(os.listdir(dataset_images)):
     x1 = min(segments1.shape[1], x1 + padding)
 
     # Create RGB visualization
-    vis = np.zeros((*segments1.shape, 3), dtype=np.float32)
+    vis = np.ones((*segments1.shape, 3), dtype=np.float32)
     vis[mask1] = [1, 0, 0]        # Red for seg1
     vis[mask2] = [0, 1, 0]        # Green for seg2
     vis[intersection] = [1, 1, 0] # Yellow for overlap

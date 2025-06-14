@@ -65,7 +65,12 @@ class SwinUTransformer(nn.Module):
         self.mlp_ratio = mlp_ratio
 
         # split image into non-overlapping patches
-        self.patch_embed = swinencoder.patch_embed
+        self.patch_embed_colour = swinencoder.patch_embed_colour
+        self.patch_embed_lbp = swinencoder.patch_embed_lbp
+        self.patch_embed_fft = swinencoder.patch_embed_fft
+        self.patch_embed_moments = swinencoder.patch_embed_moments
+        self.linear_embed = swinencoder.linear_embed
+        
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
         patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
@@ -130,59 +135,25 @@ class SwinUTransformer(nn.Module):
     def no_weight_decay_keywords(self):
         return {'relative_position_bias_table'}
 
-    def forward_features(self, x):
-        features = x[:, 2:, :, :]
-        centroids = x[:, :2, :, :].permute(0, 2, 3, 1)
-     
-        
-        # centroids_h = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, :, None, :]
-        # centroids_w = centroids.reshape(centroids.size(0), -1, centroids.size(3))[:, None, :, :]
+    def forward_features(self, x, locations):
+        colour = x[:, :6, :, :]
+        fft = x[:, 6:-18, :, :]
+        moments = x[:, -18:-10, :, :]
+        lbp = x[:, -10:, :, :]
 
-        # relative_centroids = torch.sqrt(torch.sum(torch.pow(centroids_h - centroids_w, 2), -1))
-        # relative_centroids = relative_centroids.reshape(relative_centroids.size(0),
-        #                                                  int(relative_centroids.size(1)**0.5),
-        #                                                   int(relative_centroids.size(1)**0.5) , -1).permute(0, 3, 1, 2)
-        # features = torch.cat((features, relative_centroids), 1)
-        
-        centroids_linear = self.locations(centroids)
-        centroids_linear = centroids_linear.reshape(centroids_linear.size(0), -1, centroids_linear.size(3))
-        # centroids_linear = self.locations(relative_centroids)
-        # centroids_linear = centroids_linear.reshape(centroids_linear.size(0), -1, centroids_linear.size(3))
-
-        # if self.training is False:
-        #     import matplotlib.pyplot as plt
-        #     import numpy as np
   
-        #     cos = nn.CosineSimilarity(dim=0)
-        #     relative_centroids_reshape_tensor = centroids_linear[0]
-            
-        #     # fig, ax = plt.subplots(32, 32)
-        #     count = 0 
-        #     l =0
-        #     k = 0
-        #     patches = []
-        #     for i in range(56):
-        #         for j in range(56):
-        #             # patches.append(cos(relative_centroids_reshape_tensor[k, l], relative_centroids_reshape_tensor[i, j]).detach().cpu().numpy())
-        #             # patches.append(torch.sqrt(torch.sum(torch.pow(output[k, l]-output[i, j], 2))).detach().cpu().numpy())
-        #             patches.append(torch.sqrt(torch.sum(torch.pow(relative_centroids_reshape_tensor[k, l]-relative_centroids_reshape_tensor[i, j], 2))).detach().cpu().numpy())
-                    
+        colour = self.patch_embed_colour(colour)
+        fft = self.patch_embed_fft(fft)
+        moments = self.patch_embed_moments(moments)
+        lbp = self.patch_embed_lbp(lbp)
 
-        #     # plt.imshow(np.array(patches).reshape(32, 32), cmap='hot')
-        #     centroids_reshape = centroids[0].detach().cpu().numpy()
-        #     centroids_flat = centroids[0].reshape(-1, 2)
-        #     plt.figure(figsize=(5,5))
-        #     plt.scatter(centroids_flat[:, 1].detach().cpu().numpy(), -centroids_flat[:, 0].detach().cpu().numpy(), c=patches, cmap='jet')
-        #     plt.scatter(centroids_reshape[k, l, 1], -centroids_reshape[k, l, 0], c='red', marker='*', s=100)
-        #     plt.title(f'Seed row {k}, column {l}')
-        #     plt.axis('off')
-        #     plt.show()
-        #     plt.clf()
-        #     assert(0)
+      
+        features = torch.cat((colour, fft, moments, lbp), dim=-1)
         
+        print(features.size())
         
-        x = self.patch_embed(features)
-        x = x + centroids_linear
+        x = self.linear_embed(features)
+        x = x + locations
         x = self.pos_drop(x)
 
      
@@ -209,7 +180,13 @@ class SwinUTransformer(nn.Module):
 
 
     def forward(self, x):
-        x = self.forward_features(x)
+        centroids = x[:, :2, :, :]
+        features = x[:, 2:, :, :]
+        locations = centroids.permute(0, 2, 3, 1)
+        locations = self.locations(locations)
+        locations = locations.reshape(locations.size(0), -1, locations.size(3))
+        
+        x = self.forward_features(features, locations)
         x = self.sod_head(x)
 
         return x

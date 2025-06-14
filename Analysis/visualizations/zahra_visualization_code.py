@@ -305,16 +305,17 @@ def plot_contours(fig, contour_array, xi, yi, xi_t, yi_t, ax, font_sizes, i_x=0,
     line1, = ax[i_x, i_y].plot(xi, yi, '--', color='purple', label='Original')
 
     # Plot the transformed contours as solid black lines
-    line2, = ax[i_x, i_y].plot(xi_t, yi_t, '-', color='black', label='Transformed')
+    if xi_t is not None:
+        line2, = ax[i_x, i_y].plot(xi_t, yi_t, '-', color='black', label='Transformed')
 
     # Scatter plot for the first and second points with specific colors for the original contours
     # scatter1 = ax[i_x, i_y].scatter(xi[0], yi[0], c='blue', label='1st', s=50, edgecolors='blue', zorder=5)
     # scatter2 = ax[i_x, i_y].scatter(xi[1], yi[1], c='green', label='2nd', s=50, edgecolors='green', zorder=5)
 
     # Adding legend manually to control the order and label
-    if i_x == 0 and i_y == 0:
+    if i_x == 0 and i_y == 1:
         # ax[i_x, i_y].set_ylabel('Contours', fontsize=font_sizes['ylabel_fontsize'])
-        ax[i_x, i_y].legend(handles=[line1, line2],#, scatter1, scatter2],
+        ax[0, 0].legend(handles=[line1, line2],#, scatter1, scatter2],
                             labels=['Original', 'Transformed'],
                             loc='upper left', bbox_to_anchor=(-1.1, 1), fontsize=font_sizes['tick_fontsize'],
                             title='Contours')
@@ -396,17 +397,33 @@ def sf_FT(data_file, plt_path=None, _plt=False):
 
     # ROTATION
     rot_angle = 30
-    im = Image.fromarray(rectangle)
-    rotated = im.rotate(rot_angle)
-    rectangle_rotated = np.array(rotated)
-    contour, hierarchy = cv2.findContours(rectangle_rotated, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    points_rotated = contour[0][:, 0, :]
-    xi_rot, yi_rot = resample_2d(points_rotated, N)
+    # im = Image.fromarray(rectangle)
+    # rotated = im.rotate(rot_angle)
+    # rectangle_rotated = np.array(rotated)
+    # contour, hierarchy = cv2.findContours(rectangle_rotated, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    # points_rotated = contour[0][:, 0, :]
+    # xi_rot, yi_rot = resample_2d(points_rotated, N)
+
+    theta = np.deg2rad(rot_angle)
+    R = np.array([
+        [np.cos(theta), -np.sin(theta)],
+        [np.sin(theta),  np.cos(theta)]
+    ])
+
+    center = np.mean(contour_array_orig, axis=0)
+    points = contour_array_orig - center  # translate to origin
+
+    rotated =  points @ R.T  # apply rotation
+
+    rotated = rotated + center  # translate back
+
+    xi_rot = rotated[:, 0]
+    yi_rot = rotated[:, 1]
+
     contour_array_rot = np.stack((xi_rot, yi_rot), axis=1)
     fft_rot = get_fft(contour_array_rot)
     phase_rot = np.arctan2(fft_rot.imag, fft_rot.real)
-    print(fft_rot[-1])
-    print(fft_orig[-1])
+    print(fft_rot.shape)
 
     # Calculate the differences between each of the transformed values and the original
     amp_diff_tr = abs(fft_tr) - abs(fft_orig)
@@ -418,47 +435,61 @@ def sf_FT(data_file, plt_path=None, _plt=False):
     diff_phase_rot = phase_rot - phase_orig
 
     # --------------------- PLOT Figure --------------------------------
-    fig, ax = plt.subplots(3, 3, figsize=(10, 6))
+    fig, ax = plt.subplots(3, 4, figsize=(13, 6))
     font_sizes = {'title_fontsize': 12,
                   'ylabel_fontsize': 10,
                   'xlabel_fontsize': 10,
                   'tick_fontsize': 12,}
 
     # CONTOURS
+    plot_contours(fig, contour_array_orig, xi, yi, None, None, ax, font_sizes,
+                  i_x=0, i_y=0, title=f'Original')
     plot_contours(fig, contour_array_tr, xi, yi, xi+tr_factor, yi+tr_factor, ax, font_sizes,
-                  i_x=0, i_y=0, title=f'Translated by {tr_factor}')
+                  i_x=0, i_y=1, title=f'Translated by {tr_factor}')
     plot_contours(fig, contour_array_sc, xi, yi, xi*sc_factor, yi*sc_factor, ax, font_sizes,
-                  i_x=0, i_y=1, title=f'Scaled by {sc_factor}')
+                  i_x=0, i_y=2, title=f'Scaled by {sc_factor}')
     plot_contours(fig, contour_array_rot, xi, yi, xi_rot, yi_rot, ax, font_sizes,
-                  i_x=0, i_y=2, title=f'Rotated {rot_angle} degrees')
+                  i_x=0, i_y=3, title=f'Rotated {rot_angle} degrees')
 
     # AMPLITUDE
-    ax[1, 0].stem(np.linspace(0, np.pi, len(fft_tr))[1:], abs(fft_tr[1:]), 'k', markerfmt=" ", basefmt="-k")
-    ax[1, 1].stem(np.linspace(0, np.pi, len(fft_sc))[1:], abs(fft_sc[1:]), 'k', markerfmt=" ", basefmt="-k")
-    ax[1, 2].stem(np.linspace(0, np.pi, len(fft_rot))[1:], abs(fft_rot[1:]), 'k', markerfmt=" ", basefmt="-k")
+    ax[1, 0].stem(np.linspace(0, np.pi, len(fft_orig))[1:], abs(fft_orig[1:]), 'k', markerfmt=" ", basefmt="-k")
+    ax[1, 1].stem(np.linspace(0, np.pi, len(fft_tr))[1:], abs(fft_tr[1:]), 'k', markerfmt=" ", basefmt="-k")
+    ax[1, 2].stem(np.linspace(0, np.pi, len(fft_sc))[1:], abs(fft_sc[1:]), 'k', markerfmt=" ", basefmt="-k")
+    ax[1, 3].stem(np.linspace(0, np.pi, len(fft_rot))[1:], abs(fft_rot[1:]), 'k', markerfmt=" ", basefmt="-k")
 
     ax[1, 0].legend(labels=['Amplitude (fs)'], loc='upper left', bbox_to_anchor=(-1.1, 0.7), fontsize=11)
     ax[1, 0].tick_params(axis='y', labelsize=font_sizes['tick_fontsize'])
     ax[1, 1].tick_params(axis='y', labelsize=font_sizes['tick_fontsize'])
     ax[1, 2].tick_params(axis='y', labelsize=font_sizes['tick_fontsize'])
+    ax[1, 3].tick_params(axis='y', labelsize=font_sizes['tick_fontsize'])
     ax[1, 0].set_xticks([])
     ax[1, 1].set_xticks([])
     ax[1, 2].set_xticks([])
+    ax[1, 3].set_xticks([])
 
 
     # AMPLITUDE Differences
-    ax[2, 0].set_ylim(-1, 1)
-    ax[2, 0].stem(np.linspace(0, np.pi, len(amp_diff_tr))[1:], amp_diff_tr[1:], 'r', markerfmt=" ", basefmt="-r")
-    ax[2, 1].stem(np.linspace(0, np.pi, len(amp_diff_sc))[1:], amp_diff_sc[1:], 'r', markerfmt=" ", basefmt="-r")
-    ax[2, 2].stem(np.linspace(0, np.pi, len(amp_diff_rot))[1:], amp_diff_rot[1:], 'r', markerfmt=" ",  basefmt="-r")
+    ax[2, 0].set_ylim(0, 1.5)
+    ax[2, 1].set_ylim(0, 1.5)
+    ax[2, 2].set_ylim(0, 5)
+    ax[2, 3].set_ylim(0, 1.5)
+    # ax[2, 0].stem(np.linspace(0, np.pi, len(amp_diff_tr))[1:], amp_diff_tr[1:], 'r', markerfmt=" ", basefmt="-r")
+    # ax[2, 1].stem(np.linspace(0, np.pi, len(amp_diff_sc))[1:], amp_diff_sc[1:], 'r', markerfmt=" ", basefmt="-r")
+    # ax[2, 2].stem(np.linspace(0, np.pi, len(amp_diff_rot))[1:], amp_diff_rot[1:], 'r', markerfmt=" ",  basefmt="-r")
+    ax[2, 0].plot(abs(fft_orig[1:])/abs(fft_orig[1:]), 'r')
+    ax[2, 1].plot(abs(fft_tr[1:])/abs(fft_orig[1:]), 'r')
+    ax[2, 2].plot(abs(fft_sc[1:])/abs(fft_orig[1:]), 'r')
+    ax[2, 3].plot(abs(fft_rot[1:])/abs(fft_orig[1:]), 'r')
 
-    ax[2, 0].legend(labels=['Amplitude\nDifference'], loc='upper left', bbox_to_anchor=(-1.1, 0.64), fontsize=font_sizes['tick_fontsize'])
+    ax[2, 0].legend(labels=['Amplitude\nRatio'], loc='upper left', bbox_to_anchor=(-1.1, 0.64), fontsize=font_sizes['tick_fontsize'])
     ax[2, 0].tick_params(axis='y', labelsize=font_sizes['tick_fontsize'])
     ax[2, 1].tick_params(axis='y', labelsize=font_sizes['tick_fontsize'])
     ax[2, 2].tick_params(axis='y', labelsize=font_sizes['tick_fontsize'])
+    ax[2, 3].tick_params(axis='y', labelsize=font_sizes['tick_fontsize'])
     ax[2, 0].set_xticks([])
     ax[2, 1].set_xticks([])
     ax[2, 2].set_xticks([])
+    ax[2, 3].set_xticks([])
 
     # PHASE
     # ax[3, 0].stem(np.linspace(0, np.pi, len(phase_tr))[1:], phase_tr[1:], 'k', markerfmt=" ", basefmt="-k")
@@ -512,7 +543,7 @@ def data_sf():
 if __name__ == '__main__':
 
 
-    plt_path = os.path.join(current_directory, 'figs')
+    plt_path = '/mnt/hdd/Figures/SuperFormer/'
     make_directory(plt_path)
 
     # scatter_plot(metric='F1', plt_path=plt_path, add_metric=False, add_arrow=True, _plt=True)

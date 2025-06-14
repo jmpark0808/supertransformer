@@ -2,6 +2,8 @@ import pickle
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib
+plt.rcParams['text.usetex'] = True
+
 with open('/home/eddie/waterloo/supertransformer/Analysis/segments_plot_data.pkl', 'rb') as f:
     loaded_dict = pickle.load(f)
 # plt.figure(figsize=(10,10))
@@ -30,7 +32,7 @@ compactness = [0.1, 1, 10, 50]
 for compact in compactness:
     # print(loaded_dict[compact])
     all_ious = loaded_dict[compact]
-    ax.plot(np.power(segment_numbers, 2), all_ious, label=f'SP, C {compact}')
+    ax.plot(np.power(segment_numbers, 2), all_ious, label=fr'SP, $m$ {compact}')
     ax.scatter(np.power(segment_numbers, 2), all_ious)
     if compact == 10:
         for i, j in zip(segment_numbers, all_ious):
@@ -66,8 +68,8 @@ ax.scatter(np.power(segment_numbers, 2), all_ious)
 #     else:
 #         ax.text(i**2, j+0.002, '{}'.format(i**2))
 
-ax.set_title(f'Maximum F1-score accuracy for a Given \n  Number of Pixels/Superpixels', fontsize=fs)
-ax.set_xlabel('Number of Pixels/Superpixels (log scale)', fontsize=fs)
+ax.set_title(f'Maximum F1-score accuracy for a Given \n  Number of Pixels or Superpixels', fontsize=fs)
+ax.set_xlabel('Number of Pixels or Superpixels (log scale)', fontsize=fs)
 ax.set_ylabel('F1-score', fontsize=fs)
 
 # ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
@@ -96,6 +98,6 @@ ax.set_xscale('log')
 # plt.savefig(f'compactness.jpg', bbox_inches='tight')
 # ax[1].show()
 fig.tight_layout()
-fig.savefig('/mnt/d/Figures/SuperFormer/f1_upperbound.drawio.pdf', format='pdf')
+fig.savefig('/mnt/hdd/Figures/SuperFormer/f1_upperbound.drawio.pdf', format='pdf')
 plt.show()
     
