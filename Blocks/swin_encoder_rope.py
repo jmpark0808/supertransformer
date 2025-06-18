@@ -223,12 +223,12 @@ class SwinTransformer(nn.Module):
         #         print('Raw features', vector_skip)
         #         print('Model features', vector)
 
-            
+        
           
         #     assert(0)
         x = self.pos_drop(x)
         x = x + locations
-
+        return x
         for layer in self.layers:
             ds, x = layer(x)
         
@@ -246,5 +246,5 @@ class SwinTransformer(nn.Module):
         locations = locations.reshape(locations.size(0), -1, locations.size(3))
         
         x = self.forward_features(features, locations)
-        x = self.head(x)
+        # x = self.head(x)
         return x

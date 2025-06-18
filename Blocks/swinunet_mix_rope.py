@@ -150,12 +150,12 @@ class SwinUTransformer(nn.Module):
       
         features = torch.cat((colour, fft, moments, lbp), dim=-1)
         
-        print(features.size())
+        
         
         x = self.linear_embed(features)
         x = x + locations
         x = self.pos_drop(x)
-
+        return x
      
         ft = []
         for layer in self.layers:
@@ -187,7 +187,7 @@ class SwinUTransformer(nn.Module):
         locations = locations.reshape(locations.size(0), -1, locations.size(3))
         
         x = self.forward_features(features, locations)
-        x = self.sod_head(x)
+        # x = self.sod_head(x)
 
         return x
  
