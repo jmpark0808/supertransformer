@@ -50,21 +50,24 @@ class SwinTransformer(nn.Module):
 
         # split image into non-overlapping patches
 
-        self.patch_embed_colour = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=6, embed_dim=embed_dim[0],
-            norm_layer= None) #norm_layer if self.patch_norm else
-        self.patch_embed_lbp = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=10, embed_dim=embed_dim[0],
-            norm_layer= None) #norm_layer if self.patch_norm else
-        self.patch_embed_fft = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=in_chans-24, embed_dim=embed_dim[0],
-            norm_layer= None) #norm_layer if self.patch_norm else
-        self.patch_embed_moments = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=8, embed_dim=embed_dim[0],
-            norm_layer= None) #norm_layer if self.patch_norm else
-        self.linear_embed = nn.Sequential(nn.Linear(embed_dim[0]*4, embed_dim[0]), nn.LayerNorm(embed_dim[0]), nn.ReLU(), nn.Linear(embed_dim[0], embed_dim[0]))
-        num_patches = self.patch_embed_colour.num_patches
-        patches_resolution = self.patch_embed_colour.patches_resolution
+        # self.patch_embed_colour = PatchEmbed(
+        #     img_size=img_size, patch_size=patch_size, in_chans=6, embed_dim=embed_dim[0],
+        #     norm_layer= None) #norm_layer if self.patch_norm else
+        # self.patch_embed_lbp = PatchEmbed(
+        #     img_size=img_size, patch_size=patch_size, in_chans=10, embed_dim=embed_dim[0],
+        #     norm_layer= None) #norm_layer if self.patch_norm else
+        # self.patch_embed_fft = PatchEmbed(
+        #     img_size=img_size, patch_size=patch_size, in_chans=in_chans-24, embed_dim=embed_dim[0],
+        #     norm_layer= None) #norm_layer if self.patch_norm else
+        # self.patch_embed_moments = PatchEmbed(
+        #     img_size=img_size, patch_size=patch_size, in_chans=8, embed_dim=embed_dim[0],
+        #     norm_layer= None) #norm_layer if self.patch_norm else
+        # self.linear_embed = nn.Sequential(nn.Linear(embed_dim[0]*4, embed_dim[0]), nn.LayerNorm(embed_dim[0]), nn.ReLU(), nn.Linear(embed_dim[0], embed_dim[0]))
+        self.patch_embed = PatchEmbed(
+            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim[0],
+            norm_layer= nn.LayerNorm) #norm_layer if self.patch_norm else
+        num_patches = self.patch_embed.num_patches
+        patches_resolution = self.patch_embed.patches_resolution
         self.patches_resolution = patches_resolution
 
         # absolute position embedding
@@ -134,16 +137,19 @@ class SwinTransformer(nn.Module):
         moments = x[:, -18:-10, :, :]
         lbp = x[:, -10:, :, :]
 
-        
-        colour_skip = colour
-        fft_skip = fft
-        moments_skip = moments
-        lbp_skip = lbp
+        features = torch.cat((colour, fft, moments, lbp), dim=1)
+        x = self.patch_embed(features)
 
-        colour = self.patch_embed_colour(colour)
-        fft = self.patch_embed_fft(fft)
-        moments = self.patch_embed_moments(moments)
-        lbp = self.patch_embed_lbp(lbp)
+
+        # colour_skip = colour
+        # fft_skip = fft
+        # moments_skip = moments
+        # lbp_skip = lbp
+
+        # colour = self.patch_embed_colour(colour)
+        # fft = self.patch_embed_fft(fft)
+        # moments = self.patch_embed_moments(moments)
+        # lbp = self.patch_embed_lbp(lbp)
 
         # if torch.sum(torch.isinf(colour_skip)) > 0:
         #     print('Colour features Nan')
@@ -203,10 +209,10 @@ class SwinTransformer(nn.Module):
         #         print('Raw features', vector)
         #     assert(0)
 
-        features = torch.cat((colour, fft, moments, lbp), dim=-1)
-        features_skip = features
+        # features = torch.cat((colour, fft, moments, lbp), dim=-1)
+        # features_skip = features
         
-        x = self.linear_embed(features)
+        # x = self.linear_embed(features)
 
         # if torch.sum(torch.isnan(x)) > 0:
         #     print('Features Nan')
@@ -228,7 +234,7 @@ class SwinTransformer(nn.Module):
         #     assert(0)
         x = self.pos_drop(x)
         x = x + locations
-        return x
+       
         for layer in self.layers:
             ds, x = layer(x)
         
@@ -246,5 +252,5 @@ class SwinTransformer(nn.Module):
         locations = locations.reshape(locations.size(0), -1, locations.size(3))
         
         x = self.forward_features(features, locations)
-        # x = self.head(x)
+        x = self.head(x)
         return x
