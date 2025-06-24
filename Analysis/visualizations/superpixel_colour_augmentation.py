@@ -242,133 +242,117 @@ resample_points = int(((448**2)//784)**0.5)*4
 
 coeff = 10
 
-for file in tqdm(os.listdir(dataset_images)[:num_images]):
-    name = file.split('.jpg')[0]
-    image = os.path.join(dataset_images, name+'.jpg')
-    mask = os.path.join(masks, name+'.png')
 
-    img = Image.open(image)
-    msk = Image.open(mask)
-    img = img.convert('RGB').resize((448, 448))
-    msk = msk.convert('L').resize((448, 448))
-    img = np.array(img)
-    msk = np.array(msk)
+
+img = Image.open('/home/eddie/Datasets/DUTS/DUTS-TR/Image/ILSVRC2012_test_00008058.jpg')
+
+img = img.convert('RGB').resize((448, 448))
+
+img = np.array(img)
+
+
+
+segments = slic(img, n_segments=784,
+compactness=10,
+max_num_iter=10,
+convert2lab=True,
+enforce_connectivity=True,
+slic_zero=False)
+
+# np.save('sample_segment.npy', segments)
+
+regions = regionprops_table(segments, img, properties=('label', 'centroid', 'intensity_mean'))
+centroids_x = regions['centroid-1']
+centroids_y = regions['centroid-0']
+labels = regions['label']
+fig, ax = plt.subplots(3, 3, figsize=(10, 10))
+im_plot = np.zeros((448, 448, 3))
+
+                
+im = np.zeros((3, 784))
+
+for label, r, g, b in zip(regions['label'], regions['intensity_mean-0'], regions['intensity_mean-1'], regions['intensity_mean-2']):
+    im[:, label-1] = [r, g, b]
     
 
+im = torch.tensor(im).to(torch.uint8).reshape(3, 28, 28)
+import torchvision.transforms.functional as F
+brightness = F.adjust_brightness(im, 2).reshape(3, 784).detach().cpu().numpy()
+saturation = F.adjust_saturation(im, 2).reshape(3, 784).detach().cpu().numpy()
+contrast = F.adjust_contrast(im, 2).reshape(3, 784).detach().cpu().numpy()
+sharpness = F.adjust_sharpness(im, 2).reshape(3, 784).detach().cpu().numpy()
+posterize = F.posterize(im, 4).reshape(3, 784).detach().cpu().numpy()
+solarize = F.solarize(im, 125).reshape(3, 784).detach().cpu().numpy()
+autocontrast = F.autocontrast(im).reshape(3, 784).detach().cpu().numpy()
+equalize = F.equalize(im).reshape(3, 784).detach().cpu().numpy()
+im = im.reshape(3, 784)
+
+for label in regions['label']:
     
-    msk[msk>125] = 255
-    msk[msk<=125] = 0
-
-    empty_background = np.zeros_like(msk)
-
-    msk_boundaries = np.sum(mark_boundaries(empty_background, msk), axis=2)
-
-    msk[msk<=125] = 0
-    msk[msk>125] = 1
-    
-    
-
-    segments = slic(img, n_segments=784,
-    compactness=10,
-    max_num_iter=10,
-    convert2lab=True,
-    enforce_connectivity=True,
-    slic_zero=False)
-
-    # np.save('sample_segment.npy', segments)
-
-    regions = regionprops_table(segments, img, properties=('label', 'centroid', 'intensity_mean'))
-    centroids_x = regions['centroid-1']
-    centroids_y = regions['centroid-0']
-    labels = regions['label']
-    fig, ax = plt.subplots(3, 3, figsize=(10, 10))
-    im_plot = np.zeros((448, 448, 3))
-    
-                    
-    im = np.zeros((3, 784))
-   
-    for label, r, g, b in zip(regions['label'], regions['intensity_mean-0'], regions['intensity_mean-1'], regions['intensity_mean-2']):
-        im[:, label-1] = [r, g, b]
-        
-    
-    im = torch.tensor(im).to(torch.uint8).reshape(3, 28, 28)
-    import torchvision.transforms.functional as F
-    brightness = F.adjust_brightness(im, 2).reshape(3, 784).detach().cpu().numpy()
-    saturation = F.adjust_saturation(im, 2).reshape(3, 784).detach().cpu().numpy()
-    contrast = F.adjust_contrast(im, 2).reshape(3, 784).detach().cpu().numpy()
-    sharpness = F.adjust_sharpness(im, 2).reshape(3, 784).detach().cpu().numpy()
-    posterize = F.posterize(im, 4).reshape(3, 784).detach().cpu().numpy()
-    solarize = F.solarize(im, 125).reshape(3, 784).detach().cpu().numpy()
-    autocontrast = F.autocontrast(im).reshape(3, 784).detach().cpu().numpy()
-    equalize = F.equalize(im).reshape(3, 784).detach().cpu().numpy()
-    im = im.reshape(3, 784)
-    
-    for label in regions['label']:
-        
-        im_plot[segments == label] = im[:, label-1]
-
-    
-    ax[0, 0].imshow(im_plot/255.)
-    ax[0, 0].axis('off')
-    ax[0, 0].set_title('Superpixel Colour Features', fontsize=15)
-
-    for label in regions['label']:
-        im_plot[segments == label] = brightness[:, label-1]
-    ax[0, 1].imshow(im_plot/255)
-    ax[0, 1].axis('off')
-    ax[0, 1].set_title('Brightness', fontsize=15)
+    im_plot[segments == label] = im[:, label-1]
 
 
-    for label in regions['label']:
-        im_plot[segments == label] = saturation[:, label-1]
-    ax[0, 2].imshow(im_plot/255)
-    ax[0, 2].axis('off')
-    ax[0, 2].set_title('Saturation', fontsize=15)
+ax[0, 0].imshow(im_plot/255.)
+ax[0, 0].axis('off')
+ax[0, 0].set_title('Original', fontsize=15)
+
+for label in regions['label']:
+    im_plot[segments == label] = brightness[:, label-1]
+ax[0, 1].imshow(im_plot/255)
+ax[0, 1].axis('off')
+ax[0, 1].set_title('Brightness', fontsize=15)
 
 
-    for label in regions['label']:
-        im_plot[segments == label] = contrast[:, label-1]
-    ax[1, 0].imshow(im_plot/255)
-    ax[1, 0].axis('off')
-    ax[1, 0].set_title('Contrast', fontsize=15)
+for label in regions['label']:
+    im_plot[segments == label] = saturation[:, label-1]
+ax[0, 2].imshow(im_plot/255)
+ax[0, 2].axis('off')
+ax[0, 2].set_title('Saturation', fontsize=15)
 
 
-    for label in regions['label']:
-        im_plot[segments == label] = sharpness[:, label-1]
-    ax[1, 1].imshow(im_plot/255)
-    ax[1, 1].axis('off')
-    ax[1, 1].set_title('Sharpness', fontsize=15)
+for label in regions['label']:
+    im_plot[segments == label] = contrast[:, label-1]
+ax[1, 0].imshow(im_plot/255)
+ax[1, 0].axis('off')
+ax[1, 0].set_title('Contrast', fontsize=15)
 
 
-    for label in regions['label']:
-        im_plot[segments == label] = posterize[:, label-1]
-    ax[1, 2].imshow(im_plot/255)
-    ax[1, 2].axis('off')
-    ax[1, 2].set_title('Posterize', fontsize=15)
+for label in regions['label']:
+    im_plot[segments == label] = sharpness[:, label-1]
+ax[1, 1].imshow(im_plot/255)
+ax[1, 1].axis('off')
+ax[1, 1].set_title('Sharpness', fontsize=15)
 
 
-    for label in regions['label']:
-        im_plot[segments == label] = solarize[:, label-1]
-    ax[2, 0].imshow(im_plot/255)
-    ax[2, 0].axis('off')
-    ax[2, 0].set_title('Solarize', fontsize=15)
+for label in regions['label']:
+    im_plot[segments == label] = posterize[:, label-1]
+ax[1, 2].imshow(im_plot/255)
+ax[1, 2].axis('off')
+ax[1, 2].set_title('Posterize', fontsize=15)
 
 
-    for label in regions['label']:
-        im_plot[segments == label] = autocontrast[:, label-1]
-    ax[2, 1].imshow(im_plot/255)
-    ax[2, 1].axis('off')
-    ax[2, 1].set_title('Autocontrast', fontsize=15)
+for label in regions['label']:
+    im_plot[segments == label] = solarize[:, label-1]
+ax[2, 0].imshow(im_plot/255)
+ax[2, 0].axis('off')
+ax[2, 0].set_title('Solarize', fontsize=15)
 
 
-    for label in regions['label']:
-        im_plot[segments == label] = equalize[:, label-1]
-    ax[2, 2].imshow(im_plot/255)
-    ax[2, 2].axis('off')
-    ax[2, 2].set_title('Equalize', fontsize=15)
+for label in regions['label']:
+    im_plot[segments == label] = autocontrast[:, label-1]
+ax[2, 1].imshow(im_plot/255)
+ax[2, 1].axis('off')
+ax[2, 1].set_title('Autocontrast', fontsize=15)
 
-    fig.tight_layout()
 
-    fig.savefig('/mnt/d/Figures/SuperFormer/colour_augmentation.pdf', format='pdf')
-    plt.show()
-    assert(0)
+for label in regions['label']:
+    im_plot[segments == label] = equalize[:, label-1]
+ax[2, 2].imshow(im_plot/255)
+ax[2, 2].axis('off')
+ax[2, 2].set_title('Equalize', fontsize=15)
+
+fig.tight_layout()
+
+fig.savefig('/home/eddie/Figures/SuperFormer/colour_augmentation.pdf', format='pdf')
+plt.show()
+# assert(0)
