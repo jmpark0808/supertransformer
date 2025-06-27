@@ -65,11 +65,12 @@ class SwinUTransformer(nn.Module):
         self.mlp_ratio = mlp_ratio
 
         # split image into non-overlapping patches
-        self.patch_embed_colour = swinencoder.patch_embed_colour
-        self.patch_embed_lbp = swinencoder.patch_embed_lbp
-        self.patch_embed_fft = swinencoder.patch_embed_fft
-        self.patch_embed_moments = swinencoder.patch_embed_moments
-        self.linear_embed = swinencoder.linear_embed
+        # self.patch_embed_colour = swinencoder.patch_embed_colour
+        # self.patch_embed_lbp = swinencoder.patch_embed_lbp
+        # self.patch_embed_fft = swinencoder.patch_embed_fft
+        # self.patch_embed_moments = swinencoder.patch_embed_moments
+        # self.linear_embed = swinencoder.linear_embed
+        self.patch_embed = swinencoder.patch_embed
         
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -141,21 +142,24 @@ class SwinUTransformer(nn.Module):
         moments = x[:, -18:-10, :, :]
         lbp = x[:, -10:, :, :]
 
-  
-        colour = self.patch_embed_colour(colour)
-        fft = self.patch_embed_fft(fft)
-        moments = self.patch_embed_moments(moments)
-        lbp = self.patch_embed_lbp(lbp)
+
+
+        features = torch.cat((colour, fft, moments, lbp), dim=1)
+        x = self.patch_embed(features)
+        # colour = self.patch_embed_colour(colour)
+        # fft = self.patch_embed_fft(fft)
+        # moments = self.patch_embed_moments(moments)
+        # lbp = self.patch_embed_lbp(lbp)
 
       
-        features = torch.cat((colour, fft, moments, lbp), dim=-1)
+        # features = torch.cat((colour, fft, moments, lbp), dim=-1)
         
         
         
-        x = self.linear_embed(features)
+        # x = self.linear_embed(features)
         x = x + locations
         x = self.pos_drop(x)
-        return x
+       
      
         ft = []
         for layer in self.layers:
@@ -187,7 +191,7 @@ class SwinUTransformer(nn.Module):
         locations = locations.reshape(locations.size(0), -1, locations.size(3))
         
         x = self.forward_features(features, locations)
-        # x = self.sod_head(x)
+        x = self.sod_head(x)
 
         return x
  
